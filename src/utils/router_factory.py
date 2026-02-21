@@ -20,14 +20,14 @@ class GenericRouterFactory:
         self.service_dep = service_dependency
         self._setup_routes()
 
-    def _setup_routes(self):
+    def _setup_routes(self, name="Get All"):
         """Define las rutas estándar para todos los servicios"""
 
         @self.router.get("/")
         async def get_all(service: Annotated[BaseService, Depends(self.service_dep)]):
             return await service.get_all()
 
-        @self.router.post("/")
+        @self.router.post("/", name="Add Many")
         async def add_many(service: Annotated[BaseService, Depends(self.service_dep)]):
             try:
                 return await service.add_many()
@@ -36,7 +36,7 @@ class GenericRouterFactory:
                     content={"error": e.detail}, status_code=e.status_code
                 )
 
-        @self.router.delete("/")
+        @self.router.delete("/", name="Delete Many")
         async def delete_many(
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
@@ -47,10 +47,10 @@ class GenericRouterFactory:
                     content={"error": e.detail}, status_code=e.status_code
                 )
 
-        @self.router.get("/export")
+        @self.router.get("/export", name="Export to Excel")
         async def export(
             service: Annotated[BaseService, Depends(self.service_dep)],
-            ejercicio: int = None,
+            ejercicio: Optional[int] = None,
         ):
             return await service.export(ejercicio)
 

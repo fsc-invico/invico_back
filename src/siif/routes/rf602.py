@@ -1,8 +1,8 @@
 from ...utils.router_factory import GenericRouterFactory
-from ..services import Rf602ServiceDependency  # La clase del servicio
+from ..services import Rf602Service  # La clase del servicio
 
 factory = GenericRouterFactory(
-    service_dependency=Rf602ServiceDependency, prefix="/rf602"
+    service_dependency=Rf602Service, prefix="/rf602"
 )
 
 rf602_router = factory.get_router()
