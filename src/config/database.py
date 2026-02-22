@@ -47,7 +47,7 @@ COLLECTIONS = [
     "slave_honorarios",
     "sscc_banco_invico",
     "sscc_ctas_ctes",
-    "sgv_saldos_barrios_evolucion", 
+    "sgv_saldos_barrios_evolucion",
     "control_recursos",
     "control_aporte_empresario",
     "control_obras",
@@ -237,14 +237,31 @@ class BaseRepository(Generic[ModelType]):
         filter_dict = params.get_full_filter()
         sort_direction = 1 if params.sort_dir == "asc" else -1
 
-        cursor = (
-            self.collection.find(filter_dict)
-            .skip(params.offset)
-            .limit(params.limit)
-            .sort(params.sort_by, sort_direction)
-        )
-        return await cursor.to_list(length=params.limit)
-        # return [self.model(**doc) for doc in docs]
+        # cursor = (
+        #     self.collection.find(filter_dict)
+        #     .skip(params.offset)
+        #     .limit(params.limit)
+        #     .sort(params.sort_by, sort_direction)
+        # )
+        # return await cursor.to_list(length=params.limit)
+
+        cursor = self.collection.find(filter_dict).sort(params.sort_by, sort_direction)
+
+        # Aplicamos offset
+        if params.offset > 0:
+            cursor = cursor.skip(params.offset)
+
+        # Lógica de Límite dinámico
+        if params.limit and params.limit > 0:
+            cursor = cursor.limit(params.limit)
+            # Si hay límite, pedimos esa cantidad exacta
+            docs = await cursor.to_list(length=params.limit)
+        else:
+            # Si limit es None o 0 (para exportar todo),
+            # definimos un techo alto para evitar bloqueos pero traer todo
+            docs = await cursor.to_list(length=10000)
+
+        return docs
 
     # -------------------------------------------------
     async def safe_find_with_filter_params(

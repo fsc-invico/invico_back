@@ -19,30 +19,43 @@ from ...utils import (
     # sanitize_dataframe_for_json,
 )
 from ..repositories import Rf602RepositoryDependency
-from ..schemas import Rf602Document, Rf602Params
+from ..schemas import Rf602Document, Rf602ExportFilter, Rf602Filter
 
 
 @dataclass
 # -------------------------------------------------
-class Rf602Service(BaseService[Rf602Document, Rf602Params]):
+class Rf602Service(BaseService[Rf602Document, Rf602Filter, Rf602ExportFilter]):
     repository: Rf602RepositoryDependency
 
     # -------------------------------------------------
-    async def get_all(self, params: Rf602Params) -> List[Rf602Document]:
+    async def add_many(self):
+        raise NotImplementedError("La carga masiva no está disponible para RF602")
+
+    # -------------------------------------------------
+    async def delete_many(self):
+        raise NotImplementedError("La eliminación masiva no está disponible para RF602")
+
+    # -------------------------------------------------
+    async def get_all(self, params: Rf602Filter) -> List[Rf602Document]:
         try:
             return await self.repository.find_with_filter_params(params=params)
         except Exception as e:
             self._handle_error("Error retrieving SIIF's rf602", e)
 
     # -------------------------------------------------
-    async def export_rf602_data(self, params: Rf602Params) -> StreamingResponse:
-        # 1. Obtener datos
-        data = await self.get_all(params)
-        df = pd.DataFrame(
-            [d.model_dump() for d in data]
-        )  # O el método que uses para df
+    async def export(self, params: Rf602ExportFilter) -> StreamingResponse:
+        # 1. Creamos el objeto de filtros normal
+        search_params = Rf602Filter(
+            query_filter=params.query_filter,
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
 
-        # 2. Usar el método de la clase base
+        # 2. Traemos los datos sin paginar
+        data = await self.repository.find_with_filter_params(params=search_params)
+
+        # 3. Usar el método de la clase base
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_RF602")], filename="reporte_rf602.xlsx"
         )

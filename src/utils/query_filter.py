@@ -67,6 +67,7 @@ def get_filter_query(f):
 #         )
 #     )
 
+
 # -------------------------------------------------
 def format_value(v: str):
     v = v.strip()
@@ -93,7 +94,9 @@ def format_value(v: str):
 # -------------------------------------------------
 class BaseFilterParams(BaseModel):
     query_filter: str = ""
-    limit: int = Field(20, gt=0, le=100)
+    # limit: int = Field(20, gt=0, le=100)
+    # Si limit es None, el repositorio debería traer TODO
+    limit: Optional[int] = Field(None, gt=0)
     offset: int = Field(0, ge=0)
     sort_by: str = "_id"
     sort_dir: Literal["asc", "desc"] = "asc"
@@ -106,6 +109,25 @@ class BaseFilterParams(BaseModel):
             self._extra_filter.update(extra)
 
     def get_full_filter(self):
+        # return data_filter(self.query_filter, extra_filter=self._extra_filter)
+        """
+        Genera el diccionario final para MongoDB combinando la query_filter string
+        con los campos adicionales definidos en las clases hijas.
+        """
+        # 1. Detectar campos adicionales en la clase hija
+        base_fields = set(BaseFilterParams.model_fields.keys())
+        current_fields = set(type(self).model_fields.keys())
+        additional_fields = current_fields - base_fields
+
+        # 2. Agregar automáticamente esos campos al extra_filter
+        for field in additional_fields:
+            value = getattr(self, field, None)
+            if value is not None:
+                # Si es un Enum o tiene atributo 'value', lo extraemos
+                val = value.value if hasattr(value, "value") else value
+                self._extra_filter.update({field: {"$eq": val}})
+
+        # 3. Combinar con la lógica de data_filter (la que parsea el string)
         return data_filter(self.query_filter, extra_filter=self._extra_filter)
 
 

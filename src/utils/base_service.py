@@ -15,35 +15,36 @@ from .safe_get import (
 
 # Tipos genéricos para que el Service sepa con qué Schema y Repository trabajar
 T = TypeVar("T")  # Para el Schema del Documento (ej. Rf602Document)
-P = TypeVar("P")  # Para los Parámetros (ej. BaseFilterParams)
+F = TypeVar("F")  # Para los Parámetros (ej. BaseFilterParams con paginación)
+E = TypeVar("E")  # Parámetros Export (filtros, sin paginación)
 
 
 @dataclass
 # -------------------------------------------------
-class BaseService(ABC, Generic[T, P]):
+class BaseService(ABC, Generic[T, F, E]):
     repository: Any  # Se sobrescribirá en el hijo con el tipo específico
 
     @abstractmethod
     # -------------------------------------------------
-    async def get_all(self, params: P) -> List[T]:
+    async def get_all(self, params: F) -> List[T]:
         """Método obligatorio a implementar"""
         pass
 
     @abstractmethod
     # --------------------------------------------------
-    def add_many(self):
+    async def add_many(self):
         """Este método debe ser implementado por el hijo"""
         pass
 
     @abstractmethod
     # --------------------------------------------------
-    def delete_many(self):
+    async def delete_many(self):
         """Este método debe ser implementado por el hijo"""
         pass
 
     @abstractmethod
     # --------------------------------------------------
-    def export(self):
+    async def export(self, params: E) -> StreamingResponse:
         """Este método debe ser implementado por el hijo"""
         pass
 
