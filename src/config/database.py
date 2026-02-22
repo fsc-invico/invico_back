@@ -259,7 +259,7 @@ class BaseRepository(Generic[ModelType]):
         else:
             # Si limit es None o 0 (para exportar todo),
             # definimos un techo alto para evitar bloqueos pero traer todo
-            docs = await cursor.to_list(length=10000)
+            docs = await cursor.to_list(length=50000)
 
         return docs
 
