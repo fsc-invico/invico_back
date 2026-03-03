@@ -261,7 +261,10 @@ class BaseRepository(Generic[ModelType]):
             # definimos un techo alto para evitar bloqueos pero traer todo
             docs = await cursor.to_list(length=50000)
 
-        return docs
+        # return docs
+        # 💡 LA CLAVE: Convertir cada diccionario crudo al modelo de Pydantic
+        # Esto transformará el _id (ObjectId) en el formato que Rf602Document espera.
+        return [self.model(**doc) for doc in docs]
 
     # -------------------------------------------------
     async def safe_find_with_filter_params(
