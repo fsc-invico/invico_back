@@ -11,6 +11,7 @@ class GenericRouterFactory:
     def __init__(
         self,
         service_dependency: Any,
+        report_schema: Type,  # Esquema para la ruta de inserción masiva
         filter_schema: Type,
         export_schema: Type,  # Nuevo esquema para exportar
         prefix: str,
@@ -24,6 +25,7 @@ class GenericRouterFactory:
 
         self.router = APIRouter(**router_args)
         self.service_dep = service_dependency
+        self.report_schema = report_schema
         self.filter_schema = filter_schema
         self.export_schema = export_schema
         self._setup_routes()
@@ -42,7 +44,33 @@ class GenericRouterFactory:
             return await service.get_all(params)
 
         # -------------------------------------------------
-        @self.router.post("/", name="Add Many")
+        @self.router.post(
+            "/",
+            name="Add Many",
+            # 💡 Truco Maestro: Inyectamos el esquema de Rf602Report en Swagger
+            responses={200: {"model": self.report_schema}},
+            openapi_extra={
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": f"#/components/schemas/{self.report_schema.__name__}"
+                                },
+                            }
+                        }
+                    }
+                }
+            },
+            # Para que el $ref funcione en Swagger, FastAPI necesita conocer el modelo.
+            # Asegúrate de incluirlo en el response_model de alguna ruta o agrégalo
+            # manualmente a la app de FastAPI al inicio:
+            # main.py o donde inicies la app
+            # from modules.rf602.schemas import Rf602Report
+            # # Esto asegura que el esquema esté disponible para las referencias del Factory
+            # app.openapi_schema["components"]["schemas"]["Rf602Report"] = Rf602Report.model_json_schema()
+        )
         async def add_many(
             data: List[dict],  # type: ignore
             service: Annotated[BaseService, Depends(self.service_dep)],
