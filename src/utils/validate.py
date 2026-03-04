@@ -1,5 +1,6 @@
 __all__ = [
     "validate_and_extract_data_from_df",
+    "validate_and_extract_data_from_list",
     "ErrorsWithDocId",
     "PyObjectId",
     "validate_not_empty",
@@ -11,11 +12,10 @@ __all__ = [
 
 import argparse
 import os
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Type, Union
 
 import pandas as pd
 from bson import ObjectId
-from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, GetCoreSchemaHandler, ValidationError
 from pydantic_core import core_schema
 
@@ -49,9 +49,48 @@ class RouteReturnSchema(BaseModel):
     errors: List[ErrorsWithDocId] = []
 
 
+# --------------------------------------------------
+def validate_and_extract_data_from_list(
+    data_list: List[dict],
+    model: Type[BaseModel],
+    field_id: Union[str, List[str]] = "doc_id",
+) -> ValidationResultSchema:
+    """
+    Valida una lista de diccionarios contra un modelo Pydantic sin usar Pandas.
+    """
+    errors_list: List[ErrorsWithDocId] = []
+    validated_list: List[BaseModel] = []
+
+    for index, record in enumerate(data_list):
+        try:
+            # model_validate funciona sobre diccionarios directamente
+            validated_doc = model.model_validate(record)
+            validated_list.append(validated_doc)
+        except ValidationError as e:
+            # --- Lógica de generación de ID para el error ---
+            if isinstance(field_id, list):
+                # Extraemos los valores de los campos solicitados
+                # Usamos str(record.get(f)) y filtramos los None
+                id_parts = [str(record.get(f, "N/A")) for f in field_id]
+                doc_id = " - ".join(id_parts)
+            else:
+                # Comportamiento original para un solo campo
+                doc_id = str(record.get(field_id, f"Fila {index}"))
+
+            error_details = [
+                ErrorsDetails(
+                    loc=str(err["loc"]), msg=err["msg"], error_type=err["type"]
+                )
+                for err in e.errors()
+            ]
+            errors_list.append(ErrorsWithDocId(doc_id=doc_id, details=error_details))
+
+    return ValidationResultSchema(errors=errors_list, validated=validated_list)
+
+
 # -------------------------------------------------
 def validate_and_extract_data_from_df(
-    dataframe: pd.DataFrame, model: BaseModel, field_id: str = "doc_id"
+    dataframe: pd.DataFrame, model: Type[BaseModel], field_id: str = "doc_id"
 ) -> ValidationResultSchema:
     """Validates and extracts data from a pandas DataFrame using a Pydantic model.
 
@@ -69,7 +108,7 @@ def validate_and_extract_data_from_df(
             - `validated` (List[BaseModel]): A list of validated records that passed the model validation.
     """
     errors_list: List[ErrorsWithDocId] = []
-    validated_list: List[model] = []
+    validated_list: List[BaseModel] = []
     # duplicates = dataframe.columns[dataframe.columns.duplicated()]
     # print("Columnas duplicadas:", duplicates)
     dataframe = sanitize_dataframe_for_json(dataframe)
@@ -117,7 +156,7 @@ async def sync_validated_to_repository(
     """
 
     schema = RouteReturnSchema()
-    
+
     if not delete_filter:
         deleted_count = await repository.delete_all()
     else:
@@ -127,7 +166,6 @@ async def sync_validated_to_repository(
     schema.title = title
     schema.errors += validation.errors
     schema.deleted += deleted_count
-
 
     if validation.validated:
         if logger:
