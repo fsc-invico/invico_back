@@ -14,6 +14,7 @@ from .safe_get import (
 )
 
 # Tipos genéricos para que el Service sepa con qué Schema y Repository trabajar
+R = TypeVar("R")  # Para el Schema del Reporte (ej. Rf602Report)
 T = TypeVar("T")  # Para el Schema del Documento (ej. Rf602Document)
 F = TypeVar("F")  # Para los Parámetros (ej. BaseFilterParams con paginación)
 E = TypeVar("E")  # Parámetros Export (filtros, sin paginación)
@@ -21,7 +22,7 @@ E = TypeVar("E")  # Parámetros Export (filtros, sin paginación)
 
 @dataclass
 # -------------------------------------------------
-class BaseService(ABC, Generic[T, F, E]):
+class BaseService(ABC, Generic[R, T, F, E]):
     repository: Any  # Se sobrescribirá en el hijo con el tipo específico
 
     @abstractmethod
@@ -32,8 +33,8 @@ class BaseService(ABC, Generic[T, F, E]):
 
     @abstractmethod
     # --------------------------------------------------
-    async def add_many(self):
-        """Este método debe ser implementado por el hijo"""
+    async def add_many(self, data: List[R], **kwargs) -> Any:
+        """Método para inserción masiva"""
         pass
 
     @abstractmethod

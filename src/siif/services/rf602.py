@@ -11,25 +11,55 @@ from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
-# from ...config import logger
+from ...config import logger
 from ...utils import (
     BaseService,
-    # BaseFilterParams,
-    # RouteReturnSchema,
-    # sanitize_dataframe_for_json,
+    RouteReturnSchema,
+    sync_validated_to_repository,
+    validate_and_extract_data_from_list,
 )
 from ..repositories import Rf602RepositoryDependency
-from ..schemas import Rf602Document, Rf602ExportFilter, Rf602Filter
+from ..schemas import Rf602Document, Rf602ExportFilter, Rf602Filter, Rf602Report
 
 
 @dataclass
 # -------------------------------------------------
-class Rf602Service(BaseService[Rf602Document, Rf602Filter, Rf602ExportFilter]):
+class Rf602Service(
+    BaseService[Rf602Report, Rf602Document, Rf602Filter, Rf602ExportFilter]
+):
     repository: Rf602RepositoryDependency
 
     # -------------------------------------------------
-    async def add_many(self):
-        raise NotImplementedError("La carga masiva no está disponible para RF602")
+    async def add_many(self, data: List[Rf602Report]) -> RouteReturnSchema:
+        try:
+            # 1. Validar usando tu función genérica
+            # Usamos Rf602Report o Rf602Document para validar cada fila
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=Rf602Report,
+                field_id="estructura",  # O el campo que identifique la fila en caso de error
+            )
+
+            # 2. Determinar filtro de borrado (Idempotencia)
+            # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
+            delete_filter = {}
+            if validation_result.validated:
+                # Tomamos el ejercicio del primer registro válido
+                ejercicio_detectado = validation_result.validated[0].ejercicio
+                delete_filter = {"ejercicio": ejercicio_detectado}
+
+            # 3. Sincronizar con el repositorio usando tu función genérica
+            return await sync_validated_to_repository(
+                repository=self.repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización SIIF RF602",
+                label="RF602",
+                logger=logger,  # Asegúrate de tener el logger importado
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
     async def delete_many(self):

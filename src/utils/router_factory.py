@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from .base_service import BaseService
 
 
+# -------------------------------------------------
 class GenericRouterFactory:
     def __init__(
         self,
@@ -27,25 +28,34 @@ class GenericRouterFactory:
         self.export_schema = export_schema
         self._setup_routes()
 
-    def _setup_routes(self, name="Get All"):
+    # -------------------------------------------------
+    def _setup_routes(self):
         """Define las rutas estándar para todos los servicios"""
 
-        @self.router.get("/")
+        # -------------------------------------------------
+        @self.router.get("/", name="Get All")
         async def get_all(
             params: Annotated[Any, Depends(self.filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
+
             return await service.get_all(params)
 
+        # -------------------------------------------------
         @self.router.post("/", name="Add Many")
-        async def add_many(service: Annotated[BaseService, Depends(self.service_dep)]):
+        async def add_many(
+            data: List[dict],  # type: ignore
+            service: Annotated[BaseService, Depends(self.service_dep)],
+        ):
             try:
-                return await service.add_many()
+                # Podrías pasar parámetros extra aquí si el servicio los requiere
+                return await service.add_many(data)
             except HTTPException as e:
                 return JSONResponse(
                     content={"error": e.detail}, status_code=e.status_code
                 )
 
+        # -------------------------------------------------
         @self.router.delete("/", name="Delete Many")
         async def delete_many(
             service: Annotated[BaseService, Depends(self.service_dep)],
@@ -57,6 +67,7 @@ class GenericRouterFactory:
                     content={"error": e.detail}, status_code=e.status_code
                 )
 
+        # -------------------------------------------------
         @self.router.get("/export", name="Export to Google Sheets and Excel")
         async def export(
             params: Annotated[Any, Depends(self.export_schema)],
@@ -64,5 +75,6 @@ class GenericRouterFactory:
         ):
             return await service.export(params)
 
+    # -------------------------------------------------
     def get_router(self) -> APIRouter:
         return self.router
