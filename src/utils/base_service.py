@@ -1,8 +1,7 @@
 # utils/base_service.py
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Generic, List, Optional, Tuple, TypeVar
+from typing import Any, Generic, List, Optional, Tuple, Type, TypeVar
 
 import pandas as pd
 from fastapi import HTTPException
@@ -15,21 +14,17 @@ from .safe_get import (
 
 # Tipos genéricos para que el Service sepa con qué Schema y Repository trabajar
 R = TypeVar("R")  # Para el Schema del Reporte (ej. Rf602Report)
-T = TypeVar("T")  # Para el Schema del Documento (ej. Rf602Document)
+D = TypeVar("D")  # Para el Schema del Documento (ej. Rf602Document)
 F = TypeVar("F")  # Para los Parámetros (ej. BaseFilterParams con paginación)
-E = TypeVar("E")  # Parámetros Export (filtros, sin paginación)
+L = TypeVar("L")  # Parámetros Export (filtros, sin paginación)
 
 
-@dataclass
 # -------------------------------------------------
-class BaseService(ABC, Generic[R, T, F, E]):
-    repository: Any  # Se sobrescribirá en el hijo con el tipo específico
-
-    @abstractmethod
-    # -------------------------------------------------
-    async def get_all(self, params: F) -> List[T]:
-        """Método obligatorio a implementar"""
-        pass
+class BaseService(ABC, Generic[R, D, F, L]):
+    # --------------------------------------------------
+    def __init__(self, repository: Any, filter_schema: Type[F]):
+        self.repository = repository
+        self.filter_schema = filter_schema  # <--- Aquí guardamos la clase F
 
     @abstractmethod
     # --------------------------------------------------
@@ -37,15 +32,56 @@ class BaseService(ABC, Generic[R, T, F, E]):
         """Método para inserción masiva"""
         pass
 
-    @abstractmethod
+    # -------------------------------------------------
+    async def get_all(self, params: F) -> List[D]:
+        """
+        Implementación genérica para recuperar registros con filtros.
+        F: El esquema de filtros específico (ej. Rf602FullFilter)
+        D: El esquema del documento específico (ej. Rf602Document)
+        """
+        try:
+            # El repositorio ya debería estar tipado para manejar estos params
+            return await self.repository.find_with_filter_params(params=params)
+        except Exception as e:
+            # Usamos un mensaje genérico o dinámico
+            self._handle_error(f"Error retrieving data in {self.__class__.__name__}", e)
+
     # --------------------------------------------------
-    async def delete_many(self):
-        """Este método debe ser implementado por el hijo"""
-        pass
+    async def delete_many(self, params: L) -> dict:
+        """
+        Implementación estándar para los 25 módulos.
+        Se puede sobrescribir en el servicio específico si es necesario.
+        """
+        try:
+            # 1. TRUCO MAESTRO: Convertimos params (ej. Rf602LiteFilter)
+            # al tipo de filtro que el repositorio entiende (F, ej. Rf602FullFilter).
+            # Esto inyecta el método 'get_full_filter' dinámicamente.
+            full_filter_obj = self.filter_schema(
+                **params.model_dump(exclude_none=True),
+                limit=None,  # Nos aseguramos de que no haya límites en el borrado
+            )
+
+            # 2. Llamada al repositorio (que ya definiste)
+            deleted_count = await self.repository.delete_with_filter_params(
+                params=full_filter_obj
+            )
+
+            # 3. Retornar siguiendo estrictamente tu RouteReturnSchema
+            return {
+                "title": f"Proceso de eliminación en {self.__class__.__name__}",
+                "deleted": deleted_count,
+                "added": 0,
+                "errors": [],
+            }
+        except ValueError as e:
+            # Capturamos el error de seguridad (filtro vacío)
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            self._handle_error("Error en eliminación masiva", e)
 
     @abstractmethod
     # --------------------------------------------------
-    async def export(self, params: E) -> StreamingResponse:
+    async def export(self, params: L) -> StreamingResponse:
         """Este método debe ser implementado por el hijo"""
         pass
 
@@ -55,7 +91,7 @@ class BaseService(ABC, Generic[R, T, F, E]):
         logger.error(f"{message}: {exception}")
         raise HTTPException(
             status_code=500,
-            detail=message,
+            detail=f"{message}: {str(exception)}",
         )
 
     # -------------------------------------------------
