@@ -1,13 +1,12 @@
 __all__ = [
     "Rf602Report",
     "Rf602Document",
-    "Rf602ValidationOutput",
-    "Rf602Filter",
-    "Rf602ExportFilter",
+    "Rf602FullFilter",
+    "Rf602LiteFilter",
 ]
 
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import (
     BaseModel,
@@ -16,7 +15,7 @@ from pydantic import (
 )
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
+from ...utils import BaseFilterParams
 from .common import FuenteFinanciamientoSIIF
 
 
@@ -47,19 +46,13 @@ class Rf602Document(Rf602Report):
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rf602Filter(BaseFilterParams):
+class Rf602FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
 
 
-# Este se usa para el Excel (Sin limit/offset)
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rf602ExportFilter(BaseModel):
+class Rf602LiteFilter(BaseModel):
     query_filter: str = ""
     ejercicio: Optional[int] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
-
-
-# -------------------------------------------------
-class Rf602ValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[Rf602Document]
