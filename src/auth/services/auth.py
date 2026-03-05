@@ -8,7 +8,7 @@ __all__ = [
 
 
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Response, Security, status
 from fastapi_jwt import JwtAccessBearer, JwtAuthorizationCredentials
@@ -23,6 +23,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 access_security = JwtAccessBearer(
     secret_key=settings.JWT_SECRET,
     auto_error=True,  # Lanza 401 automáticamente si no hay token válido
+)
+
+access_security_optional = JwtAccessBearer(
+    secret_key=settings.JWT_SECRET,
+    auto_error=False,  # No lanza error automáticamente, lo manejamos manualmente en get_authorization
 )
 
 # 1. El alias de tipo (para Swagger y FastAPI)
@@ -106,9 +111,37 @@ AuthenticationDependency = Annotated[Authentication, Depends()]
 
 
 # 2. El "Puente": Esta función es la que realmente sabe extraer el JWT
+# def get_authorization(
+#     credentials: AuthCredentials,  # type: ignore
+# ) -> Authorization:
+#     return Authorization(credentials)
 def get_authorization(
-    credentials: AuthCredentials,  # type: ignore
+    # Cambiamos Security por un Depends manual para poder hacerlo opcional
+    credentials: Annotated[
+        Optional[JwtAuthorizationCredentials], Security(access_security_optional)
+    ] = None,
 ) -> Authorization:
+
+    # 💡 BYPASS DE DESARROLLO
+    # Si la configuración lo permite y no hay credenciales, inyectamos un Admin falso
+    if settings.BYPASS_AUTH and not credentials:
+        # Creamos un objeto Authorization "de mentira" para desarrollo
+        # Mockeamos lo que vendría en el JwtAuthorizationCredentials
+        from unittest.mock import MagicMock
+
+        mock_credentials = MagicMock()
+        mock_credentials.subject = {
+            "id": "dev_id",
+            "username": "dev_admin",
+            "role": "admin",
+        }
+        return Authorization(mock_credentials)
+
+    # Si no hay bypass y no hay token, JwtAccessBearer(auto_error=True)
+    # ya debería haber lanzado el error. Si usas el optional, lánzalo tú:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     return Authorization(credentials)
 
 
