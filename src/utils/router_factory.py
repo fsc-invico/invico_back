@@ -2,6 +2,7 @@ from typing import Annotated, Any, List, Optional, Type
 
 from fastapi import APIRouter, Depends
 
+from ..auth.services import AuthorizationDependency
 from ..utils import RouteReturnSchema
 from .base_service import BaseService
 
@@ -76,7 +77,9 @@ class GenericRouterFactory:
             # Esto expande los campos del filtro (ej. ejercicio, estructura) en Swagger
             params: Annotated[Any, Depends(self.lite_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
+            security: AuthorizationDependency,
         ):
+            security.is_admin_or_raise()  # Verifica que el usuario sea admin antes de permitir la eliminación
             return await service.delete_many(params)
 
         # -------------------------------------------------
