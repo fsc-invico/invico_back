@@ -216,6 +216,33 @@ class BaseRepository(Generic[ModelType]):
         return result.deleted_count
 
     # -------------------------------------------------
+    async def delete_with_filter_params(
+        self, params: Optional[BaseFilterParams] = None
+    ) -> int:
+        """
+        Delete documents based on filter params (same logic as find_with_filter_params).
+
+        Args:
+            params (Optional[BaseFilterParams]): Filter parameters. If None, raises ValueError
+                                                to avoid accidental full-collection deletion.
+
+        Returns:
+            int: The number of documents deleted.
+        """
+        if params is None:
+            raise ValueError(
+                "Params cannot be None for delete operation to avoid accidental full-collection deletion"
+            )
+
+        filter_dict = params.get_full_filter()
+
+        if not filter_dict:
+            raise ValueError("Filter dictionary cannot be empty for delete operation")
+
+        result = await self.collection.delete_many(filter_dict)
+        return result.deleted_count
+
+    # -------------------------------------------------
     async def delete_all(self) -> int:
         result = await self.collection.delete_many({})
         return result.deleted_count
