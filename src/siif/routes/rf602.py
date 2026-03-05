@@ -1,7 +1,7 @@
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
-    Rf602ExportFilter,
-    Rf602Filter,
+    Rf602FullFilter,
+    Rf602LiteFilter,
     Rf602Report,
 )
 from ..services import Rf602Service  # La clase del servicio
@@ -9,8 +9,8 @@ from ..services import Rf602Service  # La clase del servicio
 factory = GenericRouterFactory(
     service_dependency=Rf602Service,
     report_schema=Rf602Report,
-    filter_schema=Rf602Filter,  # Usa limit/offset
-    export_schema=Rf602ExportFilter,  # No usa limit/offset
+    full_filter_schema=Rf602FullFilter,  # Usa limit/offset
+    lite_filter_schema=Rf602LiteFilter,  # No usa limit/offset
     prefix="/rf602",
 )
 
