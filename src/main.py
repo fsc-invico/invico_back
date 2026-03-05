@@ -4,12 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # from .analisis.routes import control_router, reporte_router
-# from .auth.routes import auth_router
+from .auth.routes import auth_router
 from .config import Database
+
 # from .icaro.routes import icaro_router
 # from .sgf.routes import sgf_router
 # from .sgv.routes import sgv_router
 from .siif.routes import siif_router
+
 # from .slave.routes import slave_router
 # from .sscc.routes import sscc_router
 
@@ -38,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="INVICO API", lifespan=lifespan)
 
 # # Let's include our auth routes aside from the API routes
-# app.include_router(auth_router)
+app.include_router(auth_router)
 # Include our API routes
 # app.include_router(control_router)
 # app.include_router(reporte_router)
