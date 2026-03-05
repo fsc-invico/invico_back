@@ -13,7 +13,8 @@ dependencies = [
     "pandas (>=3.0.1,<4.0.0)",
     "motor (>=3.7.1,<4.0.0)",
     "gspread (>=6.2.1,<7.0.0)",
-    "pydantic-mongo (>=3.1.0,<4.0.0)"
+    "pydantic-mongo (>=3.1.0,<4.0.0)",
+    "openpyxl (>=3.1.5,<4.0.0)"
 ]
 [tool.poetry]
 package-mode = false
