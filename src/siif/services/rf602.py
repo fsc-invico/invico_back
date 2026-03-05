@@ -19,15 +19,23 @@ from ...utils import (
     validate_and_extract_data_from_list,
 )
 from ..repositories import Rf602RepositoryDependency
-from ..schemas import Rf602Document, Rf602ExportFilter, Rf602Filter, Rf602Report
+from ..schemas import Rf602Document, Rf602FullFilter, Rf602LiteFilter, Rf602Report
 
 
 @dataclass
 # -------------------------------------------------
 class Rf602Service(
-    BaseService[Rf602Report, Rf602Document, Rf602Filter, Rf602ExportFilter]
+    BaseService[Rf602Report, Rf602Document, Rf602FullFilter, Rf602LiteFilter]
 ):
     repository: Rf602RepositoryDependency
+
+    def __post_init__(self):
+        # Como usamos @dataclass, el __init__ se genera solo.
+        # Usamos __post_init__ para pasarle los datos a la clase base.
+        super().__init__(
+            repository=self.repository,
+            filter_schema=Rf602FullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+        )
 
     # -------------------------------------------------
     async def add_many(self, data: List[Rf602Report]) -> RouteReturnSchema:
@@ -62,20 +70,9 @@ class Rf602Service(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
-    async def delete_many(self):
-        raise NotImplementedError("La eliminación masiva no está disponible para RF602")
-
-    # -------------------------------------------------
-    async def get_all(self, params: Rf602Filter) -> List[Rf602Document]:
-        try:
-            return await self.repository.find_with_filter_params(params=params)
-        except Exception as e:
-            self._handle_error("Error retrieving SIIF's rf602", e)
-
-    # -------------------------------------------------
-    async def export(self, params: Rf602ExportFilter) -> StreamingResponse:
+    async def export(self, params: Rf602LiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        search_params = Rf602Filter(
+        search_params = Rf602FullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
@@ -89,156 +86,6 @@ class Rf602Service(
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_RF602")], filename="reporte_rf602.xlsx"
         )
-
-
-# # -------------------------------------------------
-# @dataclass
-# class Rf602Service:
-#     repository: Rf602RepositoryDependency
-
-#     # -------------------------------------------------
-#     async def sync_rf602_from_siif(
-#         self,
-#         username: str,
-#         password: str,
-#         params: Rf602Params = None,
-#     ) -> List[RouteReturnSchema]:
-#         """Downloads a report from SIIF, processes it, validates the data,
-#         and stores it in MongoDB if valid.
-
-#         Args:
-#             ejercicio (int, optional): The fiscal year for the report. Defaults to the current year.
-
-#         Returns:
-#             RouteReturnSchema
-#         """
-#         pass
-#         # if username is None or password is None:
-#         #     raise HTTPException(
-#         #         status_code=401,
-#         #         detail="Missing username or password",
-#         #     )
-#         # return_schema = []
-#         # ejercicios = list(range(params.ejercicio_from, params.ejercicio_to + 1))
-#         # async with async_playwright() as p:
-#         #     try:
-#         #         await self.rf602.login(
-#         #             username=username,
-#         #             password=password,
-#         #             playwright=p,
-#         #             headless=False,
-#         #         )
-#         #         await self.rf602.go_to_reports()
-#         #         for ejercicio in ejercicios:
-#         #             partial_schema = (
-#         #                 await self.rf602.download_and_sync_validated_to_repository(
-#         #                     ejercicio=int(ejercicio)
-#         #                 )
-#         #             )
-#         #             return_schema.append(partial_schema)
-
-#         #     except ValidationError as e:
-#         #         logger.error(f"Validation Error: {e}")
-#         #         raise HTTPException(
-#         #             status_code=400, detail="Invalid response format from SIIF"
-#         #         )
-#         #     except Exception as e:
-#         #         logger.error(f"Error during report processing: {e}")
-#         #         raise HTTPException(
-#         #             status_code=401,
-#         #             detail="Invalid credentials or unable to authenticate",
-#         #         )
-#         #     finally:
-#         #         if hasattr(self.rf602, "logout"):
-#         #             await self.rf602.logout()
-#         #         return return_schema
-
-#     # -------------------------------------------------
-#     async def get_all(self, params: BaseFilterParams) -> List[Rf602Document]:
-#         try:
-#             return await self.repository.find_with_filter_params(params=params)
-#         except Exception as e:
-#             logger.error(f"Error retrieving SIIF's rf602 from database: {e}")
-#             raise HTTPException(
-#                 status_code=500,
-#                 detail="Error retrieving SIIF's rf602 from the database",
-#             )
-
-#     # -------------------------------------------------
-#     async def sync_rf602_from_sqlite(self, sqlite_path: str) -> RouteReturnSchema:
-#         pass
-#         # # ✅ Validación temprana
-#         # if not os.path.exists(sqlite_path):
-#         #     raise HTTPException(status_code=404, detail="Archivo SQLite no encontrado")
-
-#         # return_schema = RouteReturnSchema()
-#         # try:
-#         #     return_schema = await self.rf602.sync_validated_sqlite_to_repository(
-#         #         sqlite_path=sqlite_path
-#         #     )
-#         # except ValidationError as e:
-#         #     logger.error(f"Validation Error: {e}")
-#         #     raise HTTPException(
-#         #         status_code=400, detail="Invalid response format from SIIF"
-#         #     )
-#         # except Exception as e:
-#         #     logger.error(f"Error during report processing: {e}")
-#         #     raise HTTPException(
-#         #         status_code=401,
-#         #         detail="Invalid credentials or unable to authenticate",
-#         #     )
-#         # finally:
-#         #     return return_schema
-
-#     # -------------------------------------------------
-#     async def export(self, ejercicio: int = None) -> StreamingResponse:
-#         pass
-#         # try:
-#         #     # 1️⃣ Obtenemos los documentos
-#         #     if ejercicio is not None:
-#         #         docs = await self.repository.get_by_fields({"ejercicio": ejercicio})
-#         #     else:
-#         #         docs = await self.repository.get_all()
-
-#         #     if not docs:
-#         #         raise HTTPException(
-#         #             status_code=404, detail="No se encontraron registros"
-#         #         )
-
-#         #     # 2️⃣ Convertimos a DataFrame
-#         #     df = sanitize_dataframe_for_json(pd.DataFrame(docs))
-#         #     df = df.drop(columns=["_id"])
-
-#         #     # # 3️⃣ Subimos a Google Sheets si se solicita
-#         #     # if upload_to_google_sheets:
-#         #     #     gs_service = GoogleSheets()
-#         #     #     gs_service.to_google_sheets(
-#         #     #         df=df,
-#         #     #         spreadsheet_key="1KKeeoop_v_Nf21s7eFp4sS6SmpxRZQ9DPa1A5wVqnZ0",
-#         #     #         wks_name="control_ejecucion_anual_db",
-#         #     #     )
-
-#         #     # 3️⃣ Escribimos a un buffer Excel en memoria
-#         #     buffer = BytesIO()
-#         #     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-#         #         df.to_excel(writer, index=False, sheet_name="rf602")
-
-#         #     buffer.seek(0)
-
-#         #     # 4️⃣ Devolvemos StreamingResponse
-#         #     file_name = f"rf602_{ejercicio or 'all'}.xlsx"
-#         #     headers = {"Content-Disposition": f'attachment; filename="{file_name}"'}
-#         #     return StreamingResponse(
-#         #         buffer,
-#         #         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#         #         headers=headers,
-#         #     )
-#         # except Exception as e:
-#         #     logger.error(f"Error retrieving SIIF's rf602 from database: {e}")
-#         #     raise HTTPException(
-#         #         status_code=500,
-#         #         detail="Error retrieving SIIF's rf602 from the database",
-#         #     )
 
 
 Rf602ServiceDependency = Annotated[Rf602Service, Depends()]
