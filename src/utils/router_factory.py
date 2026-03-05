@@ -1,8 +1,8 @@
 from typing import Annotated, Any, List, Optional, Type
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends
 
+from ..utils import RouteReturnSchema
 from .base_service import BaseService
 
 
@@ -12,8 +12,8 @@ class GenericRouterFactory:
         self,
         service_dependency: Any,
         report_schema: Type,  # Esquema para la ruta de inserción masiva
-        filter_schema: Type,
-        export_schema: Type,  # Nuevo esquema para exportar
+        full_filter_schema: Type,
+        lite_filter_schema: Type,  # Nuevo esquema para exportar
         prefix: str,
         tags: Optional[List[str]] = None,
     ):
@@ -26,8 +26,8 @@ class GenericRouterFactory:
         self.router = APIRouter(**router_args)
         self.service_dep = service_dependency
         self.report_schema = report_schema
-        self.filter_schema = filter_schema
-        self.export_schema = export_schema
+        self.full_filter_schema = full_filter_schema
+        self.lite_filter_schema = lite_filter_schema
         self._setup_routes()
 
     # -------------------------------------------------
@@ -37,7 +37,7 @@ class GenericRouterFactory:
         # -------------------------------------------------
         @self.router.get("/", name="Get All")
         async def get_all(
-            params: Annotated[Any, Depends(self.filter_schema)],
+            params: Annotated[Any, Depends(self.full_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
 
@@ -63,42 +63,26 @@ class GenericRouterFactory:
                     }
                 }
             },
-            # Para que el $ref funcione en Swagger, FastAPI necesita conocer el modelo.
-            # Asegúrate de incluirlo en el response_model de alguna ruta o agrégalo
-            # manualmente a la app de FastAPI al inicio:
-            # main.py o donde inicies la app
-            # from modules.rf602.schemas import Rf602Report
-            # # Esto asegura que el esquema esté disponible para las referencias del Factory
-            # app.openapi_schema["components"]["schemas"]["Rf602Report"] = Rf602Report.model_json_schema()
         )
         async def add_many(
-            data: List[dict],  # type: ignore
+            data: List[dict],
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
-            try:
-                # Podrías pasar parámetros extra aquí si el servicio los requiere
-                return await service.add_many(data)
-            except HTTPException as e:
-                return JSONResponse(
-                    content={"error": e.detail}, status_code=e.status_code
-                )
+            return await service.add_many(data)
 
         # -------------------------------------------------
-        @self.router.delete("/", name="Delete Many")
+        @self.router.delete("/", name="Delete Many", response_model=RouteReturnSchema)
         async def delete_many(
+            # Esto expande los campos del filtro (ej. ejercicio, estructura) en Swagger
+            params: Annotated[Any, Depends(self.lite_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
-            try:
-                return await service.delete_many()
-            except HTTPException as e:
-                return JSONResponse(
-                    content={"error": e.detail}, status_code=e.status_code
-                )
+            return await service.delete_many(params)
 
         # -------------------------------------------------
         @self.router.get("/export", name="Export to Google Sheets and Excel")
         async def export(
-            params: Annotated[Any, Depends(self.export_schema)],
+            params: Annotated[Any, Depends(self.lite_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
         ):
             return await service.export(params)
