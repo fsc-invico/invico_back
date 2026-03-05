@@ -15,6 +15,7 @@ from fastapi_jwt import JwtAccessBearer, JwtAuthorizationCredentials
 from passlib.context import CryptContext
 
 from ...config import settings  # Asegúrate que JWT_SECRET esté aquí
+from ..schemas import LoginUser, PublicStoredUser
 
 token_expiration_time = timedelta(days=1)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -48,10 +49,10 @@ class Authentication:
 
     # -------------------------------------------------
     def login_and_set_access_token(
-        self, db_user: dict | None, password_plain: str, response: Response
+        self, db_user: dict | None, user: LoginUser, response: Response
     ):
         if not db_user or not self.verify_password(
-            password_plain, db_user.get("hash_password")
+            user.password, db_user.get("hash_password")
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,12 +60,12 @@ class Authentication:
             )
 
         # El 'subject' es lo que viaja en el token (el payload)
-        userdata = {
-            "id": str(db_user["_id"]),
-            "username": db_user["username"],
-            "role": db_user.get("role", "user"),
-        }
-        # userdata = PublicStoredUser.model_validate(db_user).model_dump()
+        # userdata = {
+        #     "id": str(db_user["_id"]),
+        #     "email": db_user["email"],
+        #     "role": db_user.get("role", "user"),
+        # }
+        userdata = PublicStoredUser.model_validate(db_user).model_dump()
 
         access_token = access_security.create_access_token(
             subject=userdata, expires_delta=token_expiration_time
@@ -83,7 +84,7 @@ class Authorization:
         # Aquí credentials nunca será None por el auto_error=True
         payload = credentials.subject
         self.user_id = payload.get("id")
-        self.username = payload.get("username")
+        self.email = payload.get("email")
         self.role = payload.get("role")
 
     # # -------------------------------------------------
@@ -132,7 +133,7 @@ def get_authorization(
         mock_credentials = MagicMock()
         mock_credentials.subject = {
             "id": "dev_id",
-            "username": "dev_admin",
+            "email": "dev_admin@gmail.com",
             "role": "admin",
         }
         return Authorization(mock_credentials)
