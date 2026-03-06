@@ -59,25 +59,30 @@ class UsersService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No id or username provided",
             )
-        # filter = {
-        #     "$or": [
-        #         {"_id": id},
-        #         {"username": username},
-        #     ]
-        # }
 
-        if db_user := await self.users.get_by_fields_or(
-            {"_id": id, "username": username},
-        ):
-            return (
-                PrivateStoredUser.model_validate(db_user).model_dump()
-                if with_password
-                else PublicStoredUser.model_validate(db_user).model_dump()
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-            )
+        # Construimos el filtro solo con los valores que existen
+        search_query = {}
+        if id:
+            search_query["_id"] = id
+        if username:
+            search_query["username"] = username
+        print("Search query:", search_query)
+
+        if db_user := await self.users.get_by_fields_or(search_query):
+            # Si pides password (para login), usas PrivateStoredUser
+            if with_password:
+                return PrivateStoredUser.model_validate(db_user).model_dump()
+
+            # Para el resto del mundo, PublicStoredUser (Seguro)
+            return PublicStoredUser.model_validate(db_user).model_dump()
+            # return (
+            #     PrivateStoredUser.model_validate(db_user).model_dump()
+            #     if with_password
+            #     else PublicStoredUser.model_validate(db_user).model_dump()
+            # )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # @classmethod
     # def get_all(cls, query: FilterParamsUser) -> dict[str, list]:

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Response
 from ..schemas import LoginUser
 from ..services import (
     AuthenticationDependency,
-    # AuthorizationDependency,
+    AuthorizationDependency,
     UsersServiceDependency,
 )
 
@@ -28,9 +28,12 @@ async def login_with_cookie(
     )
 
 
-# @auth_router.get("/authenticated_user")
-# def read_current_user(security: AuthorizationDependency, auth: AuthenticationDependency,):
-#     return auth.get_current_user(id=ObjectId(security.auth_user_id))
+@auth_router.get("/authenticated_user")
+async def read_current_user(
+    security: AuthorizationDependency,
+    users: UsersServiceDependency,
+):
+    return await users.get_one(id=security.user_id)
 
 
 # -------------------------------------------------
