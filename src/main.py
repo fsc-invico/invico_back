@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # from .analisis.routes import control_router, reporte_router
-from .auth.routes import auth_router
+from .auth.routes import auth_router, users_router
 from .config import Database
 
 # from .icaro.routes import icaro_router
@@ -41,6 +41,7 @@ app = FastAPI(title="INVICO API", lifespan=lifespan)
 
 # # Let's include our auth routes aside from the API routes
 app.include_router(auth_router)
+app.include_router(users_router)
 # Include our API routes
 # app.include_router(control_router)
 # app.include_router(reporte_router)

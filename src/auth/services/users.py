@@ -1,11 +1,13 @@
 __all__ = ["UsersService", "UsersServiceDependency"]
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, List
 
+from bson import ObjectId
 from fastapi import Depends, HTTPException, status
 
-from ...utils import PyObjectId
+from ...config import logger
+from ...utils import BaseFilterParams, PyObjectId
 from ..repositories import (
     UsersRepositoryDependency,
 )
@@ -50,7 +52,7 @@ class UsersService:
     async def get_one(
         self,
         *,
-        id: PyObjectId | None = None,
+        id: str | ObjectId | None = None,  # Aceptamos ambos
         username: str | None = None,
         with_password: bool = False,
     ):
@@ -63,10 +65,10 @@ class UsersService:
         # Construimos el filtro solo con los valores que existen
         search_query = {}
         if id:
-            search_query["_id"] = id
+            # 💡 ASEGURAMOS QUE SEA OBJECTID PARA LA DB
+            search_query["_id"] = ObjectId(id) if isinstance(id, str) else id
         if username:
             search_query["username"] = username
-        print("Search query:", search_query)
 
         if db_user := await self.users.get_by_fields_or(search_query):
             # Si pides password (para login), usas PrivateStoredUser
@@ -84,11 +86,44 @@ class UsersService:
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # @classmethod
-    # def get_all(cls, query: FilterParamsUser) -> dict[str, list]:
-    #     """Get all users"""
-    #     cursor = query.query_collection(cls.collection)
-    #     return validate_and_extract_data(cursor, PublicStoredUser)
+    # -------------------------------------------------
+    async def update_role(self, user_id: PyObjectId, new_role: str):
+        # 1. Intentamos actualizar en la base de datos
+        result = await self.users.update_one(
+            {"_id": user_id}, {"$set": {"role": new_role}}
+        )
+
+        if result.modified_count == 0:
+            # Verificamos si es que no existe o si ya tenía ese rol
+            user = await self.users.get_by_id(user_id)
+            if not user:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            return {"message": f"El usuario ya tenía el rol {new_role}"}
+
+        return {"message": f"Rol actualizado exitosamente a {new_role}"}
+
+    # -------------------------------------------------
+    async def get_all(self, params: BaseFilterParams) -> List[PublicStoredUser]:
+        """Get all users"""
+        try:
+            # 1. Obtenemos la lista de documentos (diccionarios con ObjectId)
+            db_users = await self.users.find_with_filter_params(params=params)
+            # Agregamos un print para debuggear qué está llegando realmente
+            logger.info(f"Primer objeto recibido del repo: {type(db_users[0])}")
+            logger.info(
+                f"Contenido: {db_users[0]}"
+            )  # Úsalo solo si no hay datos sensibles
+
+            # 2. Los validamos y transformamos usando el esquema
+            # Pydantic convertirá automáticamente los _id (ObjectId) a id (str)
+            return [PublicStoredUser.model_validate(user) for user in db_users]
+
+        except Exception as e:
+            logger.error(f"¡CAPTURADO!: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error al obtener usuarios: {str(e)}",
+            )
 
     # @classmethod
     # def get_all_deleted(cls, query: FilterParamsUser) -> dict[str, list]:
