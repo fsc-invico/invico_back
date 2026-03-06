@@ -1,6 +1,7 @@
 __all__ = [
     "CreateUser",
     "LoginUser",
+    "RegisterUser",
     "PublicStoredUser",
     "PrivateStoredUser",
     "PrivateUser",
@@ -16,13 +17,14 @@ from ...utils import PyObjectId, validate_not_empty
 
 # -------------------------------------------------
 class RegisterRole(str, Enum):
-    user = "user"
+    pending = "pending"
 
 
 # -------------------------------------------------
 class Role(str, Enum):
     admin = "admin"
     user = "user"
+    pending = "pending"  # 👈 El nuevo rol de "Sala de espera"
 
 
 # -------------------------------------------------
@@ -30,8 +32,9 @@ class BaseUser(BaseModel):
     username: str
 
 
+# -------------------------------------------------
 class RegisterUser(BaseUser):
-    role: RegisterRole = RegisterRole.user
+    role: RegisterRole = RegisterRole.pending
     password: str
     _not_empty = field_validator("username", "password", mode="after")(
         validate_not_empty
