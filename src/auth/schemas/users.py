@@ -61,11 +61,24 @@ class PrivateUser(BaseUser):
 
 
 # -------------------------------------------------
-class PublicStoredUser(PrivateUser):
-    deactivated_at: datetime | None = Field(default=None)
+# 1. Base compartida (sin datos sensibles)
+# -------------------------------------------------
+class BaseStoredUser(BaseUser):
     id: PyObjectId = Field(validation_alias=AliasChoices("_id", "id"))
+    role: Role
+    deactivated_at: datetime | None = Field(default=None)
 
 
 # -------------------------------------------------
-class PrivateStoredUser(PublicStoredUser):
+# 2. El que usas para el endpoint /authenticated_user y otros GET
+# -------------------------------------------------
+class PublicStoredUser(BaseStoredUser):
+    # Ya no hereda de PrivateUser, por lo tanto NO tiene hash_password
+    pass
+
+
+# -------------------------------------------------
+# 3. El que usas internamente en Authentication (Login)
+# -------------------------------------------------
+class PrivateStoredUser(BaseStoredUser):
     hash_password: str
