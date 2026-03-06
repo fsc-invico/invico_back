@@ -2,6 +2,7 @@ __all__ = ["Database", "COLLECTIONS", "BaseRepository"]
 
 from typing import Generic, List, Optional, Type, TypeVar
 
+from bson import ObjectId
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -182,8 +183,16 @@ class BaseRepository(Generic[ModelType]):
         if not fields:
             raise ValueError("Fields dictionary cannot be empty")
 
+        # Limpiamos los campos: si es '_id' y es un string válido, lo convertimos
+        processed_fields = []
+        for key, value in fields.items():
+            if key == "_id" and isinstance(value, str) and ObjectId.is_valid(value):
+                value = ObjectId(value)
+            processed_fields.append({key: value})
+
         # Construir el filtro $or dinámicamente
-        filter = {"$or": [{key: value} for key, value in fields.items()]}
+        # filter = {"$or": [{key: value} for key, value in fields.items()]}
+        filter = {"$or": processed_fields}
 
         # Buscar el documento en la base de datos
         doc = await self.collection.find_one(filter)
