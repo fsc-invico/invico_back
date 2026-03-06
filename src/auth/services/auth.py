@@ -62,7 +62,7 @@ class Authentication:
         # El 'subject' es lo que viaja en el token (el payload)
         # userdata = {
         #     "id": str(db_user["_id"]),
-        #     "email": db_user["email"],
+        #     "username": db_user["username"],
         #     "role": db_user.get("role", "user"),
         # }
         userdata = PublicStoredUser.model_validate(db_user).model_dump()
@@ -84,7 +84,7 @@ class Authorization:
         # Aquí credentials nunca será None por el auto_error=True
         payload = credentials.subject
         self.user_id = payload.get("id")
-        self.email = payload.get("email")
+        self.username = payload.get("username")
         self.role = payload.get("role")
 
     # # -------------------------------------------------
@@ -133,7 +133,7 @@ def get_authorization(
         mock_credentials = MagicMock()
         mock_credentials.subject = {
             "id": "dev_id",
-            "email": "dev_admin@gmail.com",
+            "username": "dev_admin",
             "role": "admin",
         }
         return Authorization(mock_credentials)
