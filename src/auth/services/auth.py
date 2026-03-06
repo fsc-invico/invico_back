@@ -97,12 +97,25 @@ class Authorization:
     # def is_user(self) -> bool:
     #     return self.role == "user"
 
+    # -------------------------------------------------
     def is_admin_or_raise(self):
         if self.role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Se requieren permisos de administrador",
             )
+
+    # -------------------------------------------------
+    def is_admin_or_user_or_raise(self):
+        # 1. Si es admin o usuario validado, puede entrar
+        if self.role in ["admin", "user"]:
+            return
+
+        # 2. Si es 'pending', bloqueamos el acceso
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado. Su cuenta requiere aprobación para visualizar reportes financieros.",
+        )
 
 
 # --- DEPENDENCIAS PARA TUS RUTAS ---
