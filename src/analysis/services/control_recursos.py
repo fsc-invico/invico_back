@@ -87,7 +87,6 @@ class ControlRecursosService(
         search_params = ControlRecursosFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
-            fuente=params.fuente,
             limit=None,  # Para traer todo
         )
 

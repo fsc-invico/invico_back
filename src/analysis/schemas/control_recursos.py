@@ -33,7 +33,6 @@ class ControlRecursosDocument(ControlRecursosReport):
 # -------------------------------------------------
 class ControlRecursosFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
@@ -41,5 +40,4 @@ class ControlRecursosFullFilter(BaseFilterParams):
 class ControlRecursosLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
