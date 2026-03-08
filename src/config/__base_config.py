@@ -26,6 +26,7 @@ class BaseAppSettings(BaseSettings):
     MONGO_DB_NAME: str = "invico"
     GOOGLE_CREDENTIALS: str | None = None  # JSON credentials for Google Sheets
     JWT_SECRET: str = "super_secret_key"
+    SECRET_CRYPTO_KEY: str = "super_secret_key_2"
     BYPASS_AUTH: bool = False  # Nueva variable para controlar el bypass de autentic
     # Otros valores opcionales...
     # HOST_URL: str = "localhost"
