@@ -11,7 +11,7 @@ factory = GenericRouterFactory(
     report_schema=BancoINVICOReport,
     full_filter_schema=BancoINVICOFullFilter,  # Usa limit/offset
     lite_filter_schema=BancoINVICOLiteFilter,  # No usa limit/offset
-    prefix="/banco-invico",
+    prefix="/bancoINVICO",
 )
 
 banco_invico_router = factory.get_router()
