@@ -3,7 +3,9 @@ __all__ = ["BaseFilterParams", "apply_auto_filter", "parse_filter_keys"]
 from typing import Literal, Optional
 
 from bson import ObjectId
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import Field, PrivateAttr
+
+from .alias_generator import CamelModel
 
 op_map = {
     ">=": "$gte",
@@ -92,7 +94,7 @@ def format_value(v: str):
 
 
 # -------------------------------------------------
-class BaseFilterParams(BaseModel):
+class BaseFilterParams(CamelModel):
     query_filter: str = ""
     # limit: int = Field(20, gt=0, le=100)
     # Si limit es None, el repositorio debería traer TODO
