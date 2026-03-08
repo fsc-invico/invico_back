@@ -8,7 +8,8 @@ from .auth.routes import auth_router, users_router
 from .config import Database
 
 # from .icaro.routes import icaro_router
-# from .sgf.routes import sgf_router
+from .sgf.routes import sgf_router
+
 # from .sgv.routes import sgv_router
 from .siif.routes import siif_router
 
@@ -46,7 +47,7 @@ app.include_router(users_router)
 # app.include_router(control_router)
 # app.include_router(reporte_router)
 app.include_router(siif_router)
-# app.include_router(sgf_router)
+app.include_router(sgf_router)
 app.include_router(sscc_router)
 # app.include_router(sgv_router)
 # app.include_router(icaro_router)
