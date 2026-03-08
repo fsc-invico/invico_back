@@ -1,38 +1,18 @@
 __all__ = [
-    "BancoINVICOParams",
     "BancoINVICOReport",
     "BancoINVICODocument",
-    "BancoINVICOFilter",
+    "BancoINVICOFullFilter",
+    "BancoINVICOLiteFilter",
 ]
 
 
-from datetime import date, datetime
-from typing import List, Optional
+from datetime import datetime
+from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class BancoINVICOParams(BaseModel):
-    ejercicio_desde: int = Field(default=date.today().year)
-    ejercicio_hasta: int = Field(default=date.today().year)
-
-    @field_validator("ejercicio_desde", "ejercicio_hasta")
-    @classmethod
-    def validate_ejercicio_range(cls, v: int) -> int:
-        current_year = date.today().year
-        if not (2010 <= v <= current_year):
-            raise ValueError(f"El ejercicio debe estar entre 2010 y {current_year}")
-        return v
-
-    @model_validator(mode="after")
-    def check_range(self) -> "BancoINVICOParams":
-        if self.ejercicio_hasta < self.ejercicio_desde:
-            raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
-        return self
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -57,13 +37,16 @@ class BancoINVICODocument(BancoINVICOReport):
     id: PydanticObjectId = Field(alias="_id")
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class BancoINVICOFilter(BaseFilterParams):
+class BancoINVICOFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
     cta_cte: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class BancoINVICOValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[BancoINVICODocument]
+class BancoINVICOLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    cta_cte: Optional[str] = None
