@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
 from ..utils.query_filter import BaseFilterParams, parse_filter_keys
+from ..utils.validate import PyObjectId
 from .__base_config import logger, settings
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
@@ -16,6 +17,7 @@ ModelType = TypeVar("ModelType", bound=BaseModel)
 MONGO_DB_NAME = "invico"
 COLLECTIONS = [
     "users",
+    "external_credentials",
     "siif_rf602",
     "siif_rf610",
     "siif_rcg01_uejp",
@@ -139,6 +141,15 @@ class BaseRepository(Generic[ModelType]):
         else:
             return await self.collection.insert_many([docs])
 
+    # --------------------------------------------------
+    async def update_one(
+        self, filter: dict, update_data: dict, upsert: bool = False
+    ) -> bool:
+        result = await self.collection.update_one(
+            filter, {"$set": update_data}, upsert=upsert
+        )
+        return result.modified_count > 0 or (upsert and result.upserted_id is not None)
+
     # -------------------------------------------------
     async def get_all(self, limit: Optional[int] = None) -> List[ModelType]:
         cursor = self.collection.find()
@@ -148,12 +159,22 @@ class BaseRepository(Generic[ModelType]):
         return docs
 
     # -------------------------------------------------
-    async def get_by_id(self, id: str) -> Optional[ModelType]:
+    async def get_many_by_fields(
+        self, fields: dict, limit: Optional[int] = None
+    ) -> List[ModelType]:
+        cursor = self.collection.find(fields)
+        if limit is not None:
+            cursor = cursor.limit(limit)
+        docs = await cursor.to_list(length=None if limit is None else limit)
+        return docs
+
+    # -------------------------------------------------
+    async def get_by_id(self, id: PyObjectId) -> Optional[ModelType]:
         doc = await self.collection.find_one({"_id": id})
         return doc if doc else None
 
     # -------------------------------------------------
-    async def get_by_fields(self, fields: dict) -> Optional[ModelType]:
+    async def get_one_by_fields(self, fields: dict) -> Optional[ModelType]:
         """
         Find a document by one or more fields.
 
@@ -170,7 +191,7 @@ class BaseRepository(Generic[ModelType]):
         return doc if doc else None
 
     # -------------------------------------------------
-    async def get_by_fields_or(self, fields: dict) -> Optional[ModelType]:
+    async def get_one_by_fields_or(self, fields: dict) -> Optional[ModelType]:
         """
         Find a document by multiple fields using an $or filter.
 
