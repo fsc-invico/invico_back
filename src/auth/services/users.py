@@ -167,6 +167,7 @@ class UsersService:
 
             # 3. Datos a guardar
             update_data = {
+                "external_username": data.external_username,
                 "encrypted_pass": encrypted_pw,
             }
 
@@ -202,9 +203,10 @@ class UsersService:
 
         # 2. Descifrar usando nuestra CryptoManager
         crypto = CryptoManager()
-        plain_password = crypto.decrypt_password(cred["encrypted_pass"])
-
-        return {"username": cred["username"], "password": plain_password}
+        return {
+            "external_username": cred["external_username"],
+            "external_password": crypto.decrypt_password(cred["encrypted_pass"]),
+        }
 
     # -------------------------------------------------
     async def get_all_user_credentials(self, user_id: str):
@@ -219,7 +221,6 @@ class UsersService:
             {
                 "system_name": c["system_name"],
                 "username": c["external_username"],
-                "updated_at": c["updated_at"],
             }
             for c in creds_cursor
         ]

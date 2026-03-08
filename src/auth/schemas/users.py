@@ -18,7 +18,7 @@ from typing import Annotated, Optional
 
 from pydantic import AliasChoices, BaseModel, BeforeValidator, Field, field_validator
 
-from ...utils import BaseFilterParams, validate_not_empty
+from ...utils import BaseFilterParams, CamelModel, validate_not_empty
 
 # Creamos un tipo que convierte automáticamente ObjectId a str
 PyObjectIdStr = Annotated[str, BeforeValidator(str)]
@@ -37,7 +37,7 @@ class Role(str, Enum):
 
 
 # -------------------------------------------------
-class BaseUser(BaseModel):
+class BaseUser(CamelModel):
     username: str
 
 
@@ -122,15 +122,17 @@ class UserFullFilter(BaseFilterParams):
 
 
 # -------------------------------------------------
-class ExternalCredentialIn(BaseModel):
+class ExternalCredentialIn(CamelModel):
     system_name: str  # Ej: "SIIF", "INVICO"
-    password: str  # Password en texto plano (viaja por HTTPS y se cifra en el server)
+    external_username: str  # El usuario del sistema de terceros
+    external_password: str  # El password que vamos a cifrar
 
 
 # -------------------------------------------------
-class ExternalCredential(BaseModel):
+class ExternalCredential(CamelModel):
     user_id: str  # El ID del usuario en tu sistema (ObjectId como str)
     system_name: str  # Ej: "SIIF", "INVICO"
+    external_username: str  # El usuario del sistema de terceros
     encrypted_pass: str
 
 

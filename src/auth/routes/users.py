@@ -44,9 +44,9 @@ async def get_all_users(
 
 
 # -------------------------------------------------
-@users_router.patch("/{user_id}/role")
+@users_router.patch("/{userId}/role")
 async def change_user_role(
-    user_id: str,
+    userId: str,
     data: UpdateUserRole,
     security: AuthorizationDependency,
     users_service: UsersServiceDependency,
@@ -56,18 +56,16 @@ async def change_user_role(
     # Convertimos el string de la URL a ObjectId
     from bson import ObjectId
 
-    if not ObjectId.is_valid(user_id):
+    if not ObjectId.is_valid(userId):
         raise HTTPException(status_code=400, detail="ID de usuario inválido")
 
-    return await users_service.update_role(
-        user_id=ObjectId(user_id), new_role=data.role
-    )
+    return await users_service.update_role(user_id=ObjectId(userId), new_role=data.role)
 
 
 # -------------------------------------------------
-@users_router.patch("/{user_id}/approve")
+@users_router.patch("/{userId}/approve")
 async def approve_pending_user(
-    user_id: str,
+    userId: str,
     security: AuthorizationDependency,  # 🛡️ Tu dependencia de seguridad
     users_service: UsersServiceDependency,
 ):
@@ -77,11 +75,11 @@ async def approve_pending_user(
     # 2. Convertimos el string de la URL a ObjectId
     from bson import ObjectId
 
-    if not ObjectId.is_valid(user_id):
+    if not ObjectId.is_valid(userId):
         raise HTTPException(status_code=400, detail="ID de usuario inválido")
 
     # 3. Llamada al servicio
-    return await users_service.approve_user(user_id=ObjectId(user_id))
+    return await users_service.approve_user(user_id=ObjectId(userId))
 
 
 # -------------------------------------------------
@@ -117,15 +115,15 @@ async def list_my_credentials(
 
 
 # ------------------------------------------------
-@users_router.delete("/me/credentials/{system_name}")
+@users_router.delete("/me/credentials/{systemName}")
 async def delete_my_credential(
-    system_name: str,
+    systemName: str,
     security: AuthorizationDependency,
     users_service: UsersServiceDependency,
 ):
     """Elimina la configuración de un sistema específico para el usuario actual"""
     return await users_service.delete_user_credential(
-        user_id=str(security.user_id), system_name=system_name
+        user_id=str(security.user_id), system_name=systemName
     )
 
 
