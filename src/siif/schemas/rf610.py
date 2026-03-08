@@ -1,46 +1,20 @@
 __all__ = [
     "Rf610Report",
     "Rf610Document",
-    "Rf610ValidationOutput",
-    "Rf610Params",
-    "Rf610Filter",
+    "Rf610LiteFilter",
+    "Rf610FullFilter",
 ]
 
-from datetime import date
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import (
     BaseModel,
     Field,
     NonNegativeFloat,
-    field_validator,
-    model_validator,
 )
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class Rf610Params(BaseModel):
-    ejercicio_from: int = Field(default=date.today().year, alias="ejercicioDesde")
-    ejercicio_to: int = Field(default=date.today().year, alias="ejercicioHasta")
-    # ejercicio_from: int = date.today().year
-    # ejercicio_to: int = date.today().year
-
-    @field_validator("ejercicio_from", "ejercicio_to")
-    @classmethod
-    def validate_ejercicio_range(cls, v: int) -> int:
-        current_year = date.today().year
-        if not (2010 <= v <= current_year):
-            raise ValueError(f"El ejercicio debe estar entre 2010 y {current_year}")
-        return v
-
-    @model_validator(mode="after")
-    def check_range(self) -> "Rf610Params":
-        if self.ejercicio_to < self.ejercicio_from:
-            raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
-        return self
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -71,12 +45,14 @@ class Rf610Document(Rf610Report):
     id: PydanticObjectId = Field(alias="_id")
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rf610Filter(BaseFilterParams):
+class Rf610FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rf610ValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[Rf610Document]
+class Rf610LiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
