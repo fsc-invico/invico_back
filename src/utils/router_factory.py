@@ -36,7 +36,7 @@ class GenericRouterFactory:
         """Define las rutas estándar para todos los servicios"""
 
         # -------------------------------------------------
-        @self.router.get("/", name="Get All")
+        @self.router.get("/", name="Get All", response_model=List[self.report_schema])
         async def get_all(
             params: Annotated[Any, Depends(self.full_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
@@ -48,8 +48,15 @@ class GenericRouterFactory:
         @self.router.post(
             "/",
             name="Add Many",
-            # 💡 Truco Maestro: Inyectamos el esquema de Rf602Report en Swagger
-            responses={200: {"model": self.report_schema}},
+            # # 💡 Truco Maestro: Inyectamos el esquema de Rf602Report en Swagger
+            # responses={200: {"model": self.report_schema}},
+            # 1. Definimos la respuesta real aquí. Esto actualizará el "Successful Response" en Swagger.
+            response_model=RouteReturnSchema,
+            # 2. Eliminamos la clave 200 de 'responses' para que no pise al response_model.
+            # Si quieres documentar errores (400, 404), hazlo aquí.
+            responses={
+                400: {"description": "Error en la validación de los datos"},
+            },
             openapi_extra={
                 "requestBody": {
                     "content": {
