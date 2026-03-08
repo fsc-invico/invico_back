@@ -13,7 +13,7 @@ from .config import Database
 from .siif.routes import siif_router
 
 # from .slave.routes import slave_router
-# from .sscc.routes import sscc_router
+from .sscc.routes import sscc_router
 
 
 @asynccontextmanager
@@ -47,7 +47,7 @@ app.include_router(users_router)
 # app.include_router(reporte_router)
 app.include_router(siif_router)
 # app.include_router(sgf_router)
-# app.include_router(sscc_router)
+app.include_router(sscc_router)
 # app.include_router(sgv_router)
 # app.include_router(icaro_router)
 # app.include_router(slave_router)
