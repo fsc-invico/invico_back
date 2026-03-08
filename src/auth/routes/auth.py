@@ -2,12 +2,11 @@ __all__ = ["auth_router"]
 
 from typing import Annotated
 
-from fastapi import APIRouter, Form, HTTPException, Response
+from fastapi import APIRouter, Form, Response
 
-from ..schemas import LoginUser, RegisterUser, UpdateUserRole, UserRegistrationForm
+from ..schemas import LoginUser, RegisterUser, UserRegistrationForm
 from ..services import (
     AuthenticationDependency,
-    AuthorizationDependency,
     UsersServiceDependency,
 )
 
@@ -42,36 +41,6 @@ async def register(
 
     inserted_id = await users.create_one(user_internal)
     return {"result message": f"User created with id: {inserted_id}"}
-
-
-# -------------------------------------------------
-@auth_router.get("/authenticated_user")
-async def read_current_user(
-    security: AuthorizationDependency,
-    users: UsersServiceDependency,
-):
-    return await users.get_one(id=security.user_id)
-
-
-# -------------------------------------------------
-@auth_router.patch("/users/{user_id}/role")
-async def change_user_role(
-    user_id: str,
-    data: UpdateUserRole,
-    security: AuthorizationDependency,
-    users_service: UsersServiceDependency,
-):
-    security.is_admin_or_raise()  # Solo los admins pueden cambiar roles
-
-    # Convertimos el string de la URL a ObjectId
-    from bson import ObjectId
-
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="ID de usuario inválido")
-
-    return await users_service.update_role(
-        user_id=ObjectId(user_id), new_role=data.role
-    )
 
 
 # -------------------------------------------------
