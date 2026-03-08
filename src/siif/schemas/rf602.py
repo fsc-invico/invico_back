@@ -15,7 +15,7 @@ from pydantic import (
 )
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams
+from ...utils import BaseFilterParams, CamelModel
 from .common import FuenteFinanciamientoSIIF
 
 
@@ -52,7 +52,7 @@ class Rf602FullFilter(BaseFilterParams):
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rf602LiteFilter(BaseModel):
+class Rf602LiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[int] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
