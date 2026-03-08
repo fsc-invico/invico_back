@@ -9,15 +9,16 @@ __all__ = [
     "PrivateUser",
     "Role",
     "UserFullFilter",
+    "ExternalCredentialIn",
+    "ExternalCredential",
 ]
 
-from datetime import datetime
 from enum import Enum
 from typing import Annotated, Optional
 
 from pydantic import AliasChoices, BaseModel, BeforeValidator, Field, field_validator
 
-from ...utils import BaseFilterParams, PyObjectId, validate_not_empty
+from ...utils import BaseFilterParams, validate_not_empty
 
 # Creamos un tipo que convierte automáticamente ObjectId a str
 PyObjectIdStr = Annotated[str, BeforeValidator(str)]
@@ -66,7 +67,7 @@ class CreateUser(RegisterUser):
 
 # -------------------------------------------------
 class UpdateUserRole(BaseModel):
-    role: Role
+    role: Role = Role.user
 
 
 # -------------------------------------------------
@@ -118,3 +119,21 @@ class PrivateUser(BaseStoredUser):  # 👈 CAMBIO: Heredar de BaseStoredUser
 # -------------------------------------------------
 class UserFullFilter(BaseFilterParams):
     username: Optional[str] = None
+
+
+# -------------------------------------------------
+class ExternalCredentialIn(BaseModel):
+    system_name: str  # Ej: "SIIF", "INVICO"
+    password: str  # Password en texto plano (viaja por HTTPS y se cifra en el server)
+
+
+# -------------------------------------------------
+class ExternalCredential(BaseModel):
+    user_id: str  # El ID del usuario en tu sistema (ObjectId como str)
+    system_name: str  # Ej: "SIIF", "INVICO"
+    encrypted_pass: str
+
+
+# -------------------------------------------------
+class ExternalStoredCredential(ExternalCredential):
+    id: PyObjectIdStr = Field(validation_alias=AliasChoices("_id", "id"))
