@@ -1,7 +1,7 @@
 __all__ = ["UsersService", "UsersServiceDependency"]
 
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 from bson import ObjectId
 from fastapi import Depends, HTTPException, status
@@ -28,7 +28,7 @@ from .auth import Authentication
 @dataclass
 class UsersService:
     users: UsersRepositoryDependency
-    external_creds: CredentialsRepositoryDependency
+    external_creds: Optional[CredentialsRepositoryDependency] = None
 
     # -------------------------------------------------
     async def create_one(self, user: CreateUser) -> PublicStoredUser:

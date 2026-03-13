@@ -108,7 +108,8 @@ class PublicStoredUser(BaseStoredUser):
 # -------------------------------------------------
 # 4. Ajuste en PrivateUser (si lo usas en el repositorio)
 # -------------------------------------------------
-class PrivateUser(BaseStoredUser):  # 👈 CAMBIO: Heredar de BaseStoredUser
+class PrivateUser(BaseUser):  # 👈 CAMBIO: Heredar de BaseUser (no sé si es correcto)
+    role: Role
     hash_password: str
     _not_empty = field_validator("username", "hash_password", mode="after")(
         validate_not_empty
