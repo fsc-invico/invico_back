@@ -98,7 +98,7 @@ class BaseFilterParams(CamelModel):
     query_filter: str = ""
     # limit: int = Field(20, gt=0, le=100)
     # Si limit es None, el repositorio debería traer TODO
-    limit: Optional[int] = Field(100, gt=0)
+    limit: Optional[int] = Field(100, gte=0)
     offset: int = Field(0, ge=0)
     sort_by: str = "_id"
     sort_dir: Literal["asc", "desc"] = "asc"
