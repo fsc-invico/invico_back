@@ -28,7 +28,7 @@ from .auth import Authentication
 @dataclass
 class UsersService:
     users: UsersRepositoryDependency
-    external_creds: Optional[CredentialsRepositoryDependency] = None
+    external_creds: CredentialsRepositoryDependency
 
     # -------------------------------------------------
     async def create_one(self, user: CreateUser) -> PublicStoredUser:

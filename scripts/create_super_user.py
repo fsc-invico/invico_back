@@ -60,7 +60,7 @@ async def main():
 
     try:
         insertion_user = CreateUser.model_validate(data)
-        users_service = UsersService(users=UsersRepository())
+        users_service = UsersService(users=UsersRepository(), external_creds=None)
         result = await users_service.create_one(user=insertion_user)
         print(f"Super user {data['username']} creado con id: {result.id}")
     except HTTPException as e:
