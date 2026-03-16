@@ -10,12 +10,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import ExternalCredential, PrivateUser
+from ..schemas import ExternalCredential, PrivateStoredUser
 
 
-class UsersRepository(BaseRepository[PrivateUser]):
+class UsersRepository(BaseRepository[PrivateStoredUser]):
     collection_name = "users"
-    model = PrivateUser
+    model = PrivateStoredUser
 
 
 UsersRepositoryDependency = Annotated[UsersRepository, Depends()]

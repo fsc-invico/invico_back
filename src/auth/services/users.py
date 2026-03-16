@@ -134,10 +134,10 @@ class UsersService:
             # 1. Obtenemos la lista de documentos (diccionarios con ObjectId)
             db_users = await self.users.find_with_filter_params(params=params)
             # Agregamos un print para debuggear qué está llegando realmente
-            logger.info(f"Primer objeto recibido del repo: {type(db_users[0])}")
-            logger.info(
-                f"Contenido: {db_users[0]}"
-            )  # Úsalo solo si no hay datos sensibles
+            # logger.info(f"Primer objeto recibido del repo: {type(db_users[0])}")
+            # logger.info(
+            #     f"Contenido: {db_users[0]}"
+            # )  # Úsalo solo si no hay datos sensibles
 
             # 2. Los validamos y transformamos usando el esquema
             # Pydantic convertirá automáticamente los _id (ObjectId) a id (str)
