@@ -45,6 +45,7 @@ class UsersService:
         insert_user = PrivateUser.model_validate(insert_user)
 
         new_user = await self.users.save(insert_user)
+        logger.debug("New user created: %s", new_user)
         # return new_user
         return PublicStoredUser.model_validate(
             await self.users.get_by_id(new_user.inserted_id)

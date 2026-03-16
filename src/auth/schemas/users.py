@@ -37,7 +37,7 @@ class Role(str, Enum):
 
 
 # -------------------------------------------------
-class BaseUser(CamelModel):
+class BaseUser(BaseModel):
     username: str
 
 
@@ -78,9 +78,10 @@ class LoginUser(BaseUser):
 # -------------------------------------------------
 # 1. Base compartida para TODO usuario que ya está en la DB
 # -------------------------------------------------
-class BaseStoredUser(BaseUser):
+class BaseStoredUser(BaseModel):
     # Cambiamos a str para evitar líos con el openapi.json
     id: PyObjectIdStr = Field(validation_alias=AliasChoices("_id", "id"))
+    username: str
     role: Role
 
     model_config = {
@@ -110,7 +111,7 @@ class PublicStoredUser(BaseStoredUser):
 # -------------------------------------------------
 class PrivateUser(BaseUser):  # 👈 CAMBIO: Heredar de BaseUser (no sé si es correcto)
     role: Role
-    hash_password: str
+    hash_password: str 
     _not_empty = field_validator("username", "hash_password", mode="after")(
         validate_not_empty
     )

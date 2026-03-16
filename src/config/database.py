@@ -97,8 +97,8 @@ class BaseRepository(Generic[ModelType]):
 
     # -------------------------------------------------
     async def save(self, data: ModelType) -> ModelType:
-        if not isinstance(data, self.model):
-            raise TypeError(f"Expected instance of {self.model}, got {type(data)}")
+        # if not isinstance(data, self.model):
+        #     raise TypeError(f"Expected instance of {self.model}, got {type(data)}")
 
         doc = jsonable_encoder(data, by_alias=True)
 
