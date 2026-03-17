@@ -93,10 +93,10 @@ class UsersService:
     async def update_role(self, user_id: PyObjectId, new_role: str):
         # 1. Intentamos actualizar en la base de datos
         result = await self.users.update_one(
-            {"_id": user_id}, {"$set": {"role": new_role}}
+            {"_id": user_id}, {"role": new_role}
         )
 
-        if result.modified_count == 0:
+        if not result:
             # Verificamos si es que no existe o si ya tenía ese rol
             user = await self.users.get_by_id(user_id)
             if not user:
@@ -111,10 +111,11 @@ class UsersService:
         # 1. Intentamos actualizar SOLO si el rol actual es 'pending'
         # Esto evita que 'aprove' cambie el rol de un admin o un usuario ya activo
         result = await self.users.update_one(
-            {"_id": user_id, "role": "pending"}, {"$set": {"role": "user"}}
+            filter={"_id": user_id, "role": "pending"}, 
+            update_data={"role": "user"}
         )
 
-        if result.modified_count == 0:
+        if not result:
             # 2. Si no hubo cambios, investigamos por qué
             user = await self.users.get_by_id(user_id)
 

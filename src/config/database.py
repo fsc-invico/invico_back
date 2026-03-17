@@ -148,7 +148,7 @@ class BaseRepository(Generic[ModelType]):
         result = await self.collection.update_one(
             filter, {"$set": update_data}, upsert=upsert
         )
-        return result.modified_count > 0 or (upsert and result.upserted_id is not None)
+        return result.acknowledged
 
     # -------------------------------------------------
     async def get_all(self, limit: Optional[int] = None) -> List[ModelType]:
