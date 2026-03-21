@@ -8,6 +8,7 @@ __all__ = [
 from typing import Optional
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Field,
     NonNegativeFloat,
@@ -42,7 +43,7 @@ class Rf610Report(BaseModel):
 
 # -------------------------------------------------
 class Rf610Document(Rf610Report):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
