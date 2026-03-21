@@ -1,41 +1,18 @@
 __all__ = [
     "Rcg01UejpReport",
     "Rcg01UejpDocument",
-    "Rcg01UejpValidationOutput",
-    "Rcg01UejpParams",
-    "Rcg01UejpFilter",
+    "Rcg01UejpFullFilter",
+    "Rcg01UejpLiteFilter",
 ]
 
-from datetime import date, datetime
-from typing import List, Optional
+from datetime import datetime
+from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
+from ...utils import BaseFilterParams, CamelModel
 from .common import FuenteFinanciamientoSIIF
-
-
-# --------------------------------------------------
-class Rcg01UejpParams(BaseModel):
-    ejercicio_from: int = Field(default=date.today().year, alias="ejercicioDesde")
-    ejercicio_to: int = Field(default=date.today().year, alias="ejercicioHasta")
-    # ejercicio_from: int = date.today().year
-    # ejercicio_to: int = date.today().year
-
-    @field_validator("ejercicio_from", "ejercicio_to")
-    @classmethod
-    def validate_ejercicio_range(cls, v: int) -> int:
-        current_year = date.today().year
-        if not (2010 <= v <= current_year):
-            raise ValueError(f"El ejercicio debe estar entre 2010 y {current_year}")
-        return v
-
-    @model_validator(mode="after")
-    def check_range(self) -> "Rcg01UejpParams":
-        if self.ejercicio_to < self.ejercicio_from:
-            raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
-        return self
 
 
 # -------------------------------------------------
@@ -64,15 +41,18 @@ class Rcg01UejpReport(BaseModel):
 
 # -------------------------------------------------
 class Rcg01UejpDocument(Rcg01UejpReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rcg01UejpFilter(BaseFilterParams):
+class Rcg01UejpFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rcg01UejpValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[Rcg01UejpDocument]
+class Rcg01UejpLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
