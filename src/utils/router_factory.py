@@ -36,7 +36,7 @@ class GenericRouterFactory:
         """Define las rutas estándar para todos los servicios"""
 
         # -------------------------------------------------
-        @self.router.get("/", name="Get All", response_model=List[self.report_schema])
+        @self.router.get("", name="Get All", response_model=List[self.report_schema])
         async def get_all(
             params: Annotated[Any, Depends(self.full_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
@@ -46,7 +46,7 @@ class GenericRouterFactory:
 
         # -------------------------------------------------
         @self.router.post(
-            "/",
+            "",
             name="Add Many",
             # # 💡 Truco Maestro: Inyectamos el esquema de Rf602Report en Swagger
             # responses={200: {"model": self.report_schema}},
@@ -79,7 +79,7 @@ class GenericRouterFactory:
             return await service.add_many(data)
 
         # -------------------------------------------------
-        @self.router.delete("/", name="Delete Many", response_model=RouteReturnSchema)
+        @self.router.delete("", name="Delete Many", response_model=RouteReturnSchema)
         async def delete_many(
             # Esto expande los campos del filtro (ej. ejercicio, estructura) en Swagger
             params: Annotated[Any, Depends(self.lite_filter_schema)],

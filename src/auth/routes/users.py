@@ -21,7 +21,7 @@ users_router = APIRouter(prefix="/users", tags=["Users"])
 
 
 # -------------------------------------------------
-@users_router.post("/")
+@users_router.post("")
 async def create_user(
     user: CreateUser,
     users: UsersServiceDependency,
@@ -33,7 +33,7 @@ async def create_user(
 
 
 # -------------------------------------------------
-@users_router.get("/", response_model=List[PublicStoredUser])
+@users_router.get("", response_model=List[PublicStoredUser])
 async def get_all_users(
     users: UsersServiceDependency,
     security: AuthorizationDependency,
