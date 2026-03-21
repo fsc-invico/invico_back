@@ -1,21 +1,16 @@
 __all__ = [
     "PlanillometroHistReport",
     "PlanillometroHistDocument",
-    "PlanillometroHistParams",
-    "PlanillometroHistFilter",
+    "PlanillometroHistFullFilter",
+    "PlanillometroHistLiteFilter",
 ]
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams
-
-
-# --------------------------------------------------
-class PlanillometroHistParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -33,9 +28,18 @@ class PlanillometroHistReport(BaseModel):
 
 # -------------------------------------------------
 class PlanillometroHistDocument(PlanillometroHistReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class PlanillometroHistFilter(BaseFilterParams):
+class PlanillometroHistFullFilter(BaseFilterParams):
     estructura: Optional[str] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class PlanillometroHistLiteFilter(CamelModel):
+    query_filter: str = ""
+    estructura: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
