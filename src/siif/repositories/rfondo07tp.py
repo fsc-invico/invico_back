@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import Rfondo07tpReport
+from ..schemas import Rfondo07tpDocument
 
 
-class Rfondo07tpRepository(BaseRepository[Rfondo07tpReport]):
+class Rfondo07tpRepository(BaseRepository[Rfondo07tpDocument]):
     collection_name = "siif_rfondo07tp"
-    model = Rfondo07tpReport
+    model = Rfondo07tpDocument
 
 
 Rfondo07tpRepositoryDependency = Annotated[Rfondo07tpRepository, Depends()]
