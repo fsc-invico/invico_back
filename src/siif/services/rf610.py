@@ -82,7 +82,7 @@ class Rf610Service(
         data = await self.repository.find_with_filter_params(params=search_params)
 
         # 3. Usar el método de la clase base
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_RF610")], filename="reporte_rf610.xlsx"
         )
