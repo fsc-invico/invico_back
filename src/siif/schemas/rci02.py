@@ -1,44 +1,21 @@
 __all__ = [
     "Rci02Report",
     "Rci02Document",
-    "Rci02Params",
-    "Rci02Filter",
+    "Rci02FullFilter",
+    "Rci02LiteFilter",
 ]
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Field,
-    field_validator,
-    model_validator,
 )
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
-
-
-# --------------------------------------------------
-class Rci02Params(CamelModel):
-    ejercicio_desde: int = Field(default=date.today().year)
-    ejercicio_hasta: int = Field(default=date.today().year)
-    # ejercicio_from: int = date.today().year
-    # ejercicio_to: int = date.today().year
-
-    @field_validator("ejercicio_desde", "ejercicio_hasta")
-    @classmethod
-    def validate_ejercicio_range(cls, v: int) -> int:
-        current_year = date.today().year
-        if not (2010 <= v <= current_year):
-            raise ValueError(f"El ejercicio debe estar entre 2010 y {current_year}")
-        return v
-
-    @model_validator(mode="after")
-    def check_range(self) -> "Rci02Params":
-        if self.ejercicio_hasta < self.ejercicio_desde:
-            raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
-        return self
 
 
 # -------------------------------------------------
@@ -60,9 +37,18 @@ class Rci02Report(BaseModel):
 
 # -------------------------------------------------
 class Rci02Document(Rci02Report):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rci02Filter(BaseFilterParams):
+class Rci02FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class Rci02LiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
