@@ -10,4 +10,4 @@ from .rfondos04 import *
 from .rfp_p605b import *
 from .ri102 import *
 from .rpa03g import *
-# from .rvicon03 import *
+from .rvicon03 import *

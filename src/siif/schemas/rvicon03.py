@@ -1,42 +1,17 @@
 __all__ = [
     "Rvicon03Report",
     "Rvicon03Document",
-    "Rvicon03Params",
-    "Rvicon03Filter",
+    "Rvicon03FullFilter",
+    "Rvicon03LiteFilter",
 ]
 
-from datetime import date
+
 from typing import Optional
 
-from pydantic import (
-    BaseModel,
-    Field,
-    field_validator,
-    model_validator,
-)
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams
-
-
-# --------------------------------------------------
-class Rvicon03Params(BaseModel):
-    ejercicio_from: int = Field(default=date.today().year, alias="ejercicioDesde")
-    ejercicio_to: int = Field(default=date.today().year, alias="ejercicioHasta")
-
-    @field_validator("ejercicio_from", "ejercicio_to")
-    @classmethod
-    def validate_ejercicio_range(cls, v: int) -> int:
-        current_year = date.today().year
-        if not (2010 <= v <= current_year):
-            raise ValueError(f"El ejercicio debe estar entre 2010 y {current_year}")
-        return v
-
-    @model_validator(mode="after")
-    def check_range(self) -> "Rvicon03Params":
-        if self.ejercicio_to < self.ejercicio_from:
-            raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
-        return self
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -58,11 +33,20 @@ class Rvicon03Report(BaseModel):
 
 # -------------------------------------------------
 class Rvicon03Document(Rvicon03Report):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rvicon03Filter(BaseFilterParams):
+class Rvicon03FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    nivel: Optional[str] = None
-    cta_contable: Optional[str] = None
+    # nivel: Optional[str] = None
+    # cta_contable: Optional[str] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class Rvicon03LiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
