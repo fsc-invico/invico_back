@@ -1,22 +1,16 @@
 __all__ = [
     "CtasCtesReport",
     "CtasCtesDocument",
-    "CtasCtesValidationOutput",
-    "CtasCtesParams",
-    "CtasCtesFilter",
+    "CtasCtesFullFilter",
+    "CtasCtesLiteFilter",
 ]
 
-from typing import List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class CtasCtesParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -34,15 +28,18 @@ class CtasCtesReport(BaseModel):
 
 # -------------------------------------------------
 class CtasCtesDocument(CtasCtesReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class CtasCtesFilter(BaseFilterParams):
+class CtasCtesFullFilter(BaseFilterParams):
     map_to: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class CtasCtesValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[CtasCtesDocument]
+class CtasCtesLiteFilter(CamelModel):
+    query_filter: str = ""
+    map_to: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False

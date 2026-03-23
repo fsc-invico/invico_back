@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import CtasCtesReport
+from ..schemas import CtasCtesDocument
 
 
-class CtasCtesRepository(BaseRepository[CtasCtesReport]):
+class CtasCtesRepository(BaseRepository[CtasCtesDocument]):
     collection_name = "sscc_ctas_ctes"
-    model = CtasCtesReport
+    model = CtasCtesDocument
 
 
 CtasCtesRepositoryDependency = Annotated[CtasCtesRepository, Depends()]
