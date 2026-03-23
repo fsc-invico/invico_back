@@ -1,22 +1,17 @@
 __all__ = [
-    "BancoINVICOSdoFinalParams",
     "BancoINVICOSdoFinalReport",
     "BancoINVICOSdoFinalDocument",
-    "BancoINVICOSdoFinalFilter",
+    "BancoINVICOSdoFinalFullFilter",
+    "BancoINVICOSdoFinalLiteFilter",
 ]
 
 
-from typing import List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class BancoINVICOSdoFinalParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -30,16 +25,19 @@ class BancoINVICOSdoFinalReport(BaseModel):
 
 # -------------------------------------------------
 class BancoINVICOSdoFinalDocument(BancoINVICOSdoFinalReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class BancoINVICOSdoFinalFilter(BaseFilterParams):
+class BancoINVICOSdoFinalFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    cta_cte: Optional[str] = None
+    # cta_cte: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class BancoINVICOSdoFinalValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[BancoINVICOSdoFinalDocument]
+class BancoINVICOSdoFinalLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
