@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import BancoINVICOReport
+from ..schemas import BancoINVICODocument
 
 
-class BancoINVICORepository(BaseRepository[BancoINVICOReport]):
+class BancoINVICORepository(BaseRepository[BancoINVICODocument]):
     collection_name = "sscc_banco_invico"
-    model = BancoINVICOReport
+    model = BancoINVICODocument
 
 
 BancoINVICORepositoryDependency = Annotated[BancoINVICORepository, Depends()]

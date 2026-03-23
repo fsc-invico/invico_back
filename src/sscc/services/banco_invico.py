@@ -88,7 +88,7 @@ class BancoINVICOService(
         search_params = BancoINVICOFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
-            cta_cte=params.cta_cte,
+            # cta_cte=params.cta_cte,
             limit=None,  # Para traer todo
         )
 

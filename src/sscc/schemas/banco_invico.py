@@ -9,7 +9,7 @@ __all__ = [
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
@@ -34,14 +34,14 @@ class BancoINVICOReport(BaseModel):
 
 # -------------------------------------------------
 class BancoINVICODocument(BancoINVICOReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class BancoINVICOFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    cta_cte: Optional[str] = None
+    # cta_cte: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
@@ -49,4 +49,4 @@ class BancoINVICOFullFilter(BaseFilterParams):
 class BancoINVICOLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[int] = None
-    cta_cte: Optional[str] = None
+    # cta_cte: Optional[str] = None

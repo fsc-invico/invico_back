@@ -1,14 +1,14 @@
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
+    BancoINVICODocument,
     BancoINVICOFullFilter,
     BancoINVICOLiteFilter,
-    BancoINVICOReport,
 )
 from ..services import BancoINVICOService  # La clase del servicio
 
 factory = GenericRouterFactory(
     service_dependency=BancoINVICOService,
-    report_schema=BancoINVICOReport,
+    report_schema=BancoINVICODocument,
     full_filter_schema=BancoINVICOFullFilter,  # Usa limit/offset
     lite_filter_schema=BancoINVICOLiteFilter,  # No usa limit/offset
     prefix="/bancoINVICO",
