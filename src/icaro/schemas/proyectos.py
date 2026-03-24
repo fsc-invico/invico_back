@@ -1,22 +1,17 @@
 __all__ = [
     "ProyectosReport",
     "ProyectosDocument",
-    "ProyectosValidationOutput",
-    "ProyectosParams",
-    "ProyectosFilter",
+    "ProyectosFullFilter",
+    "ProyectosLiteFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class ProyectosParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -24,20 +19,22 @@ class ProyectosReport(BaseModel):
     proyecto: str
     desc_proyecto: str
     subprograma: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class ProyectosDocument(ProyectosReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class ProyectosFilter(BaseFilterParams):
-    nro_proy: Optional[str] = None
-    desc_proy: Optional[str] = None
+class ProyectosFullFilter(BaseFilterParams):
+    proyecto: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ProyectosValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[ProyectosDocument]
+class ProyectosLiteFilter(CamelModel):
+    query_filter: str = ""
+    # Aquí podrías añadir: incluir_detalles: bool = False

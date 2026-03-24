@@ -1,22 +1,17 @@
 __all__ = [
     "RetencionesReport",
     "RetencionesDocument",
-    "RetencionesValidationOutput",
-    "RetencionesParams",
-    "RetencionesFilter",
+    "RetencionesFullFilter",
+    "RetencionesLiteFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class RetencionesParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -24,20 +19,22 @@ class RetencionesReport(BaseModel):
     codigo: str
     importe: float
     id_carga: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class RetencionesDocument(RetencionesReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class RetencionesFilter(BaseFilterParams):
-    nro_subprog: Optional[str] = None
-    desc_subprog: Optional[str] = None
+class RetencionesFullFilter(BaseFilterParams):
+    codigo: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class RetencionesValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[RetencionesDocument]
+class RetencionesLiteFilter(CamelModel):
+    query_filter: str = ""
+    # Aquí podrías añadir: incluir_detalles: bool = False

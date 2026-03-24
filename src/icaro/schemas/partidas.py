@@ -1,22 +1,16 @@
 __all__ = [
     "PartidasReport",
     "PartidasDocument",
-    "PartidasValidationOutput",
-    "PartidasParams",
-    "PartidasFilter",
+    "PartidasFullFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class PartidasParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -27,20 +21,23 @@ class PartidasReport(BaseModel):
     desc_partida_parcial: str
     partida: str
     desc_partida: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class PartidasDocument(PartidasReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class PartidasFilter(BaseFilterParams):
-    nro_subprog: Optional[str] = None
-    desc_subprog: Optional[str] = None
+class PartidasFullFilter(BaseFilterParams):
+    grupo: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class PartidasValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[PartidasDocument]
+class PartidasLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False

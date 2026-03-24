@@ -1,23 +1,17 @@
 __all__ = [
     "CargaReport",
     "CargaDocument",
-    "CargaValidationOutput",
-    "CargaParams",
-    "CargaFilter",
+    "CargaFullFilter",
+    "CargaLiteFilter",
 ]
 
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class CargaParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -39,22 +33,27 @@ class CargaReport(BaseModel):
     id_carga: str
     ejercicio: int
     mes: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
 class CargaDocument(CargaReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # -------------------------------------------------
-class CargaFilter(BaseFilterParams):
-    nro_comprobante: Optional[str] = None
-    cuit: Optional[str] = None
-    actividad: Optional[str] = None
-    desc_obra: Optional[str] = None
+class CargaFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+    # nro_comprobante: Optional[str] = None
+    # cuit: Optional[str] = None
+    # actividad: Optional[str] = None
+    # desc_obra: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class CargaValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[CargaDocument]
+class CargaLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False

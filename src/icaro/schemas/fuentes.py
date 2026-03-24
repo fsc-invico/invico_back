@@ -1,22 +1,17 @@
 __all__ = [
     "FuentesReport",
     "FuentesDocument",
-    "FuentesValidationOutput",
-    "FuentesParams",
-    "FuentesFilter",
+    "FuentesFullFilter",
+    "FuentesLiteFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class FuentesParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -24,20 +19,22 @@ class FuentesReport(BaseModel):
     fuente: str
     desc_fuente: str
     abreviatura: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class FuentesDocument(FuentesReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class FuentesFilter(BaseFilterParams):
-    nro_subprog: Optional[str] = None
-    desc_subprog: Optional[str] = None
+class FuentesFullFilter(BaseFilterParams):
+    fuente: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class FuentesValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[FuentesDocument]
+class FuentesLiteFilter(CamelModel):
+    query_filter: str = ""
+    # Aquí podrías añadir: incluir_detalles: bool = False

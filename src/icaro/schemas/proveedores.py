@@ -1,22 +1,17 @@
 __all__ = [
     "ProveedoresReport",
     "ProveedoresDocument",
-    "ProveedoresValidationOutput",
-    "ProveedoresParams",
-    "ProveedoresFilter",
+    "ProveedoresFullFilter",
+    "ProveedoresLiteFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class ProveedoresParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -28,20 +23,22 @@ class ProveedoresReport(BaseModel):
     telefono: Optional[str] = None
     cuit: str
     condicion_iva: Optional[str] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class ProveedoresDocument(ProveedoresReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class ProveedoresFilter(BaseFilterParams):
+class ProveedoresFullFilter(BaseFilterParams):
     cuit: Optional[str] = None
-    desc_proveedor: Optional[str] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ProveedoresValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[ProveedoresDocument]
+class ProveedoresLiteFilter(CamelModel):
+    query_filter: str = ""
+    # Aquí podrías añadir: incluir_detalles: bool = False

@@ -1,23 +1,17 @@
 __all__ = [
     "ResumenRendObrasReport",
     "ResumenRendObrasDocument",
-    "ResumenRendObrasValidationOutput",
-    "ResumenRendObrasParams",
-    "ResumenRendObrasFilter",
+    "ResumenRendObrasFullFilter",
+    "ResumenRendObrasLiteFilter",
 ]
 
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class ResumenRendObrasParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -43,20 +37,23 @@ class ResumenRendObrasReport(BaseModel):
     importe_neto: Optional[float] = None
     destino: Optional[str] = None
     movimiento: Optional[str] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class ResumenRendObrasDocument(ResumenRendObrasReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class ResumenRendObrasFilter(BaseFilterParams):
-    nro_subprog: Optional[str] = None
-    desc_subprog: Optional[str] = None
+class ResumenRendObrasFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ResumenRendObrasValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[ResumenRendObrasDocument]
+class ResumenRendObrasLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False

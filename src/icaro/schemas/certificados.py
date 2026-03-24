@@ -1,22 +1,17 @@
 __all__ = [
     "CertificadosReport",
     "CertificadosDocument",
-    "CertificadosValidationOutput",
-    "CertificadosParams",
-    "CertificadosFilter",
+    "CertificadosFullFilter",
+    "CertificadosLiteFilter",
 ]
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, ErrorsWithDocId
-
-
-# --------------------------------------------------
-class CertificadosParams(BaseModel):
-    pass
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -37,20 +32,23 @@ class CertificadosReport(BaseModel):
     invico: Optional[float] = None
     otras_retenciones: Optional[float] = None
     importe_neto: float
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
 class CertificadosDocument(CertificadosReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para la tabla (UI)
 # -------------------------------------------------
-class CertificadosFilter(BaseFilterParams):
-    nro_subprog: Optional[str] = None
-    desc_subprog: Optional[str] = None
+class CertificadosFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class CertificadosValidationOutput(BaseModel):
-    errors: List[ErrorsWithDocId]
-    validated: List[CertificadosDocument]
+class CertificadosLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
