@@ -6,8 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .analysis.routes import control_router
 from .auth.routes import auth_router, users_router
 from .config import Database
-
-# from .icaro.routes import icaro_router
+from .icaro.routes import icaro_router
 from .sgf.routes import sgf_router
 
 # from .sgv.routes import sgv_router
@@ -50,7 +49,7 @@ app.include_router(siif_router)
 app.include_router(sgf_router)
 app.include_router(sscc_router)
 # app.include_router(sgv_router)
-# app.include_router(icaro_router)
+app.include_router(icaro_router)
 # app.include_router(slave_router)
 
 
