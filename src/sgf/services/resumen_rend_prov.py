@@ -54,7 +54,10 @@ class ResumenRendProvService(
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
                 model=ResumenRendProvReport,
-                field_id="libramiento_sgf",  # O el campo que identifique la fila en caso de error
+                field_id=[
+                    "origen",
+                    "libramiento_sgf",
+                ],  # O el campo que identifique la fila en caso de error
             )
 
             # 2. Determinar filtro de borrado (Idempotencia)
@@ -63,7 +66,11 @@ class ResumenRendProvService(
             if validation_result.validated:
                 # Tomamos el ejercicio del primer registro válido
                 ejercicio_detectado = validation_result.validated[0].ejercicio
-                delete_filter = {"ejercicio": ejercicio_detectado}
+                origen_detectado = validation_result.validated[0].origen
+                delete_filter = {
+                    "ejercicio": ejercicio_detectado,
+                    "origen": origen_detectado,
+                }
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
@@ -85,8 +92,8 @@ class ResumenRendProvService(
             query_filter=params.query_filter,
             origen=params.origen,
             ejercicio=params.ejercicio,
-            beneficiario=params.beneficiario,
-            cta_cte=params.cta_cte,
+            # beneficiario=params.beneficiario,
+            # cta_cte=params.cta_cte,
             limit=None,  # Para traer todo
         )
 

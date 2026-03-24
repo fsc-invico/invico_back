@@ -9,11 +9,7 @@ __all__ = [
 from datetime import datetime
 from typing import Optional
 
-from pydantic import (
-    BaseModel,
-    Field,
-    NonNegativeFloat,
-)
+from pydantic import AliasChoices, BaseModel, Field, NonNegativeFloat
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
@@ -47,7 +43,7 @@ class ResumenRendProvReport(BaseModel):
 
 # -------------------------------------------------
 class ResumenRendProvDocument(ResumenRendProvReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
@@ -55,8 +51,8 @@ class ResumenRendProvDocument(ResumenRendProvReport):
 class ResumenRendProvFullFilter(BaseFilterParams):
     origen: Optional[Origen] = None
     ejercicio: Optional[int] = None
-    beneficiario: Optional[str] = None
-    cta_cte: Optional[str] = None
+    # beneficiario: Optional[str] = None
+    # cta_cte: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
@@ -65,5 +61,5 @@ class ResumenRendProvLiteFilter(CamelModel):
     query_filter: str = ""
     origen: Optional[Origen] = None
     ejercicio: Optional[int] = None
-    beneficiario: Optional[str] = None
-    cta_cte: Optional[str] = None
+    # beneficiario: Optional[str] = None
+    # cta_cte: Optional[str] = None

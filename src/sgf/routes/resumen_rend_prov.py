@@ -1,14 +1,14 @@
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
+    ResumenRendProvDocument,
     ResumenRendProvFullFilter,
     ResumenRendProvLiteFilter,
-    ResumenRendProvReport,
 )
 from ..services import ResumenRendProvService  # La clase del servicio
 
 factory = GenericRouterFactory(
     service_dependency=ResumenRendProvService,
-    report_schema=ResumenRendProvReport,
+    report_schema=ResumenRendProvDocument,
     full_filter_schema=ResumenRendProvFullFilter,  # Usa limit/offset
     lite_filter_schema=ResumenRendProvLiteFilter,  # No usa limit/offset
     prefix="/resumenRendProv",

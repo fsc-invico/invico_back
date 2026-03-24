@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import ResumenRendProvReport
+from ..schemas import ResumenRendProvDocument
 
 
-class ResumenRendProvRepository(BaseRepository[ResumenRendProvReport]):
+class ResumenRendProvRepository(BaseRepository[ResumenRendProvDocument]):
     collection_name = "sgf_resumen_rend_prov"
-    model = ResumenRendProvReport
+    model = ResumenRendProvDocument
 
 
 ResumenRendProvRepositoryDependency = Annotated[ResumenRendProvRepository, Depends()]
