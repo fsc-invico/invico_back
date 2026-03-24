@@ -8,7 +8,7 @@ __all__ = [
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
@@ -26,7 +26,7 @@ class ControlRecursosReport(BaseModel):
 
 # -------------------------------------------------
 class ControlRecursosDocument(ControlRecursosReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)

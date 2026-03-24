@@ -8,14 +8,14 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_recursos import (
-    ControlRecursosReport,
+    ControlRecursosDocument,
 )
 
 
 # -------------------------------------------------
-class ControlRecursosRepository(BaseRepository[ControlRecursosReport]):
+class ControlRecursosRepository(BaseRepository[ControlRecursosDocument]):
     collection_name = "control_recursos"
-    model = ControlRecursosReport
+    model = ControlRecursosDocument
 
 
 ControlRecursosRepositoryDependency = Annotated[ControlRecursosRepository, Depends()]

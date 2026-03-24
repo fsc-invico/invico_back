@@ -1,14 +1,14 @@
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
+    ControlRecursosDocument,
     ControlRecursosFullFilter,
     ControlRecursosLiteFilter,
-    ControlRecursosReport,
 )
 from ..services import ControlRecursosService  # La clase del servicio
 
 factory = GenericRouterFactory(
     service_dependency=ControlRecursosService,
-    report_schema=ControlRecursosReport,
+    report_schema=ControlRecursosDocument,
     full_filter_schema=ControlRecursosFullFilter,  # Usa limit/offset
     lite_filter_schema=ControlRecursosLiteFilter,  # No usa limit/offset
     prefix="/controlRecursos",

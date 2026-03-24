@@ -57,6 +57,7 @@ class ControlRecursosService(
                 field_id=[
                     "mes",
                     "cta_cte",
+                    "grupo",
                 ],  # O el campo que identifique la fila en caso de error
             )
 
