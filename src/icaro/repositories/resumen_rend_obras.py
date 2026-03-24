@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import ResumenRendObrasReport
+from ..schemas import ResumenRendObrasDocument
 
 
-class ResumenRendObrasRepository(BaseRepository[ResumenRendObrasReport]):
+class ResumenRendObrasRepository(BaseRepository[ResumenRendObrasDocument]):
     collection_name = "icaro_resumen_rend_obras"
-    model = ResumenRendObrasReport
+    model = ResumenRendObrasDocument
 
 
 ResumenRendObrasRepositoryDependency = Annotated[ResumenRendObrasRepository, Depends()]

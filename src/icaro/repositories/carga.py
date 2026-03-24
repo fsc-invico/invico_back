@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import CargaReport
+from ..schemas import CargaDocument
 
 
-class CargaRepository(BaseRepository[CargaReport]):
+class CargaRepository(BaseRepository[CargaDocument]):
     collection_name = "icaro_carga"
-    model = CargaReport
+    model = CargaDocument
 
 
 CargaRepositoryDependency = Annotated[CargaRepository, Depends()]

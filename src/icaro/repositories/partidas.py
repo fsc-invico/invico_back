@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import PartidasReport
+from ..schemas import PartidasDocument
 
 
-class PartidasRepository(BaseRepository[PartidasReport]):
+class PartidasRepository(BaseRepository[PartidasDocument]):
     collection_name = "icaro_partidas"
-    model = PartidasReport
+    model = PartidasDocument
 
 
 PartidasRepositoryDependency = Annotated[PartidasRepository, Depends()]

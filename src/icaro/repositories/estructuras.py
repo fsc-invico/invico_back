@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas import EstructurasReport
+from ..schemas import EstructurasDocument
 
 
-class EstructurasRepository(BaseRepository[EstructurasReport]):
+class EstructurasRepository(BaseRepository[EstructurasDocument]):
     collection_name = "icaro_estructuras"
-    model = EstructurasReport
+    model = EstructurasDocument
 
 
 EstructurasRepositoryDependency = Annotated[EstructurasRepository, Depends()]
