@@ -27,6 +27,7 @@ class Rfondo07tpReport(BaseModel):
     ingresos: float
     egresos: float
     saldo: float
+    estructura: Optional[str] = None
 
 
 # -------------------------------------------------
