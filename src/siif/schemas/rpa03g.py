@@ -12,7 +12,7 @@ from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
-from .common import PartidaPrincipalSIIF
+from .common import GrupoPartidaSIIF
 
 
 # -------------------------------------------------
@@ -40,7 +40,7 @@ class Rpa03gDocument(Rpa03gReport):
 # -------------------------------------------------
 class Rpa03gFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    grupo: Optional[PartidaPrincipalSIIF] = None
+    grupo: Optional[GrupoPartidaSIIF] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
@@ -48,5 +48,5 @@ class Rpa03gFullFilter(BaseFilterParams):
 class Rpa03gLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[int] = None
-    grupo: Optional[PartidaPrincipalSIIF] = None
+    grupo: Optional[GrupoPartidaSIIF] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
