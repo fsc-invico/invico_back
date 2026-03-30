@@ -20,17 +20,17 @@ from ...utils import (
 )
 from ..repositories import Rpa03gRepositoryDependency
 from ..schemas import (
+    GtoRpa03gReport,
     Rpa03gDocument,
     Rpa03gFullFilter,
     Rpa03gLiteFilter,
-    Rpa03gReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
 class Rpa03gService(
-    BaseService[Rpa03gReport, Rpa03gDocument, Rpa03gFullFilter, Rpa03gLiteFilter]
+    BaseService[GtoRpa03gReport, Rpa03gDocument, Rpa03gFullFilter, Rpa03gLiteFilter]
 ):
     repository: Rpa03gRepositoryDependency
 
@@ -43,12 +43,12 @@ class Rpa03gService(
         )
 
     # -------------------------------------------------
-    async def add_many(self, data: List[Rpa03gReport]) -> RouteReturnSchema:
+    async def add_many(self, data: List[GtoRpa03gReport]) -> RouteReturnSchema:
         try:
             # 1. Validar usando tu función genérica
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
-                model=Rpa03gReport,
+                model=GtoRpa03gReport,
                 field_id="nro_comprobante",  # O el campo que identifique la fila en caso de error
             )
 

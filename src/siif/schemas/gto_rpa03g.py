@@ -1,5 +1,5 @@
 __all__ = [
-    "Rpa03gReport",
+    "GtoRpa03gReport",
     "Rpa03gDocument",
     "Rpa03gFullFilter",
     "Rpa03gLiteFilter",
@@ -16,7 +16,7 @@ from .common import GrupoPartidaSIIF
 
 
 # -------------------------------------------------
-class Rpa03gReport(BaseModel):
+class GtoRpa03gReport(BaseModel):
     ejercicio: int
     mes: Optional[str] = None
     fecha: datetime
@@ -32,7 +32,7 @@ class Rpa03gReport(BaseModel):
 
 
 # -------------------------------------------------
-class Rpa03gDocument(Rpa03gReport):
+class Rpa03gDocument(GtoRpa03gReport):
     id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 

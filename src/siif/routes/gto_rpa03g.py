@@ -11,7 +11,7 @@ factory = GenericRouterFactory(
     report_schema=Rpa03gDocument,
     full_filter_schema=Rpa03gFullFilter,  # Usa limit/offset
     lite_filter_schema=Rpa03gLiteFilter,  # No usa limit/offset
-    prefix="/rpa03g",
+    prefix="/gtoRpa03g",
 )
 
 rpa03g_router = factory.get_router()

@@ -3,6 +3,7 @@ __all__ = ["siif_router"]
 from fastapi import APIRouter
 
 from .common import common_router
+from .gto_rpa03g import rpa03g_router
 from .planillometro_hist import planillometro_hist_router
 from .rcg01_uejp import rcg01_uejp_router
 from .rci02 import rci02_router
@@ -14,7 +15,6 @@ from .rfondo07tp import rfondo07tp_router
 from .rfondos04 import rfondos04_router
 from .rfp_p605b import rfp_p605b_router
 from .ri102 import ri102_router
-from .rpa03g import rpa03g_router
 from .rvicon03 import rvicon03_router
 
 siif_router = APIRouter(prefix="/siif", tags=["SIIF"])

@@ -9,7 +9,7 @@ from ..schemas import Rpa03gDocument
 
 
 class Rpa03gRepository(BaseRepository[Rpa03gDocument]):
-    collection_name = "siif_rpa03g"
+    collection_name = "siif_gto_rpa03g"
     model = Rpa03gDocument
 
 
