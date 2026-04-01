@@ -38,7 +38,7 @@ class ObrasDocument(ObrasReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class ObrasFullFilter(BaseFilterParams):
-    activadad: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
