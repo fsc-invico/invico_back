@@ -6,7 +6,6 @@ __all__ = [
 ]
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId

@@ -7,12 +7,12 @@ Purpose: Unified schema for Estructura (Prog + Subprog + Proy + Act) to be used 
 __all__ = [
     "EstructurasReport",
     "EstructurasDocument",
-    "EstructurasFilter",
+    "EstructurasFullFilter",
+    "EstructurasLiteFilter",
 ]
 
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -34,13 +34,12 @@ class EstructurasDocument(EstructurasReport):
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
-class EstructurasFilter(BaseFilterParams):
-    nro_estructura: Optional[str] = None
+class EstructurasFullFilter(BaseFilterParams):
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rf602LiteFilter(CamelModel):
+class EstructurasLiteFilter(CamelModel):
     query_filter: str = ""
-    nro_estructura: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
