@@ -30,7 +30,7 @@ class RetencionesDocument(RetencionesReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class RetencionesFullFilter(BaseFilterParams):
-    codigo: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
