@@ -127,7 +127,24 @@ class BaseFilterParams(CamelModel):
             if value is not None:
                 # Si es un Enum o tiene atributo 'value', lo extraemos
                 val = value.value if hasattr(value, "value") else value
-                self._extra_filter.update({field: {"$eq": val}})
+                if isinstance(val, str) and "," in val:
+                    elementos = [x.strip() for x in val.split(",")]
+                    # Intentamos convertir a int, si no se puede, queda como str
+                    lista_final = []
+                    for e in elementos:
+                        try:
+                            lista_final.append(int(e))
+                        except ValueError:
+                            lista_final.append(e)
+                    self._extra_filter.update({field: {"$in": lista_final}})
+                else:
+                    try:
+                        val = int(
+                            val
+                        )  # PUEDE ROMPER SI ERA STRING QUE SE VEÍA COMO INT
+                    except ValueError:
+                        pass
+                    self._extra_filter.update({field: {"$eq": val}})
 
         # 3. Combinar con la lógica de data_filter (la que parsea el string)
         return data_filter(self.query_filter, extra_filter=self._extra_filter)
