@@ -9,8 +9,8 @@ __all__ = [
 from typing import Optional
 
 from pydantic import (
-    BaseModel,
     AliasChoices,
+    BaseModel,
     Field,
     NonNegativeFloat,
 )
@@ -45,16 +45,15 @@ class Rf602Document(Rf602Report):
     id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
-
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rf602FullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class Rf602LiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
