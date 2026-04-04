@@ -2,6 +2,8 @@ __all__ = ["common_router"]
 
 from fastapi import APIRouter
 
+from siif.schemas.common import GrupoPartidaStrSIIF
+
 from ..schemas import (
     FuenteFinanciamientoSIIF,
     GrupoControlFinancieroSIIF,
@@ -35,6 +37,12 @@ async def list_grupos_control_financiero():
 @common_router.get("/gruposPartidas")
 async def list_grupos_partidas():
     return [item.value for item in GrupoPartidaSIIF]
+
+
+# -------------------------------------------------
+@common_router.get("/gruposPartidasStr")
+async def list_grupos_partidas_str():
+    return [item.value for item in GrupoPartidaStrSIIF]
 
 
 # -------------------------------------------------

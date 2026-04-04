@@ -3,6 +3,7 @@ __all__ = [
     "TipoComprobanteSIIF",
     "PartidaPrincipalSIIF",
     "GrupoPartidaSIIF",
+    "GrupoPartidaStrSIIF",
     "GrupoControlFinancieroSIIF",
     "FuenteFinanciamientoSIIF",
 ]
@@ -60,6 +61,18 @@ class GrupoPartidaSIIF(str, Enum):
     bienes_consumo = "2"
     servicios = "3"
     bienes_capital = "4"
+
+
+# -------------------------------------------------
+class GrupoPartidaStrSIIF(str, Enum):
+    """
+    Enum para representar los grupos de partidas del SIIF.
+    """
+
+    sueldos = "str:1"
+    bienes_consumo = "str:2"
+    servicios = "str:3"
+    bienes_capital = "str:4"
 
 
 # -------------------------------------------------
