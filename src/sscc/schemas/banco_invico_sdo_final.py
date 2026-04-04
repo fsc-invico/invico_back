@@ -31,7 +31,7 @@ class BancoINVICOSdoFinalDocument(BancoINVICOSdoFinalReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class BancoINVICOSdoFinalFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # cta_cte: Optional[str] = None
 
 
@@ -39,5 +39,5 @@ class BancoINVICOSdoFinalFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class BancoINVICOSdoFinalLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

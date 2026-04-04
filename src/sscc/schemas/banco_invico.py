@@ -40,7 +40,7 @@ class BancoINVICODocument(BancoINVICOReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class BancoINVICOFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # cta_cte: Optional[str] = None
 
 
@@ -48,5 +48,5 @@ class BancoINVICOFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class BancoINVICOLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # cta_cte: Optional[str] = None
