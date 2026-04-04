@@ -8,11 +8,12 @@ __all__ = [
 from datetime import datetime
 from typing import Optional
 
+from fastapi.params import Query
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
-from .common import GrupoPartidaSIIF, GrupoPartidaStrSIIF
+from .common import GrupoPartidaSIIF
 
 
 # -------------------------------------------------
@@ -22,7 +23,7 @@ class GtoRpa03gReport(BaseModel):
     fecha: datetime
     nro_comprobante: Optional[str] = None
     importe: float
-    grupo: Optional[str] = None
+    grupo: Optional[GrupoPartidaSIIF] = None
     partida: Optional[str] = None
     nro_entrada: Optional[str] = None
     nro_origen: Optional[str] = None
@@ -40,7 +41,14 @@ class Rpa03gDocument(GtoRpa03gReport):
 # -------------------------------------------------
 class Rpa03gFullFilter(BaseFilterParams):
     ejercicio: Optional[str] = None
-    grupo: Optional[GrupoPartidaStrSIIF] = None
+    grupo: Optional[str] = Query(
+        None,
+        description="ID del grupo. Para valores numéricos que son strings en DB, usar prefijo 'str:' (ej: str:2)",
+        openapi_examples={
+            "Ejemplo String": {"value": "str:2"},
+            "Ejemplo Normal": {"value": "2"},
+        },
+    )
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
@@ -48,5 +56,5 @@ class Rpa03gFullFilter(BaseFilterParams):
 class Rpa03gLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
-    grupo: Optional[GrupoPartidaStrSIIF] = None
+    grupo: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
