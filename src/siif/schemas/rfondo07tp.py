@@ -38,7 +38,7 @@ class Rfondo07tpDocument(Rfondo07tpReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rfondo07tpFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     tipo_comprobante: TipoComprobanteSIIF = None
 
 
@@ -46,6 +46,6 @@ class Rfondo07tpFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class Rfondo07tpLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     tipo_comprobante: TipoComprobanteSIIF = None
     # Aquí podrías añadir: incluir_detalles: bool = False

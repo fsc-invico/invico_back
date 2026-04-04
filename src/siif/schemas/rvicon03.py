@@ -39,7 +39,7 @@ class Rvicon03Document(Rvicon03Report):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rvicon03FullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # nivel: Optional[str] = None
     # cta_contable: Optional[str] = None
 
@@ -48,5 +48,5 @@ class Rvicon03FullFilter(BaseFilterParams):
 # -------------------------------------------------
 class Rvicon03LiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

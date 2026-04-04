@@ -49,11 +49,11 @@ class Rf610Document(Rf610Report):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rf610FullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class Rf610LiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None

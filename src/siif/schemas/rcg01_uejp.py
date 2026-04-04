@@ -47,12 +47,12 @@ class Rcg01UejpDocument(Rcg01UejpReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rcg01UejpFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class Rcg01UejpLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

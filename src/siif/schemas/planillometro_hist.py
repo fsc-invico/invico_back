@@ -34,12 +34,12 @@ class PlanillometroHistDocument(PlanillometroHistReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class PlanillometroHistFullFilter(BaseFilterParams):
-    estructura: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class PlanillometroHistLiteFilter(CamelModel):
     query_filter: str = ""
-    estructura: Optional[str] = None
+    pass
     # Aquí podrías añadir: incluir_detalles: bool = False

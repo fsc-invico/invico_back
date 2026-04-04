@@ -43,7 +43,7 @@ class Rcocc31Document(Rcocc31Report):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rcocc31FullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     cta_contable: Optional[str] = None
 
 
@@ -51,6 +51,6 @@ class Rcocc31FullFilter(BaseFilterParams):
 # -------------------------------------------------
 class Rcocc31LiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     cta_contable: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
