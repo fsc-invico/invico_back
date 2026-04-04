@@ -6,6 +6,7 @@ __all__ = [
 ]
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -15,6 +16,7 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class RetencionesReport(BaseModel):
+    ejercicio: int
     codigo: str
     importe: float
     id_carga: str
@@ -29,11 +31,13 @@ class RetencionesDocument(RetencionesReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class RetencionesFullFilter(BaseFilterParams):
-    pass
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class RetencionesLiteFilter(CamelModel):
     query_filter: str = ""
+    ejercicio: Optional[str] = None
+
     # Aquí podrías añadir: incluir_detalles: bool = False
