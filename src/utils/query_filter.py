@@ -138,13 +138,9 @@ class BaseFilterParams(CamelModel):
                             lista_final.append(e)
                     self._extra_filter.update({field: {"$in": lista_final}})
                 else:
-                    try:
-                        val = int(
-                            val
-                        )  # PUEDE ROMPER SI ERA STRING QUE SE VEÍA COMO INT
-                    except ValueError:
-                        pass
-                    self._extra_filter.update({field: {"$eq": val}})
+                    val = format_value(
+                        str(val)
+                    )  # Intentamos formatear el valor (int, ObjectId, etc.)
 
         # 3. Combinar con la lógica de data_filter (la que parsea el string)
         return data_filter(self.query_filter, extra_filter=self._extra_filter)
