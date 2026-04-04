@@ -49,8 +49,8 @@ class ResumenRendProvDocument(ResumenRendProvReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class ResumenRendProvFullFilter(BaseFilterParams):
-    origen: Optional[Origen] = None
-    ejercicio: Optional[int] = None
+    origen: Optional[str] = None
+    ejercicio: Optional[str] = None
     # beneficiario: Optional[str] = None
     # cta_cte: Optional[str] = None
 
@@ -59,7 +59,7 @@ class ResumenRendProvFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class ResumenRendProvLiteFilter(CamelModel):
     query_filter: str = ""
-    origen: Optional[Origen] = None
-    ejercicio: Optional[int] = None
+    origen: Optional[str] = None
+    ejercicio: Optional[str] = None
     # beneficiario: Optional[str] = None
     # cta_cte: Optional[str] = None
