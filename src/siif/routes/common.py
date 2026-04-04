@@ -2,12 +2,11 @@ __all__ = ["common_router"]
 
 from fastapi import APIRouter
 
-from siif.schemas.common import GrupoPartidaStrSIIF
-
 from ..schemas import (
     FuenteFinanciamientoSIIF,
     GrupoControlFinancieroSIIF,
     GrupoPartidaSIIF,
+    GrupoPartidaStrSIIF,
     PartidaPrincipalSIIF,
     TipoComprobanteSIIF,
 )
