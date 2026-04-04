@@ -132,10 +132,11 @@ class BaseFilterParams(CamelModel):
                     # Intentamos convertir a int, si no se puede, queda como str
                     lista_final = []
                     for e in elementos:
-                        try:
-                            lista_final.append(int(e))
-                        except ValueError:
-                            lista_final.append(e)
+                        # try:
+                        #     lista_final.append(int(e))
+                        # except ValueError:
+                        #     lista_final.append(e)
+                        lista_final.append(format_value(e))
                     self._extra_filter.update({field: {"$in": lista_final}})
                 else:
                     val = format_value(
