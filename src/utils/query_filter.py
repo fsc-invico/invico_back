@@ -141,6 +141,7 @@ class BaseFilterParams(CamelModel):
                     val = format_value(
                         str(val)
                     )  # Intentamos formatear el valor (int, ObjectId, etc.)
+                    self._extra_filter.update({field: {"$eq": val}})
 
         # 3. Combinar con la lógica de data_filter (la que parsea el string)
         return data_filter(self.query_filter, extra_filter=self._extra_filter)
