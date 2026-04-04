@@ -43,12 +43,12 @@ class CertificadosDocument(CertificadosReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class CertificadosFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class CertificadosLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

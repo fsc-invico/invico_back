@@ -44,7 +44,7 @@ class CargaDocument(CargaReport):
 
 # -------------------------------------------------
 class CargaFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # nro_comprobante: Optional[str] = None
     # cuit: Optional[str] = None
     # actividad: Optional[str] = None
@@ -55,5 +55,5 @@ class CargaFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class CargaLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

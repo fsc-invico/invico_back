@@ -39,5 +39,4 @@ class PartidasFullFilter(BaseFilterParams):
 # -------------------------------------------------
 class PartidasLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

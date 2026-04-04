@@ -48,12 +48,12 @@ class ResumenRendObrasDocument(ResumenRendObrasReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class ResumenRendObrasFullFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class ResumenRendObrasLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[int] = None
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
