@@ -16,23 +16,23 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class CargaReport(BaseModel):
+    ejercicio: int
+    mes: str
     fecha: datetime
+    id_carga: str
+    nro_comprobante: str
+    tipo: str
     fuente: str
+    actividad: str
+    partida: str
+    cta_cte: str
     cuit: str
     importe: float
     fondo_reparo: float
-    cta_cte: str
     avance: float
     nro_certificado: Optional[str] = None
-    nro_comprobante: str
     desc_obra: str
     origen: str
-    tipo: str
-    actividad: str
-    partida: str
-    id_carga: str
-    ejercicio: int
-    mes: str
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -16,17 +16,17 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class ObrasReport(BaseModel):
-    localidad: str
-    cuit: str
     actividad: str
     partida: str
     fuente: str
-    monto_contrato: Optional[float] = None
-    monto_adicional: Optional[float] = None
+    desc_obra: str
+    cuit: str
     cta_cte: str
     norma_legal: Optional[str] = None
-    desc_obra: str
+    localidad: str
     info_adicional: Optional[str] = None
+    monto_contrato: Optional[float] = None
+    monto_adicional: Optional[float] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
