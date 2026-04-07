@@ -6,7 +6,6 @@ __all__ = [
 ]
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -31,7 +30,7 @@ class CtasCtesDocument(CtasCtesReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class CtasCtesFullFilter(BaseFilterParams):
-    cta_cte: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
