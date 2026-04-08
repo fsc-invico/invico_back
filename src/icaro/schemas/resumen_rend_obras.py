@@ -16,15 +16,14 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class ResumenRendObrasReport(BaseModel):
-    id_carga: Optional[str] = None
     ejercicio: Optional[int] = None
     mes: Optional[str] = None
     fecha: Optional[datetime] = None
-    origen: Optional[str] = None
+    nro_libramiento_sgf: Optional[str] = None
+    beneficiario: Optional[str] = None
     cod_obra: Optional[str] = None
     desc_obra: Optional[str] = None
-    beneficiario: Optional[str] = None
-    nro_libramiento_sgf: Optional[str] = None
+    destino: Optional[str] = None
     importe_bruto: float
     iibb: Optional[float] = None
     tl: Optional[float] = None
@@ -35,8 +34,9 @@ class ResumenRendObrasReport(BaseModel):
     salud: Optional[float] = None
     mutual: Optional[float] = None
     importe_neto: Optional[float] = None
-    destino: Optional[str] = None
     movimiento: Optional[str] = None
+    origen: Optional[str] = None
+    id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -8,6 +8,7 @@ from .ctas_ctes import ctas_ctes_router
 from .estructuras import estructuras_router
 from .obras import obras_router
 from .proveedores import proveedores_router
+from .resumen_rend_obras import resumen_rend_obras_router
 from .retenciones import retenciones_router
 
 icaro_router = APIRouter(prefix="/icaro", tags=["ICARO"])
@@ -19,4 +20,5 @@ icaro_router.include_router(ctas_ctes_router)
 icaro_router.include_router(proveedores_router)
 icaro_router.include_router(carga_router)
 icaro_router.include_router(retenciones_router)
+icaro_router.include_router(resumen_rend_obras_router)
 icaro_router.include_router(certificados_router)

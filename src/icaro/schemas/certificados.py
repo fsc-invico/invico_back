@@ -16,6 +16,7 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class CertificadosReport(BaseModel):
+    ejercicio: int
     beneficiario: str
     desc_obra: str
     nro_certificado: str
@@ -30,7 +31,6 @@ class CertificadosReport(BaseModel):
     otras_retenciones: Optional[float] = None
     importe_neto: float
     origen: str
-    ejercicio: int
     id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
