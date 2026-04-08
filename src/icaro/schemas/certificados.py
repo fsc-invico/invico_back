@@ -16,9 +16,6 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class CertificadosReport(BaseModel):
-    id_carga: Optional[str] = None
-    origen: str
-    ejercicio: int
     beneficiario: str
     desc_obra: str
     nro_certificado: str
@@ -32,6 +29,9 @@ class CertificadosReport(BaseModel):
     invico: Optional[float] = None
     otras_retenciones: Optional[float] = None
     importe_neto: float
+    origen: str
+    ejercicio: int
+    id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -43,12 +43,11 @@ class CertificadosDocument(CertificadosReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class CertificadosFullFilter(BaseFilterParams):
-    ejercicio: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class CertificadosLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

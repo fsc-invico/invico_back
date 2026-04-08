@@ -3,6 +3,7 @@ __all__ = ["icaro_router"]
 from fastapi import APIRouter
 
 from .carga import carga_router
+from .certificados import certificados_router
 from .ctas_ctes import ctas_ctes_router
 from .estructuras import estructuras_router
 from .obras import obras_router
@@ -16,3 +17,4 @@ icaro_router.include_router(obras_router)
 icaro_router.include_router(ctas_ctes_router)
 icaro_router.include_router(carga_router)
 icaro_router.include_router(retenciones_router)
+icaro_router.include_router(certificados_router)
