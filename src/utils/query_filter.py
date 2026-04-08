@@ -52,7 +52,19 @@ def get_filter_query(f):
         return {}
 
     k, v = f.split(op)
-    return {k.strip(): {op_map[op]: format_value(v)}}
+
+    # return {k.strip(): {op_map[op]: format_value(v)}}
+
+    key = k.strip()
+    mongo_op = op_map[op]
+    value = format_value(v)
+
+    # Si el operador es regex (~), agregamos la opción para ignorar mayúsculas
+    if mongo_op == "$regex":
+        return {key: {"$regex": value, "$options": "i"}}
+
+    # Para los demás operadores (>=, <=, =, etc.)
+    return {key: {mongo_op: value}}
 
 
 # # -------------------------------------------------
