@@ -3,4 +3,5 @@ from .certificados import *
 from .ctas_ctes import *
 from .estructuras import *
 from .obras import *
+from .proveedores import *
 from .retenciones import *

@@ -34,7 +34,7 @@ class ProveedoresDocument(ProveedoresReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class ProveedoresFullFilter(BaseFilterParams):
-    cuit: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
