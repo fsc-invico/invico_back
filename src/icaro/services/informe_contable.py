@@ -1,4 +1,4 @@
-__all__ = ["CertificadosService", "CertificadosServiceDependency"]
+__all__ = ["InformeContableService", "InformeContableServiceDependency"]
 
 # import os
 from dataclasses import dataclass
@@ -18,42 +18,42 @@ from ...utils import (
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
-from ..repositories import CertificadosRepositoryDependency
+from ..repositories import InformeContableRepositoryDependency
 from ..schemas import (
-    CertificadosDocument,
-    CertificadosFullFilter,
-    CertificadosLiteFilter,
-    CertificadosReport,
+    InformeContableDocument,
+    InformeContableFullFilter,
+    InformeContableLiteFilter,
+    InformeContableReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
-class CertificadosService(
+class InformeContableService(
     BaseService[
-        CertificadosReport,
-        CertificadosDocument,
-        CertificadosFullFilter,
-        CertificadosLiteFilter,
+        InformeContableReport,
+        InformeContableDocument,
+        InformeContableFullFilter,
+        InformeContableLiteFilter,
     ]
 ):
-    repository: CertificadosRepositoryDependency
+    repository: InformeContableRepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
         # Usamos __post_init__ para pasarle los datos a la clase base.
         super().__init__(
             repository=self.repository,
-            filter_schema=CertificadosFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+            filter_schema=InformeContableFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
 
     # -------------------------------------------------
-    async def add_many(self, data: List[CertificadosReport]) -> RouteReturnSchema:
+    async def add_many(self, data: List[InformeContableReport]) -> RouteReturnSchema:
         try:
             # 1. Validar usando tu función genérica
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
-                model=CertificadosReport,
+                model=InformeContableReport,
                 field_id=[
                     "beneficiario",
                     "desc_obra",
@@ -79,9 +79,9 @@ class CertificadosService(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
-    async def export(self, params: CertificadosLiteFilter) -> StreamingResponse:
+    async def export(self, params: InformeContableLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        search_params = CertificadosFullFilter(
+        search_params = InformeContableFullFilter(
             query_filter=params.query_filter,
             limit=None,  # Para traer todo
         )
@@ -119,4 +119,4 @@ class CertificadosService(
     #     return "Actualizado con éxito"
 
 
-CertificadosServiceDependency = Annotated[CertificadosService, Depends()]
+InformeContableServiceDependency = Annotated[InformeContableService, Depends()]

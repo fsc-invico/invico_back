@@ -1,8 +1,8 @@
 __all__ = [
-    "CertificadosReport",
-    "CertificadosDocument",
-    "CertificadosFullFilter",
-    "CertificadosLiteFilter",
+    "InformeContableReport",
+    "InformeContableDocument",
+    "InformeContableFullFilter",
+    "InformeContableLiteFilter",
 ]
 
 from datetime import datetime, timezone
@@ -15,7 +15,7 @@ from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
-class CertificadosReport(BaseModel):
+class InformeContableReport(BaseModel):
     ejercicio: int
     beneficiario: str
     desc_obra: str
@@ -30,24 +30,23 @@ class CertificadosReport(BaseModel):
     invico: Optional[float] = None
     otras_retenciones: Optional[float] = None
     importe_neto: float
-    origen: str
     id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
-class CertificadosDocument(CertificadosReport):
+class InformeContableDocument(InformeContableReport):
     id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
-class CertificadosFullFilter(BaseFilterParams):
+class InformeContableFullFilter(BaseFilterParams):
     pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class CertificadosLiteFilter(CamelModel):
+class InformeContableLiteFilter(CamelModel):
     query_filter: str = ""
     # Aquí podrías añadir: incluir_detalles: bool = False

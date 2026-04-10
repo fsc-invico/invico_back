@@ -45,7 +45,7 @@ COLLECTIONS = [
     "icaro_obras",
     "icaro_carga",
     "icaro_retenciones",
-    "icaro_certificados",
+    "icaro_informe_contable",
     "icaro_resumen_rend_obras",
     "slave_factureros",
     "slave_honorarios",
