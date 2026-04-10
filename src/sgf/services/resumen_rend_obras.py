@@ -1,4 +1,4 @@
-__all__ = ["ResumenRendProvService", "ResumenRendProvServiceDependency"]
+__all__ = ["ResumenRendObrasService", "ResumenRendObrasServiceDependency"]
 
 # import os
 from dataclasses import dataclass
@@ -18,42 +18,42 @@ from ...utils import (
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
-from ..repositories import ResumenRendProvRepositoryDependency
+from ..repositories import ResumenRendObrasRepositoryDependency
 from ..schemas import (
-    ResumenRendProvDocument,
-    ResumenRendProvFullFilter,
-    ResumenRendProvLiteFilter,
-    ResumenRendProvReport,
+    ResumenRendObrasDocument,
+    ResumenRendObrasFullFilter,
+    ResumenRendObrasLiteFilter,
+    ResumenRendObrasReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
-class ResumenRendProvService(
+class ResumenRendObrasService(
     BaseService[
-        ResumenRendProvReport,
-        ResumenRendProvDocument,
-        ResumenRendProvFullFilter,
-        ResumenRendProvLiteFilter,
+        ResumenRendObrasReport,
+        ResumenRendObrasDocument,
+        ResumenRendObrasFullFilter,
+        ResumenRendObrasLiteFilter,
     ]
 ):
-    repository: ResumenRendProvRepositoryDependency
+    repository: ResumenRendObrasRepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
         # Usamos __post_init__ para pasarle los datos a la clase base.
         super().__init__(
             repository=self.repository,
-            filter_schema=ResumenRendProvFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+            filter_schema=ResumenRendObrasFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
 
     # -------------------------------------------------
-    async def add_many(self, data: List[ResumenRendProvReport]) -> RouteReturnSchema:
+    async def add_many(self, data: List[ResumenRendObrasReport]) -> RouteReturnSchema:
         try:
             # 1. Validar usando tu función genérica
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
-                model=ResumenRendProvReport,
+                model=ResumenRendObrasReport,
                 field_id=[
                     "origen",
                     "libramiento",
@@ -77,8 +77,8 @@ class ResumenRendProvService(
                 repository=self.repository,
                 validation=validation_result,
                 delete_filter=delete_filter,
-                title="Sincronización SGF Resumen Rend Prov",
-                label="Resumen Rend Prov",
+                title="Sincronización SGF Resumen Rend Obras",
+                label="Resumen Rend Obras",
                 logger=logger,  # Asegúrate de tener el logger importado
             )
 
@@ -86,9 +86,9 @@ class ResumenRendProvService(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
-    async def export(self, params: ResumenRendProvLiteFilter) -> StreamingResponse:
+    async def export(self, params: ResumenRendObrasLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        search_params = ResumenRendProvFullFilter(
+        search_params = ResumenRendObrasFullFilter(
             query_filter=params.query_filter,
             origen=params.origen,
             ejercicio=params.ejercicio,
@@ -103,9 +103,9 @@ class ResumenRendProvService(
         # 3. Usar el método de la clase base
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
         return self.export_to_excel(
-            data_pairs=[(df, "SGF_Resumen_Rend_Prov")],
-            filename="reporte_resumen_rend_prov.xlsx",
+            data_pairs=[(df, "SGF_Resumen_Rend_Obras")],
+            filename="reporte_resumen_rend_obras.xlsx",
         )
 
 
-ResumenRendProvServiceDependency = Annotated[ResumenRendProvService, Depends()]
+ResumenRendObrasServiceDependency = Annotated[ResumenRendObrasService, Depends()]

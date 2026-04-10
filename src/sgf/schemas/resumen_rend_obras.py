@@ -1,8 +1,8 @@
 __all__ = [
-    "ResumenRendProvReport",
-    "ResumenRendProvDocument",
-    "ResumenRendProvFullFilter",
-    "ResumenRendProvLiteFilter",
+    "ResumenRendObrasReport",
+    "ResumenRendObrasDocument",
+    "ResumenRendObrasFullFilter",
+    "ResumenRendObrasLiteFilter",
 ]
 
 
@@ -17,38 +17,39 @@ from .common import Origen
 
 
 # -------------------------------------------------
-class ResumenRendProvReport(BaseModel):
+class ResumenRendObrasReport(BaseModel):
     origen: Origen
     ejercicio: int
     mes: str
     fecha: datetime
     beneficiario: str
+    cod_obra: str
+    desc_obra: str
     destino: str
     libramiento: str
-    movimiento: str
-    cta_cte: str
     importe_bruto: NonNegativeFloat
     gcias: NonNegativeFloat
     sellos: NonNegativeFloat
+    tl: NonNegativeFloat
     iibb: NonNegativeFloat
     suss: NonNegativeFloat
-    invico: NonNegativeFloat
     seguro: NonNegativeFloat
     salud: NonNegativeFloat
     mutual: NonNegativeFloat
     otras: NonNegativeFloat
     retenciones: NonNegativeFloat
     importe_neto: NonNegativeFloat
+    movimiento: str
 
 
 # -------------------------------------------------
-class ResumenRendProvDocument(ResumenRendProvReport):
+class ResumenRendObrasDocument(ResumenRendObrasReport):
     id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
-class ResumenRendProvFullFilter(BaseFilterParams):
+class ResumenRendObrasFullFilter(BaseFilterParams):
     origen: Optional[str] = None
     ejercicio: Optional[str] = None
     # beneficiario: Optional[str] = None
@@ -57,7 +58,7 @@ class ResumenRendProvFullFilter(BaseFilterParams):
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ResumenRendProvLiteFilter(CamelModel):
+class ResumenRendObrasLiteFilter(CamelModel):
     query_filter: str = ""
     origen: Optional[str] = None
     ejercicio: Optional[str] = None

@@ -32,6 +32,7 @@ COLLECTIONS = [
     "siif_rvicon03",
     "siif_planillometro_hist",
     "sgf_resumen_rend_prov",
+    "sgf_resumen_rend_obras",
     "icaro_programas",
     "icaro_subprogramas",
     "icaro_proyectos",
