@@ -19,17 +19,16 @@ class ResumenRendObrasReport(BaseModel):
     ejercicio: Optional[int] = None
     mes: Optional[str] = None
     fecha: Optional[datetime] = None
-    nro_libramiento_sgf: Optional[str] = None
+    libramiento: Optional[str] = None
     beneficiario: Optional[str] = None
-    cod_obra: Optional[str] = None
     desc_obra: Optional[str] = None
     destino: Optional[str] = None
     importe_bruto: float
-    iibb: Optional[float] = None
-    tl: Optional[float] = None
-    sellos: Optional[float] = None
-    suss: Optional[float] = None
     gcias: Optional[float] = None
+    sellos: Optional[float] = None
+    tl: Optional[float] = None
+    iibb: Optional[float] = None
+    suss: Optional[float] = None
     seguro: Optional[float] = None
     salud: Optional[float] = None
     mutual: Optional[float] = None
@@ -48,12 +47,11 @@ class ResumenRendObrasDocument(ResumenRendObrasReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class ResumenRendObrasFullFilter(BaseFilterParams):
-    ejercicio: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class ResumenRendObrasLiteFilter(CamelModel):
     query_filter: str = ""
-    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

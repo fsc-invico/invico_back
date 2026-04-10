@@ -36,7 +36,6 @@ class ResumenRendObrasReport(BaseModel):
     seguro: NonNegativeFloat
     salud: NonNegativeFloat
     mutual: NonNegativeFloat
-    otras: NonNegativeFloat
     retenciones: NonNegativeFloat
     importe_neto: NonNegativeFloat
     movimiento: str
