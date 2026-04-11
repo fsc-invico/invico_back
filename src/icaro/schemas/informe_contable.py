@@ -22,7 +22,7 @@ class InformeContableReport(BaseModel):
     nro_certificado: Optional[str] = None
     monto_certificado: Optional[float] = None
     fondo_reparo: Optional[float] = None
-    importe_bruto: float
+    importe_bruto: Optional[float] = None
     iibb: Optional[float] = None
     lp: Optional[float] = None
     suss: Optional[float] = None
