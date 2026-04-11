@@ -16,11 +16,11 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class InformeContableReport(BaseModel):
-    ejercicio: int
-    beneficiario: str
-    desc_obra: str
-    nro_certificado: str
-    monto_certificado: float
+    ejercicio: Optional[int] = None
+    beneficiario: Optional[str] = None
+    desc_obra: Optional[str] = None
+    nro_certificado: Optional[str] = None
+    monto_certificado: Optional[float] = None
     fondo_reparo: Optional[float] = None
     importe_bruto: float
     iibb: Optional[float] = None
@@ -28,7 +28,7 @@ class InformeContableReport(BaseModel):
     suss: Optional[float] = None
     gcias: Optional[float] = None
     invico: Optional[float] = None
-    otras_retenciones: Optional[float] = None
+    retenciones: Optional[float] = None
     importe_neto: float
     id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
