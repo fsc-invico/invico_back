@@ -29,7 +29,7 @@ class InformeContableReport(BaseModel):
     gcias: Optional[float] = None
     invico: Optional[float] = None
     retenciones: Optional[float] = None
-    importe_neto: float
+    importe_neto: Optional[float] = None
     id_carga: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
