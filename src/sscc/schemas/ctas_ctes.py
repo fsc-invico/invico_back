@@ -16,6 +16,7 @@ from ...utils import BaseFilterParams, CamelModel
 # -------------------------------------------------
 class CtasCtesReport(BaseModel):
     map_to: str
+    desc_cta_cte: Optional[str] = None
     sscc_cta_cte: Optional[str] = None
     real_cta_cte: Optional[str] = None
     siif_recursos_cta_cte: Optional[str] = None
