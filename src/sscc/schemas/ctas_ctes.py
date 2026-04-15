@@ -35,12 +35,11 @@ class CtasCtesDocument(CtasCtesReport):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class CtasCtesFullFilter(BaseFilterParams):
-    map_to: Optional[str] = None
+    pass
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class CtasCtesLiteFilter(CamelModel):
     query_filter: str = ""
-    map_to: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False

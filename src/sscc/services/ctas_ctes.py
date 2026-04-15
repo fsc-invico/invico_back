@@ -60,10 +60,6 @@ class CtasCtesService(
             # 2. Determinar filtro de borrado (Idempotencia)
             # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
             delete_filter = {}
-            if validation_result.validated:
-                # Tomamos el map_to del primer registro válido
-                cta_cte_detectado = validation_result.validated[0].map_to
-                delete_filter = {"map_to": cta_cte_detectado}
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
@@ -83,8 +79,6 @@ class CtasCtesService(
         # 1. Creamos el objeto de filtros normal
         search_params = CtasCtesFullFilter(
             query_filter=params.query_filter,
-            map_to=params.map_to,
-            # cta_cte=params.cta_cte,
             limit=None,  # Para traer todo
         )
 
