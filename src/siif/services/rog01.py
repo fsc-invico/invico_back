@@ -69,6 +69,7 @@ class Rog01Service(
         # 1. Creamos el objeto de filtros normal
         search_params = Rog01FullFilter(
             query_filter=params.query_filter,
+            grupo=params.grupo,
             limit=None,  # Para traer todo
         )
 

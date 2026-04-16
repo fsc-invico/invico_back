@@ -5,6 +5,8 @@ __all__ = [
     "Rog01FullFilter",
 ]
 
+from typing import Optional
+
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -33,10 +35,11 @@ class Rog01Document(Rog01Report):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rog01FullFilter(BaseFilterParams):
-    pass
+    grupo: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class Rog01LiteFilter(CamelModel):
     query_filter: str = ""
+    grupo: Optional[str] = None
