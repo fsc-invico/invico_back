@@ -30,6 +30,7 @@ COLLECTIONS = [
     "siif_rdeu012",
     "siif_rcocc31",
     "siif_rvicon03",
+    "siif_rog01",
     "siif_planillometro_hist",
     "sgf_resumen_rend_prov",
     "sgf_resumen_rend_obras",
