@@ -78,6 +78,11 @@ class GrupoPartidaStrSIIF(str, Enum):
     bienes_consumo = "str:2"
     servicios = "str:3"
     bienes_capital = "str:4"
+    transferencias = "str:5"
+    activos_financieros = "str:6"
+    servicios_deudas = "str:7"
+    otros_gastos = "str:8"
+    gastos_figurativos = "str:9"
 
 
 # -------------------------------------------------
