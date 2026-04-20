@@ -32,10 +32,27 @@ class CargaService(
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
         # Usamos __post_init__ para pasarle los datos a la clase base.
+        self.repository.unique_field = (
+            "id_carga"  # Asegúrate de que tu repositorio sepa cuál es el campo único
+        )
         super().__init__(
             repository=self.repository,
             filter_schema=CargaFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
+
+    # -------------------------------------------------
+    async def add_one(self, data: CargaReport) -> CargaDocument:
+        """
+        Inserta un único registro verificando que el id_carga no exista.
+        """
+        try:
+            # 1. Verificar si ya existe un registro con ese id_carga
+            # Usamos el repositorio para buscar por el campo único
+            return await self.repository.save(data)
+
+        except Exception as e:
+            logger.error(f"Error en add_one: {str(e)}")
+            self._handle_error("Error durante el proceso de add_one", e)
 
     # -------------------------------------------------
     async def add_many(self, data: List[CargaReport]) -> RouteReturnSchema:
