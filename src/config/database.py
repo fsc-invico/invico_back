@@ -102,7 +102,12 @@ class BaseRepository(Generic[ModelType]):
         # if not isinstance(data, self.model):
         #     raise TypeError(f"Expected instance of {self.model}, got {type(data)}")
 
-        doc = jsonable_encoder(data, by_alias=True)
+        # doc = jsonable_encoder(data, by_alias=True)
+        doc = (
+            data.model_dump(by_alias=True)
+            if hasattr(data, "model_dump")
+            else dict(data)
+        )
 
         if self.unique_field and doc.get(self.unique_field):
             existing = await self.collection.find_one(
