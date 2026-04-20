@@ -32,7 +32,7 @@ class CargaReport(BaseModel):
     avance: float
     nro_certificado: Optional[str] = None
     desc_obra: str
-    origen: str
+    origen: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
