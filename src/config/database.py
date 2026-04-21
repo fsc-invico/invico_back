@@ -156,6 +156,20 @@ class BaseRepository(Generic[ModelType]):
         )
         return result.acknowledged
 
+    # --------------------------------------------------
+    async def find_one_and_update(
+            self, filter: dict, update_data: dict, return_document: bool = True
+        ) -> Optional[ModelType]:
+        # return_document=True hace que devuelva el documento DESPUÉS del cambio
+        result = await self.collection.find_one_and_update(
+            filter,
+            {"$set": update_data},
+            return_document=return_document 
+        )
+        if result:
+            return self.model(**result)
+        return None
+
     # -------------------------------------------------
     async def get_all(self, limit: Optional[int] = None) -> List[ModelType]:
         cursor = self.collection.find()

@@ -2,12 +2,13 @@ __all__ = ["CargaService", "CargaServiceDependency"]
 
 # import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 # from io import BytesIO
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -103,27 +104,51 @@ class CargaService(
             data_pairs=[(df, "ICARO_CARGA")], filename="reporte_icaro_carga.xlsx"
         )
 
-    # # -------------------------------------------------
-    # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
-    #     new_timestamp = datetime.now(timezone.utc)
+    # -------------------------------------------------
+    async def update_one_safely(self, id: str, data: CargaReport) -> CargaDocument:
+        try:
+            post_id = CargaDocument.validate_id(id)
+            new_timestamp = datetime.now(timezone.utc)
+            
+            # 1. VERIFICACIÓN DE ID_CARGA DUPLICADO
+            # Buscamos si existe otro documento con ese id_carga que NO sea el nuestro
+            duplicate = await self.repository.get_one_by_fields({
+                "id_carga": data.id_carga,
+                "_id": {"$ne": post_id} 
+            })
+            
+            if duplicate:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede actualizar: El ID de Carga '{data.id_carga}' ya está siendo usado por otro comprobante."
+                )
 
-    #     # Intentamos la actualización
-    #     result = await db.posts.update_one(
-    #         {
-    #             "_id": ObjectId(post_id),
-    #             "updated_at": old_timestamp,  # <--- AQUÍ ESTÁ LA MAGIA
-    #         },
-    #         {"$set": {"title": new_title, "updated_at": new_timestamp}},
-    #     )
+            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            new_data = data.model_dump(by_alias=True)
+            new_data["updated_at"] = new_timestamp
 
-    #     if result.modified_count == 0:
-    #         # Si modified_count es 0, significa que alguien cambió el updated_at
-    #         # antes que nosotros y el filtro ya no coincidió.
-    #         raise Exception(
-    #             "Conflicto de edición: El registro fue modificado por otro usuario."
-    #         )
+            updated_doc = await self.repository.find_one_and_update(
+                filter={
+                    "_id": post_id, 
+                    "updated_at": data.updated_at # El cerrojo
+                },
+                update_data=new_data,
+                return_document=True
+            )
 
-    #     return "Actualizado con éxito"
+            if not updated_doc:
+                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página."
+                )
+
+            return self.model(**updated_doc)
+        
+        except Exception as e:
+            logger.error(f"Error en update_one_safely: {str(e)}")
+            self._handle_error("Error durante el proceso de update_one_safely", e)
+
 
 
 CargaServiceDependency = Annotated[CargaService, Depends()]

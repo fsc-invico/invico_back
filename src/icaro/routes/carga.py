@@ -18,6 +18,13 @@ factory = GenericRouterFactory(
 carga_router = factory.get_router()
 
 
+# -------------------------------------------------
 @carga_router.post("/add_one")
 async def add_one(data: CargaReport, service: CargaServiceDependency):
     return await service.add_one(data)
+
+
+# -------------------------------------------------
+@carga_router.put("/{id}")
+async def update_one(id: str, data: CargaReport, service: CargaServiceDependency):
+    return await service.update_one_safely(id = id, data = data)
