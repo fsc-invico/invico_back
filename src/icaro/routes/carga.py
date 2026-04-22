@@ -25,6 +25,6 @@ async def add_one(data: CargaReport, service: CargaServiceDependency):
 
 
 # -------------------------------------------------
-@carga_router.put("/{id}")
+@carga_router.put("/update_one/{id}")
 async def update_one(id: str, data: CargaReport, service: CargaServiceDependency):
     return await service.update_one_safely(id = id, data = data)

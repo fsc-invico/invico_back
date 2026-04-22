@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
+from bson import ObjectId
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
@@ -107,14 +108,14 @@ class CargaService(
     # -------------------------------------------------
     async def update_one_safely(self, id: str, data: CargaReport) -> CargaDocument:
         try:
-            post_id = CargaDocument.validate_id(id)
+            mongo_id = ObjectId(id)
             new_timestamp = datetime.now(timezone.utc)
             
             # 1. VERIFICACIÓN DE ID_CARGA DUPLICADO
             # Buscamos si existe otro documento con ese id_carga que NO sea el nuestro
             duplicate = await self.repository.get_one_by_fields({
                 "id_carga": data.id_carga,
-                "_id": {"$ne": post_id} 
+                "_id": {"$ne": mongo_id} 
             })
             
             if duplicate:
@@ -129,7 +130,7 @@ class CargaService(
 
             updated_doc = await self.repository.find_one_and_update(
                 filter={
-                    "_id": post_id, 
+                    "_id": mongo_id, 
                     "updated_at": data.updated_at # El cerrojo
                 },
                 update_data=new_data,
