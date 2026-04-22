@@ -144,7 +144,7 @@ class CargaService(
                     detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página."
                 )
 
-            return self.model(**updated_doc)
+            return updated_doc
         
         except Exception as e:
             logger.error(f"Error en update_one_safely: {str(e)}")
