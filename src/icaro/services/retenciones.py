@@ -57,8 +57,7 @@ class RetencionesService(
                 "deleted_count": count,
                 "message": f"Se eliminaron {count} retenciones asociadas.",
             }
-        except HTTPException:
-            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+
         except Exception as e:
             logger.error(f"Error en delete_many_by_carga_id: {str(e)}")
             self._handle_error("Error eliminando retenciones", e)

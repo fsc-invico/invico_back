@@ -107,7 +107,7 @@ class CargaService(
     async def delete_one(self, id: str) -> CargaDocument:
         try:
             mongo_id = ObjectId(id)
-            document = self.repository.delete_by_id(mongo_id)
+            document = await self.repository.delete_by_id(mongo_id)
 
             if not document:
                 raise HTTPException(

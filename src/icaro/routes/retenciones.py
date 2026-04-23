@@ -18,6 +18,6 @@ retenciones_router = factory.get_router()
 
 
 # -------------------------------------------------
-@retenciones_router.delete("/delete_many/{id_carga}")
+@retenciones_router.delete("/delete_many/{id_carga:path}")
 async def delete_many_by_carga_id(id_carga: str, service: RetencionesServiceDependency):
     return await service.delete_many_by_carga_id(id_carga=id_carga)
