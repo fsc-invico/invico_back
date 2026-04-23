@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -46,6 +46,22 @@ class RetencionesService(
             repository=self.repository,
             filter_schema=RetencionesFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
+
+    # -------------------------------------------------
+    async def delete_many_by_carga_id(self, id_carga: str) -> dict:
+        try:
+            count = await self.repository.delete_by_fields({"id_carga": id_carga})
+
+            return {
+                "status": "success",
+                "deleted_count": count,
+                "message": f"Se eliminaron {count} retenciones asociadas.",
+            }
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_many_by_carga_id: {str(e)}")
+            self._handle_error("Error eliminando retenciones", e)
 
     # -------------------------------------------------
     async def add_many(self, data: List[RetencionesReport]) -> RouteReturnSchema:
@@ -94,28 +110,6 @@ class RetencionesService(
             data_pairs=[(df, "ICARO_RETENCIONES")],
             filename="reporte_icaro_retenciones.xlsx",
         )
-
-    # # -------------------------------------------------
-    # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
-    #     new_timestamp = datetime.now(timezone.utc)
-
-    #     # Intentamos la actualización
-    #     result = await db.posts.update_one(
-    #         {
-    #             "_id": ObjectId(post_id),
-    #             "updated_at": old_timestamp,  # <--- AQUÍ ESTÁ LA MAGIA
-    #         },
-    #         {"$set": {"title": new_title, "updated_at": new_timestamp}},
-    #     )
-
-    #     if result.modified_count == 0:
-    #         # Si modified_count es 0, significa que alguien cambió el updated_at
-    #         # antes que nosotros y el filtro ya no coincidió.
-    #         raise Exception(
-    #             "Conflicto de edición: El registro fue modificado por otro usuario."
-    #         )
-
-    #     return "Actualizado con éxito"
 
 
 RetencionesServiceDependency = Annotated[RetencionesService, Depends()]

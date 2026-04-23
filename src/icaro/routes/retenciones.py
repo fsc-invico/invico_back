@@ -4,7 +4,7 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     RetencionesFullFilter,
     RetencionesLiteFilter,
 )
-from ..services import RetencionesService  # La clase del servicio
+from ..services import RetencionesService, RetencionesServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=RetencionesService,
@@ -16,10 +16,8 @@ factory = GenericRouterFactory(
 
 retenciones_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
 
-
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@retenciones_router.delete("/delete_many/{id_carga}")
+async def delete_many_by_carga_id(id_carga: str, service: RetencionesServiceDependency):
+    return await service.delete_many_by_carga_id(id_carga=id_carga)

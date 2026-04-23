@@ -108,9 +108,7 @@ class CargaService(
         try:
             mongo_id = ObjectId(id)
             document = self.repository.delete_by_id(mongo_id)
-            # if document:
-            #     validated_doc = StoredProduct.model_validate(document)
-            #     return validated_doc.model_dump()
+
             if not document:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

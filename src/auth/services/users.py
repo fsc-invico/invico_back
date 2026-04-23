@@ -92,9 +92,7 @@ class UsersService:
     # -------------------------------------------------
     async def update_role(self, user_id: PyObjectId, new_role: str):
         # 1. Intentamos actualizar en la base de datos
-        result = await self.users.update_one(
-            {"_id": user_id}, {"role": new_role}
-        )
+        result = await self.users.update_one({"_id": user_id}, {"role": new_role})
 
         if not result:
             # Verificamos si es que no existe o si ya tenía ese rol
@@ -111,8 +109,7 @@ class UsersService:
         # 1. Intentamos actualizar SOLO si el rol actual es 'pending'
         # Esto evita que 'aprove' cambie el rol de un admin o un usuario ya activo
         result = await self.users.update_one(
-            filter={"_id": user_id, "role": "pending"}, 
-            update_data={"role": "user"}
+            filter={"_id": user_id, "role": "pending"}, update_data={"role": "user"}
         )
 
         if not result:
@@ -234,7 +231,7 @@ class UsersService:
             {"user_id": user_id, "system_name": system_name.lower().strip()}
         )
 
-        if result.deleted_count == 0:
+        if result == 0:
             raise HTTPException(status_code=404, detail="Credencial no encontrada")
 
         return {"message": f"Credencial para {system_name} eliminada con éxito."}
