@@ -59,6 +59,71 @@ class CargaService(
             self._handle_error("Error durante el proceso de add_one", e)
 
     # -------------------------------------------------
+    async def update_one_safely(self, id: str, data: CargaReport) -> CargaDocument:
+        try:
+            mongo_id = ObjectId(id)
+            new_timestamp = datetime.now(timezone.utc)
+
+            # 1. VERIFICACIÓN DE ID_CARGA DUPLICADO
+            # Buscamos si existe otro documento con ese id_carga que NO sea el nuestro
+            duplicate = await self.repository.get_one_by_fields(
+                {"id_carga": data.id_carga, "_id": {"$ne": mongo_id}}
+            )
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede actualizar: El ID de Carga '{data.id_carga}' ya está siendo usado por otro comprobante.",
+                )
+
+            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            new_data = data.model_dump(by_alias=True)
+            new_data["updated_at"] = new_timestamp
+
+            updated_doc = await self.repository.find_one_and_update(
+                filter={
+                    "_id": mongo_id,
+                    "updated_at": data.updated_at,  # El cerrojo
+                },
+                update_data=new_data,
+                return_document=True,
+            )
+
+            if not updated_doc:
+                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
+                )
+
+            return updated_doc
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en update_one_safely: {str(e)}")
+            self._handle_error("Error durante el proceso de update_one_safely", e)
+
+    # -------------------------------------------------
+    async def delete_one(self, id: str) -> CargaDocument:
+        try:
+            mongo_id = ObjectId(id)
+            document = self.repository.delete_by_id(mongo_id)
+            # if document:
+            #     validated_doc = StoredProduct.model_validate(document)
+            #     return validated_doc.model_dump()
+            if not document:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="El comprobante no existe o ya fue eliminado.",
+                )
+            return document
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_one_hard: {str(e)}")
+            self._handle_error("Error durante el proceso de delete_one_hard", e)
+
+    # -------------------------------------------------
     async def add_many(self, data: List[CargaReport]) -> RouteReturnSchema:
         try:
             # 1. Validar usando tu función genérica
@@ -106,50 +171,6 @@ class CargaService(
         return self.export_to_excel(
             data_pairs=[(df, "ICARO_CARGA")], filename="reporte_icaro_carga.xlsx"
         )
-
-    # -------------------------------------------------
-    async def update_one_safely(self, id: str, data: CargaReport) -> CargaDocument:
-        try:
-            mongo_id = ObjectId(id)
-            new_timestamp = datetime.now(timezone.utc)
-
-            # 1. VERIFICACIÓN DE ID_CARGA DUPLICADO
-            # Buscamos si existe otro documento con ese id_carga que NO sea el nuestro
-            duplicate = await self.repository.get_one_by_fields(
-                {"id_carga": data.id_carga, "_id": {"$ne": mongo_id}}
-            )
-
-            if duplicate:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"No se puede actualizar: El ID de Carga '{data.id_carga}' ya está siendo usado por otro comprobante.",
-                )
-
-            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
-            new_data = data.model_dump(by_alias=True)
-            new_data["updated_at"] = new_timestamp
-
-            updated_doc = await self.repository.find_one_and_update(
-                filter={
-                    "_id": mongo_id,
-                    "updated_at": data.updated_at,  # El cerrojo
-                },
-                update_data=new_data,
-                return_document=True,
-            )
-
-            if not updated_doc:
-                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
-                )
-
-            return updated_doc
-
-        except Exception as e:
-            logger.error(f"Error en update_one_safely: {str(e)}")
-            self._handle_error("Error durante el proceso de update_one_safely", e)
 
 
 CargaServiceDependency = Annotated[CargaService, Depends()]

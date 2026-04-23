@@ -158,13 +158,11 @@ class BaseRepository(Generic[ModelType]):
 
     # --------------------------------------------------
     async def find_one_and_update(
-            self, filter: dict, update_data: dict, return_document: bool = True
-        ) -> Optional[ModelType]:
+        self, filter: dict, update_data: dict, return_document: bool = True
+    ) -> Optional[ModelType]:
         # return_document=True hace que devuelva el documento DESPUÉS del cambio
         result = await self.collection.find_one_and_update(
-            filter,
-            {"$set": update_data},
-            return_document=return_document 
+            filter, {"$set": update_data}, return_document=return_document
         )
         if result:
             return self.model(**result)
@@ -240,9 +238,11 @@ class BaseRepository(Generic[ModelType]):
         return doc if doc else None
 
     # -------------------------------------------------
-    async def delete_by_id(self, id: str) -> bool:
-        result = await self.collection.delete_one({"_id": id})
-        return result.deleted_count == 1
+    async def delete_by_id(self, id: str) -> Optional[ModelType]:
+        result = await self.collection.find_one_and_delete({"_id": id})
+        if result:
+            return self.model(**result)
+        return None
 
     # -------------------------------------------------
     async def delete_by_fields(self, fields: dict) -> int:

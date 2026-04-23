@@ -19,12 +19,18 @@ carga_router = factory.get_router()
 
 
 # -------------------------------------------------
-@carga_router.post("/add_one")
+@carga_router.post("/add_one", response_model=CargaDocument)
 async def add_one(data: CargaReport, service: CargaServiceDependency):
     return await service.add_one(data)
 
 
 # -------------------------------------------------
-@carga_router.put("/update_one/{id}")
+@carga_router.put("/update_one/{id}", response_model=CargaDocument)
 async def update_one(id: str, data: CargaReport, service: CargaServiceDependency):
-    return await service.update_one_safely(id = id, data = data)
+    return await service.update_one_safely(id=id, data=data)
+
+
+# -------------------------------------------------
+@carga_router.delete("/delete_one/{id}", response_model=CargaDocument)
+async def delete_one(id: str, service: CargaServiceDependency):
+    return await service.delete_one(id=id)
