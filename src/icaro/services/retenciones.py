@@ -1,16 +1,14 @@
 __all__ = ["RetencionesService", "RetencionesServiceDependency"]
 
-# import os
-from dataclasses import dataclass
 
-# from io import BytesIO
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
@@ -20,6 +18,7 @@ from ...utils import (
 )
 from ..repositories import RetencionesRepositoryDependency
 from ..schemas import (
+    RetencionCreate,
     RetencionesDocument,
     RetencionesFullFilter,
     RetencionesLiteFilter,
@@ -91,6 +90,45 @@ class RetencionesService(
 
         except Exception as e:
             self._handle_error("Error durante el proceso de add_many", e)
+
+    # -------------------------------------------------
+    async def add_many_with_id_carga(self, id_carga: str, items: List[RetencionCreate]):
+        try:
+            # Lógica de extracción: 00544/26C -> 26 -> 2026
+            try:
+                # Partimos por la barra y tomamos los primeros 2 caracteres de la segunda parte
+                year_short = id_carga.split("/")[1][:2]
+                ejercicio = int(f"20{year_short}")
+            except (IndexError, ValueError):
+                # Fallback por si el id_carga no cumple el formato
+                ejercicio = datetime.now(timezone.utc).year
+
+            # Construimos los documentos
+            documents = [
+                {
+                    "ejercicio": ejercicio,
+                    "id_carga": id_carga,
+                    "codigo": item.codigo,
+                    "importe": item.importe,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+                for item in items
+            ]
+
+            if not documents:
+                return {"message": "Lista de retenciones vacía", "count": 0}
+
+            result = await self.repository.save_all(documents)
+
+            return {
+                "status": "success",
+                "ejercicio_detectado": ejercicio,
+                "inserted_count": len(result),
+            }
+
+        except Exception as e:
+            logger.error(f"Error en batch create: {str(e)}")
+            self._handle_error("No se pudo procesar el lote de retenciones", e)
 
     # -------------------------------------------------
     async def export(self, params: RetencionesLiteFilter) -> StreamingResponse:

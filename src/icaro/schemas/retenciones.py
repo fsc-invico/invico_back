@@ -3,10 +3,12 @@ __all__ = [
     "RetencionesDocument",
     "RetencionesFullFilter",
     "RetencionesLiteFilter",
+    "RetencionCreate",
+    "RetencionesBatchCreate",
 ]
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -41,3 +43,14 @@ class RetencionesLiteFilter(CamelModel):
     ejercicio: Optional[str] = None
 
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class RetencionCreate(BaseModel):
+    codigo: str
+    importe: float
+
+
+# -------------------------------------------------
+class RetencionesBatchCreate(BaseModel):
+    retenciones: List[RetencionCreate]
