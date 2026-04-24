@@ -123,7 +123,7 @@ class RetencionesService(
             return {
                 "status": "success",
                 "ejercicio_detectado": ejercicio,
-                "inserted_count": len(result),
+                "inserted_count": len(result.inserted_ids),
             }
 
         except Exception as e:
