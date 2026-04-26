@@ -60,7 +60,8 @@ class InformeContableService(
 
             # 2. Determinar filtro de borrado (Idempotencia)
             # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
-            delete_filter = {}
+            # delete_filter = {}
+            delete_filter = {"id_carga": {"$in": ["", None]}}
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
