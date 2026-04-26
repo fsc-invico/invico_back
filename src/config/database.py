@@ -157,6 +157,16 @@ class BaseRepository(Generic[ModelType]):
         return result.acknowledged
 
     # --------------------------------------------------
+    async def update_by_id(self, id: str, data: dict):
+        from bson import ObjectId
+        from pymongo import ReturnDocument
+
+        result = await self.collection.find_one_and_update(
+            {"_id": ObjectId(id)}, {"$set": data}, return_document=ReturnDocument.AFTER
+        )
+        return result
+
+    # --------------------------------------------------
     async def find_one_and_update(
         self, filter: dict, update_data: dict, return_document: bool = True
     ) -> Optional[ModelType]:

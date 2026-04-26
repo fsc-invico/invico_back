@@ -3,6 +3,7 @@ __all__ = [
     "InformeContableDocument",
     "InformeContableFullFilter",
     "InformeContableLiteFilter",
+    "InformeContableUpdateIdCarga",
 ]
 
 from datetime import datetime, timezone
@@ -50,3 +51,8 @@ class InformeContableFullFilter(BaseFilterParams):
 class InformeContableLiteFilter(CamelModel):
     query_filter: str = ""
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class InformeContableUpdateIdCarga(BaseModel):
+    id_carga: str

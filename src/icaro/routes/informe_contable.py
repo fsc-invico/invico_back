@@ -3,8 +3,9 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     InformeContableDocument,
     InformeContableFullFilter,
     InformeContableLiteFilter,
+    InformeContableUpdateIdCarga,
 )
-from ..services import InformeContableService  # La clase del servicio
+from ..services import InformeContableService, InformeContableServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=InformeContableService,
@@ -16,10 +17,11 @@ factory = GenericRouterFactory(
 
 informe_contable_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
 
-
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+@informe_contable_router.patch("/update_id_carga/{id}")
+async def update_id_carga(
+    id: str,
+    payload: InformeContableUpdateIdCarga,
+    service: InformeContableServiceDependency,
+):
+    return await service.update_id_carga(id=id, id_carga=payload.id_carga)

@@ -1,16 +1,13 @@
 __all__ = ["InformeContableService", "InformeContableServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
@@ -96,27 +93,32 @@ class InformeContableService(
             filename="reporte_icaro_certificados.xlsx",
         )
 
-    # # -------------------------------------------------
-    # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
-    #     new_timestamp = datetime.now(timezone.utc)
+    # -------------------------------------------------
+    async def update_id_carga(self, id: str, id_carga: str) -> InformeContableDocument:
+        try:
+            # 1. Preparamos los datos de actualización
+            update_data = {
+                "id_carga": id_carga,
+                "updated_at": datetime.now(timezone.utc),
+            }
 
-    #     # Intentamos la actualización
-    #     result = await db.posts.update_one(
-    #         {
-    #             "_id": ObjectId(post_id),
-    #             "updated_at": old_timestamp,  # <--- AQUÍ ESTÁ LA MAGIA
-    #         },
-    #         {"$set": {"title": new_title, "updated_at": new_timestamp}},
-    #     )
+            # 2. Llamamos al repositorio (suponiendo que tenés un update genérico)
+            # o usamos find_one_and_update directamente
+            updated_doc = await self.repository.update_by_id(id, update_data)
 
-    #     if result.modified_count == 0:
-    #         # Si modified_count es 0, significa que alguien cambió el updated_at
-    #         # antes que nosotros y el filtro ya no coincidió.
-    #         raise Exception(
-    #             "Conflicto de edición: El registro fue modificado por otro usuario."
-    #         )
+            if not updated_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No se encontró el registro con ID {id}",
+                )
 
-    #     return "Actualizado con éxito"
+            return updated_doc
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error al actualizar id_carga: {str(e)}")
+            self._handle_error("Error técnico al actualizar el vínculo de carga", e)
 
 
 InformeContableServiceDependency = Annotated[InformeContableService, Depends()]
