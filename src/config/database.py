@@ -164,7 +164,9 @@ class BaseRepository(Generic[ModelType]):
         result = await self.collection.find_one_and_update(
             {"_id": ObjectId(id)}, {"$set": data}, return_document=ReturnDocument.AFTER
         )
-        return result
+        if result:
+            return self.model(**result)
+        return None
 
     # --------------------------------------------------
     async def find_one_and_update(
