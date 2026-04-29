@@ -4,7 +4,6 @@ from typing import Generic, List, Optional, Type, TypeVar
 
 from bson import ObjectId
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
@@ -155,6 +154,15 @@ class BaseRepository(Generic[ModelType]):
             filter, {"$set": update_data}, upsert=upsert
         )
         return result.acknowledged
+
+    # --------------------------------------------------
+    async def update_many(
+        self, filter: dict, update_data: dict, upsert: bool = False
+    ) -> bool:
+        result = await self.collection.update_many(
+            filter, {"$set": update_data}, upsert=upsert
+        )
+        return result.modified_count
 
     # --------------------------------------------------
     async def update_by_id(self, id: str, data: dict):

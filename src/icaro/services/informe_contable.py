@@ -121,5 +121,23 @@ class InformeContableService(
             logger.error(f"Error al actualizar id_carga: {str(e)}")
             self._handle_error("Error técnico al actualizar el vínculo de carga", e)
 
+    # -------------------------------------------------
+    async def unlink_carga_value(self, id_carga: str):
+        try:
+            # Buscamos el documento que tiene ese id_carga y lo seteamos en ""
+            update_data = {"id_carga": "", "updated_at": datetime.now(timezone.utc)}
+
+            # Usamos update_many por si las dudas hubiera más de uno,
+            # aunque lo normal es que sea uno solo.
+            modificados = await self.repository.update_many(
+                {"id_carga": id_carga}, update_data
+            )
+            if modificados > 0:
+                logger.info(f"Se actualizaron {modificados} registros.")
+
+            return {"status": "updated", "modified_count": modificados}
+        except Exception as e:
+            self._handle_error(f"Error al desvincular el id_carga {id_carga}", e)
+
 
 InformeContableServiceDependency = Annotated[InformeContableService, Depends()]

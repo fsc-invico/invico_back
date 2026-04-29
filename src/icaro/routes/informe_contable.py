@@ -18,6 +18,7 @@ factory = GenericRouterFactory(
 informe_contable_router = factory.get_router()
 
 
+# -------------------------------------------------
 @informe_contable_router.patch("/update_id_carga/{id}")
 async def update_id_carga(
     id: str,
@@ -25,3 +26,9 @@ async def update_id_carga(
     service: InformeContableServiceDependency,
 ):
     return await service.update_id_carga(id=id, id_carga=payload.id_carga)
+
+
+# -------------------------------------------------
+@informe_contable_router.patch("/unlink_by_carga/{id_carga:path}")
+async def unlink_id_carga(id_carga: str, service: InformeContableServiceDependency):
+    return await service.unlink_carga_value(id_carga=id_carga)
