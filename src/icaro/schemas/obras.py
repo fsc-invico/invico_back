@@ -25,8 +25,8 @@ class ObrasReport(BaseModel):
     norma_legal: Optional[str] = None
     localidad: str
     info_adicional: Optional[str] = None
-    monto_contrato: Optional[float] = None
-    monto_adicional: Optional[float] = None
+    monto_contrato: float = 0.0  # Cambiado de Optional a default 0.0
+    monto_adicional: float = 0.0  # Cambiado de Optional a default 0.0
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

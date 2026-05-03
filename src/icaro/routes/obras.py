@@ -3,8 +3,9 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     ObrasDocument,
     ObrasFullFilter,
     ObrasLiteFilter,
+    ObrasReport,
 )
-from ..services import ObrasService  # La clase del servicio
+from ..services import ObrasService, ObrasServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=ObrasService,
@@ -16,10 +17,11 @@ factory = GenericRouterFactory(
 
 obras_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
 
-
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@obras_router.post("/add_one")
+async def add_one_obra(
+    payload: ObrasReport,
+    service: ObrasServiceDependency,
+):
+    return await service.add_one(obra=payload)

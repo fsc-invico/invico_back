@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -30,8 +30,7 @@ class ObrasService(
     repository: ObrasRepositoryDependency
 
     def __post_init__(self):
-        # Como usamos @dataclass, el __init__ se genera solo.
-        # Usamos __post_init__ para pasarle los datos a la clase base.
+        self.repository.unique_field = "desc_obra"
         super().__init__(
             repository=self.repository,
             filter_schema=ObrasFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
@@ -80,6 +79,18 @@ class ObrasService(
         return self.export_to_excel(
             data_pairs=[(df, "ICARO_OBRAS")], filename="reporte_icaro_obras.xlsx"
         )
+
+    # -------------------------------------------------
+    async def add_one(self, obra: ObrasReport):
+        try:
+            # Invocamos save_one que ya maneja la conversión a dict y unicidad
+            nueva_obra = await self.repository.save_one(obra)
+            return nueva_obra
+
+        except ValueError as e:
+            self._handle_error("Error de validación", e, status_code=400)
+        except Exception as e:
+            self._handle_error("Error inesperado en el servidor", e)
 
     # # -------------------------------------------------
     # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
