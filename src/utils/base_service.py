@@ -86,11 +86,10 @@ class BaseService(ABC, Generic[R, D, F, L]):
         pass
 
     # -------------------------------------------------
-    def _handle_error(self, message: str, exception: Exception):
-        """Método de utilidad interno para manejo de logs y errores"""
+    def _handle_error(self, message: str, exception: Exception, status_code: int = 500):
         logger.error(f"{message}: {exception}")
         raise HTTPException(
-            status_code=500,
+            status_code=status_code,
             detail=f"{message}: {str(exception)}",
         )
 
