@@ -52,7 +52,7 @@ class CargaService(
             # Usamos el repositorio para buscar por el campo único
             new_timestamp = datetime.now(timezone.utc)
             data.updated_at = new_timestamp
-            return await self.repository.save(data)
+            return await self.repository.save_one(data)
 
         except Exception as e:
             logger.error(f"Error en add_one: {str(e)}")

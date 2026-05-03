@@ -44,7 +44,7 @@ class UsersService:
         insert_user.update(hash_password=hash_password)
         insert_user = PrivateUser.model_validate(insert_user)
 
-        new_user = await self.users.save(insert_user)
+        new_user = await self.users.save_one(insert_user)
         logger.debug("New user created: %s", new_user)
         # return new_user
         return PublicStoredUser.model_validate(

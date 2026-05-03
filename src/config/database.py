@@ -97,7 +97,7 @@ class BaseRepository(Generic[ModelType]):
         self.collection = Database.db[self.collection_name]  # Motor async collection
 
     # -------------------------------------------------
-    async def save(self, data: ModelType) -> ModelType:
+    async def save_one(self, data: ModelType) -> ModelType:
         # if not isinstance(data, self.model):
         #     raise TypeError(f"Expected instance of {self.model}, got {type(data)}")
 
