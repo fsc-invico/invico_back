@@ -20,7 +20,7 @@ from ...utils import (
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
-from ..repositories import ObrasRepositoryDependency
+from ..repositories import CargaRepositoryDependency, ObrasRepositoryDependency
 from ..schemas import ObrasDocument, ObrasFullFilter, ObrasLiteFilter, ObrasReport
 
 
@@ -30,6 +30,7 @@ class ObrasService(
     BaseService[ObrasReport, ObrasDocument, ObrasFullFilter, ObrasLiteFilter]
 ):
     repository: ObrasRepositoryDependency
+    carga_repository: CargaRepositoryDependency
 
     def __post_init__(self):
         self.repository.unique_field = "desc_obra"
@@ -98,9 +99,15 @@ class ObrasService(
     async def update_one_safely(self, id: str, data: ObrasReport) -> ObrasDocument:
         try:
             mongo_id = ObjectId(id)
-            new_timestamp = datetime.now(timezone.utc)
 
-            # 1. VERIFICACIÓN DE ID_OBRA DUPLICADO
+            # 1. Obtener el documento actual para comparar el nombre viejo
+            current_doc = await self.repository.get_by_id(id)
+            if not current_doc:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada")
+
+            old_desc_obra = current_doc.desc_obra
+
+            # 2. VERIFICACIÓN DE ID_OBRA DUPLICADO
             # Buscamos si existe otro documento con ese desc_obra que NO sea el nuestro
             duplicate = await self.repository.get_one_by_fields(
                 {"desc_obra": data.desc_obra, "_id": {"$ne": mongo_id}}
@@ -112,9 +119,9 @@ class ObrasService(
                     detail=f"No se puede actualizar: La obra '{data.desc_obra}' ya está siendo usado por otro comprobante.",
                 )
 
-            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            # 3. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
             new_data = data.model_dump(by_alias=True)
-            new_data["updated_at"] = new_timestamp
+            new_data["updated_at"] = datetime.now(timezone.utc)
 
             updated_doc = await self.repository.find_one_and_update(
                 filter={
@@ -132,6 +139,19 @@ class ObrasService(
                     detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
                 )
 
+            # 4. CASCADA: Si el nombre cambió, actualizamos 'carga'
+            if old_desc_obra != data.desc_obra:
+                try# Usamos el repositorio de carga inyectado
+                    await self.carga_repository.update_many(
+                        {"desc_obra": old_desc_obra},
+                        {"desc_obra": data.desc_obra},
+                    )
+                    logger.info(
+                        f"Cascada ejecutada: '{old_desc_obra}' -> '{data.desc_obra}'"
+                    )
+                except Exception as e:
+                    logger.error(f"Error en cascada de obra '{old_desc_obra}': {str(e)}")
+            
             return updated_doc
         except HTTPException:
             raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
