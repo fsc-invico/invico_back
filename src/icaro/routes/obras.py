@@ -25,3 +25,9 @@ async def add_one_obra(
     service: ObrasServiceDependency,
 ):
     return await service.add_one(obra=payload)
+
+
+# -------------------------------------------------
+@obras_router.put("/update_one/{id}", response_model=ObrasDocument)
+async def update_one(id: str, data: ObrasReport, service: ObrasServiceDependency):
+    return await service.update_one_safely(id=id, data=data)
