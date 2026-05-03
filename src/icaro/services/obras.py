@@ -139,5 +139,23 @@ class ObrasService(
             logger.error(f"Error en update_one_safely: {str(e)}")
             self._handle_error("Error durante el proceso de update_one_safely", e)
 
+    # -------------------------------------------------
+    async def delete_one(self, id: str) -> ObrasDocument:
+        try:
+            mongo_id = ObjectId(id)
+            document = await self.repository.delete_by_id(mongo_id)
+
+            if not document:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="El comprobante no existe o ya fue eliminado.",
+                )
+            return document
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_one_hard: {str(e)}")
+            self._handle_error("Error durante el proceso de delete_one_hard", e)
+
 
 ObrasServiceDependency = Annotated[ObrasService, Depends()]

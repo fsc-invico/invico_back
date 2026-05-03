@@ -31,3 +31,9 @@ async def add_one_obra(
 @obras_router.put("/update_one/{id}", response_model=ObrasDocument)
 async def update_one(id: str, data: ObrasReport, service: ObrasServiceDependency):
     return await service.update_one_safely(id=id, data=data)
+
+
+# -------------------------------------------------
+@obras_router.delete("/delete_one/{id}", response_model=ObrasDocument)
+async def delete_one(id: str, service: ObrasServiceDependency):
+    return await service.delete_one(id=id)
