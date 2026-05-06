@@ -101,13 +101,15 @@ class ObrasService(
             mongo_id = ObjectId(id)
 
             # 1. Obtener el documento actual para comparar el nombre viejo
-            current_doc = await self.repository.get_by_id(id)
+            current_doc = await self.repository.get_by_id(mongo_id)
             if not current_doc:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada"
                 )
 
-            old_desc_obra = current_doc.desc_obra
+            old_desc_obra = current_doc[
+                "desc_obra"
+            ]  # Guardamos el nombre viejo para la cascada
 
             # 2. VERIFICACIÓN DE ID_OBRA DUPLICADO
             # Buscamos si existe otro documento con ese desc_obra que NO sea el nuestro
@@ -149,7 +151,7 @@ class ObrasService(
                         {"desc_obra": data.desc_obra},
                     )
                     logger.info(
-                        f"Cascada ejecutada: '{old_desc_obra}' -> '{data.desc_obra}'"
+                        f"Cascada ejecutada: '{old_desc_obra}' -> '{data.desc_obra}' en colección 'carga'"
                     )
                 except Exception as e:
                     logger.error(
