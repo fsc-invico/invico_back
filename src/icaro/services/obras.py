@@ -103,7 +103,9 @@ class ObrasService(
             # 1. Obtener el documento actual para comparar el nombre viejo
             current_doc = await self.repository.get_by_id(id)
             if not current_doc:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada"
+                )
 
             old_desc_obra = current_doc.desc_obra
 
@@ -141,7 +143,7 @@ class ObrasService(
 
             # 4. CASCADA: Si el nombre cambió, actualizamos 'carga'
             if old_desc_obra != data.desc_obra:
-                try# Usamos el repositorio de carga inyectado
+                try:  # Usamos el repositorio de carga inyectado
                     await self.carga_repository.update_many(
                         {"desc_obra": old_desc_obra},
                         {"desc_obra": data.desc_obra},
@@ -150,8 +152,10 @@ class ObrasService(
                         f"Cascada ejecutada: '{old_desc_obra}' -> '{data.desc_obra}'"
                     )
                 except Exception as e:
-                    logger.error(f"Error en cascada de obra '{old_desc_obra}': {str(e)}")
-            
+                    logger.error(
+                        f"Error en cascada de obra '{old_desc_obra}': {str(e)}"
+                    )
+
             return updated_doc
         except HTTPException:
             raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
