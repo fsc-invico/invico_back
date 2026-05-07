@@ -26,7 +26,7 @@ class ResumenRendObrasReport(BaseModel):
     importe_bruto: float
     gcias: Optional[float] = None
     sellos: Optional[float] = None
-    tl: Optional[float] = None
+    lp: Optional[float] = None
     iibb: Optional[float] = None
     suss: Optional[float] = None
     seguro: Optional[float] = None

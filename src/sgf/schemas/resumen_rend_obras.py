@@ -30,7 +30,7 @@ class ResumenRendObrasReport(BaseModel):
     importe_bruto: NonNegativeFloat
     gcias: NonNegativeFloat
     sellos: NonNegativeFloat
-    tl: NonNegativeFloat
+    lp: NonNegativeFloat
     iibb: NonNegativeFloat
     suss: NonNegativeFloat
     seguro: NonNegativeFloat
