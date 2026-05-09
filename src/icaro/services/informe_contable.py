@@ -135,7 +135,7 @@ class InformeContableService(
             if modificados > 0:
                 logger.info(f"Se actualizaron {modificados} registros.")
 
-            return {"status": "updated", "modified_count": modificados}
+            return {"status": "unlinked", "modified_count": modificados}
         except Exception as e:
             self._handle_error(f"Error al desvincular el id_carga {id_carga}", e)
 

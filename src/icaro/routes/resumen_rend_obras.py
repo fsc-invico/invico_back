@@ -3,8 +3,9 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     ResumenRendObrasDocument,
     ResumenRendObrasFullFilter,
     ResumenRendObrasLiteFilter,
+    ResumenRendObrasUpdateIdCarga,
 )
-from ..services import ResumenRendObrasService  # La clase del servicio
+from ..services import ResumenRendObrasService, ResumenRendObrasServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=ResumenRendObrasService,
@@ -16,10 +17,18 @@ factory = GenericRouterFactory(
 
 resumen_rend_obras_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
+
+# -------------------------------------------------
+@resumen_rend_obras_router.patch("/update_id_carga")
+async def update_id_carga(
+    id: str,
+    payload: ResumenRendObrasUpdateIdCarga,
+    service: ResumenRendObrasServiceDependency,
+):
+    return await service.update_id_carga(ids=payload.ids, id_carga=payload.id_carga)
 
 
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@resumen_rend_obras_router.patch("/unlink_by_carga/{id_carga:path}")
+async def unlink_id_carga(id_carga: str, service: ResumenRendObrasServiceDependency):
+    return await service.unlink_carga_value(id_carga=id_carga)

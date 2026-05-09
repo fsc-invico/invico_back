@@ -3,10 +3,11 @@ __all__ = [
     "ResumenRendObrasDocument",
     "ResumenRendObrasFullFilter",
     "ResumenRendObrasLiteFilter",
+    "ResumenRendObrasUpdateIdCarga",
 ]
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -55,3 +56,9 @@ class ResumenRendObrasFullFilter(BaseFilterParams):
 class ResumenRendObrasLiteFilter(CamelModel):
     query_filter: str = ""
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class ResumenRendObrasUpdateIdCarga(BaseModel):
+    ids: List[str]  # Lista de ObjectIDs de MongoDB
+    id_carga: str

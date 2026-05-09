@@ -1,13 +1,12 @@
 __all__ = ["ResumenRendObrasService", "ResumenRendObrasServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from bson import ObjectId
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -97,27 +96,57 @@ class ResumenRendObrasService(
             filename="reporte_icaro_rend_obras.xlsx",
         )
 
-    # # -------------------------------------------------
-    # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
-    #     new_timestamp = datetime.now(timezone.utc)
+    # -------------------------------------------------
+    async def update_id_carga(self, ids: list[str], id_carga: str):
+        try:
+            # 1. Preparamos los datos de actualización
+            update_data = {
+                "id_carga": id_carga,
+                "updated_at": datetime.now(timezone.utc),
+            }
 
-    #     # Intentamos la actualización
-    #     result = await db.posts.update_one(
-    #         {
-    #             "_id": ObjectId(post_id),
-    #             "updated_at": old_timestamp,  # <--- AQUÍ ESTÁ LA MAGIA
-    #         },
-    #         {"$set": {"title": new_title, "updated_at": new_timestamp}},
-    #     )
+            # 2. Usamos el repositorio con el operador $in
+            # El filtro busca cualquier documento cuyo _id esté en la lista recibida
+            filtro = {"_id": {"$in": [ObjectId(id) for id in ids]}}
 
-    #     if result.modified_count == 0:
-    #         # Si modified_count es 0, significa que alguien cambió el updated_at
-    #         # antes que nosotros y el filtro ya no coincidió.
-    #         raise Exception(
-    #             "Conflicto de edición: El registro fue modificado por otro usuario."
-    #         )
+            modificados = await self.repository.update_many(filtro, update_data)
 
-    #     return "Actualizado con éxito"
+            if modificados == 0:
+                logger.warning(
+                    "No se modificó ningún registro para el batch de IDs enviado."
+                )
+            else:
+                logger.info(
+                    f"Sincronización masiva: {modificados} registros vinculados a la carga {id_carga}"
+                )
+
+            return {
+                "status": "updated",
+                "modified_count": modificados,
+                "ids_procesados": ids,
+            }
+
+        except Exception as e:
+            logger.error(f"Error en update_id_carga_batch: {str(e)}")
+            self._handle_error("Error técnico al procesar la vinculación masiva", e)
+
+    # -------------------------------------------------
+    async def unlink_carga_value(self, id_carga: str):
+        try:
+            # Buscamos el documento que tiene ese id_carga y lo seteamos en ""
+            update_data = {"id_carga": "", "updated_at": datetime.now(timezone.utc)}
+
+            # Usamos update_many por si las dudas hubiera más de uno,
+            # aunque lo normal es que sea uno solo.
+            modificados = await self.repository.update_many(
+                {"id_carga": id_carga}, update_data
+            )
+            if modificados > 0:
+                logger.info(f"Se actualizaron {modificados} registros.")
+
+            return {"status": "unlinked", "modified_count": modificados}
+        except Exception as e:
+            self._handle_error(f"Error al desvincular el id_carga {id_carga}", e)
 
 
 ResumenRendObrasServiceDependency = Annotated[ResumenRendObrasService, Depends()]
