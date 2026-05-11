@@ -31,7 +31,7 @@ class InformeContableReport(BaseModel):
     invico: Optional[float] = None
     retenciones: Optional[float] = None
     importe_neto: Optional[float] = None
-    id_carga: Optional[str] = None
+    id_carga: Optional[str] = ""
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

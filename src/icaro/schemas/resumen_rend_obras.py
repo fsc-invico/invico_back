@@ -36,7 +36,7 @@ class ResumenRendObrasReport(BaseModel):
     importe_neto: Optional[float] = None
     movimiento: Optional[str] = None
     origen: Optional[str] = None
-    id_carga: Optional[str] = None
+    id_carga: Optional[str] = ""
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
