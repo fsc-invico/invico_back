@@ -21,7 +21,6 @@ resumen_rend_obras_router = factory.get_router()
 # -------------------------------------------------
 @resumen_rend_obras_router.patch("/update_id_carga")
 async def update_id_carga(
-    id: str,
     payload: ResumenRendObrasUpdateIdCarga,
     service: ResumenRendObrasServiceDependency,
 ):
