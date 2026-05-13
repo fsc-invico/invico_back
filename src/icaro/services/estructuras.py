@@ -1,16 +1,14 @@
 __all__ = ["EstructurasService", "EstructurasServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from bson import ObjectId
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
@@ -92,27 +90,81 @@ class EstructurasService(
             filename="reporte_icaro_estructuras.xlsx",
         )
 
-    # # -------------------------------------------------
-    # async def update_post_safely(db, post_id: str, old_timestamp: datetime, new_title: str):
-    #     new_timestamp = datetime.now(timezone.utc)
+    # -------------------------------------------------
+    async def add_one(self, estructura: EstructurasReport):
+        try:
+            # Invocamos save_one que ya maneja la conversión a dict y unicidad
+            nueva_estructura = await self.repository.save_one(estructura)
+            return nueva_estructura
 
-    #     # Intentamos la actualización
-    #     result = await db.posts.update_one(
-    #         {
-    #             "_id": ObjectId(post_id),
-    #             "updated_at": old_timestamp,  # <--- AQUÍ ESTÁ LA MAGIA
-    #         },
-    #         {"$set": {"title": new_title, "updated_at": new_timestamp}},
-    #     )
+        except ValueError as e:
+            self._handle_error("Error de validación", e, status_code=400)
+        except Exception as e:
+            self._handle_error("Error inesperado en el servidor", e)
 
-    #     if result.modified_count == 0:
-    #         # Si modified_count es 0, significa que alguien cambió el updated_at
-    #         # antes que nosotros y el filtro ya no coincidió.
-    #         raise Exception(
-    #             "Conflicto de edición: El registro fue modificado por otro usuario."
-    #         )
+    # -------------------------------------------------
+    async def update_one_safely(
+        self, id: str, data: EstructurasReport
+    ) -> EstructurasDocument:
+        try:
+            mongo_id = ObjectId(id)
 
-    #     return "Actualizado con éxito"
+            # 1. VERIFICACIÓN DE ID_OBRA DUPLICADO
+            # Buscamos si existe otro documento con esa estructura que NO sea el nuestro
+            duplicate = await self.repository.get_one_by_fields(
+                {"estructura": data.estructura, "_id": {"$ne": mongo_id}}
+            )
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede actualizar: La estructura '{data.estructura}' ya está siendo utilizada.",
+                )
+
+            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            new_data = data.model_dump(by_alias=True)
+            new_data["updated_at"] = datetime.now(timezone.utc)
+
+            updated_doc = await self.repository.find_one_and_update(
+                filter={
+                    "_id": mongo_id,
+                    "updated_at": data.updated_at,  # El cerrojo
+                },
+                update_data=new_data,
+                return_document=True,
+            )
+
+            if not updated_doc:
+                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
+                )
+
+            return updated_doc
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en update_one_safely: {str(e)}")
+            self._handle_error("Error durante el proceso de update_one_safely", e)
+
+    # -------------------------------------------------
+    async def delete_one(self, id: str) -> EstructurasDocument:
+        try:
+            mongo_id = ObjectId(id)
+            document = await self.repository.delete_by_id(mongo_id)
+
+            if not document:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="El comprobante no existe o ya fue eliminado.",
+                )
+            return document
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_one_hard: {str(e)}")
+            self._handle_error("Error durante el proceso de delete_one_hard", e)
 
 
 EstructurasServiceDependency = Annotated[EstructurasService, Depends()]

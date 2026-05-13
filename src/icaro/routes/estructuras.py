@@ -3,8 +3,9 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     EstructurasDocument,
     EstructurasFullFilter,
     EstructurasLiteFilter,
+    EstructurasReport,
 )
-from ..services import EstructurasService  # La clase del servicio
+from ..services import EstructurasService, EstructurasServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=EstructurasService,
@@ -16,10 +17,25 @@ factory = GenericRouterFactory(
 
 estructuras_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
+
+# -------------------------------------------------
+@estructuras_router.post("/add_one")
+async def add_one_obra(
+    payload: EstructurasReport,
+    service: EstructurasServiceDependency,
+):
+    return await service.add_one(obra=payload)
 
 
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@estructuras_router.put("/update_one/{id}", response_model=EstructurasDocument)
+async def update_one(
+    id: str, data: EstructurasReport, service: EstructurasServiceDependency
+):
+    return await service.update_one_safely(id=id, data=data)
+
+
+# -------------------------------------------------
+@estructuras_router.delete("/delete_one/{id}", response_model=EstructurasDocument)
+async def delete_one(id: str, service: EstructurasServiceDependency):
+    return await service.delete_one(id=id)
