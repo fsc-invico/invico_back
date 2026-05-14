@@ -163,7 +163,7 @@ class EstructurasService(
 
             # 2. Verificamos si tiene hijos
             # Buscamos cualquier documento que empiece con "codigo-", lo cual indica jerarquía
-            codigo_padre = target_doc.estructura
+            codigo_padre = target_doc["estructura"]
             query_hijos = {"estructura": {"$regex": f"^{codigo_padre}-"}}
 
             tiene_hijos = await self.repository.collection.count_documents(query_hijos)
