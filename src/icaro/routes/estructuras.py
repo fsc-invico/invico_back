@@ -20,11 +20,11 @@ estructuras_router = factory.get_router()
 
 # -------------------------------------------------
 @estructuras_router.post("/add_one")
-async def add_one_obra(
+async def add_one_estructura(
     payload: EstructurasReport,
     service: EstructurasServiceDependency,
 ):
-    return await service.add_one(obra=payload)
+    return await service.add_one(estructura=payload)
 
 
 # -------------------------------------------------
