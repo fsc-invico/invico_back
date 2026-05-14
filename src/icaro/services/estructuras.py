@@ -152,6 +152,29 @@ class EstructurasService(
     async def delete_one(self, id: str) -> EstructurasDocument:
         try:
             mongo_id = ObjectId(id)
+            # 1. Buscamos el documento que se quiere borrar para saber su código de estructura
+            target_doc = await self.repository.get_by_id(mongo_id)
+
+            if not target_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="La estructura no existe.",
+                )
+
+            # 2. Verificamos si tiene hijos
+            # Buscamos cualquier documento que empiece con "codigo-", lo cual indica jerarquía
+            codigo_padre = target_doc.estructura
+            query_hijos = {"estructura": {"$regex": f"^{codigo_padre}-"}}
+
+            tiene_hijos = await self.repository.collection.count_documents(query_hijos)
+
+            if tiene_hijos > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede eliminar: la estructura '{codigo_padre}' tiene {tiene_hijos} sub-niveles dependientes.",
+                )
+
+            # 3. Si no tiene hijos, procedemos al borrado
             document = await self.repository.delete_by_id(mongo_id)
 
             if not document:
@@ -159,6 +182,7 @@ class EstructurasService(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="El comprobante no existe o ya fue eliminado.",
                 )
+
             return document
         except HTTPException:
             raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
