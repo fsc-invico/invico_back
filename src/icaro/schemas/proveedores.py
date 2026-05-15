@@ -16,7 +16,7 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class ProveedoresReport(BaseModel):
-    codigo: int
+    codigo: str
     desc_proveedor: str
     domicilio: Optional[str] = None
     localidad: Optional[str] = None
