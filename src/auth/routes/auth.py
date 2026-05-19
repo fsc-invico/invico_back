@@ -39,8 +39,8 @@ async def register(
         username=form_data.username, password=form_data.password
     )
 
-    inserted_id = await users.create_one(user_internal)
-    return {"result message": f"User created with id: {inserted_id}"}
+    new_user = await users.create_one(user_internal)
+    return {"result message": f"User created with id: {new_user.id}"}
 
 
 # -------------------------------------------------

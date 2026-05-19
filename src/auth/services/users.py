@@ -1,7 +1,7 @@
 __all__ = ["UsersService", "UsersServiceDependency"]
 
 from dataclasses import dataclass
-from typing import Annotated, List, Optional
+from typing import Annotated, List
 
 from bson import ObjectId
 from fastapi import Depends, HTTPException, status
@@ -31,7 +31,7 @@ class UsersService:
     external_creds: CredentialsRepositoryDependency
 
     # -------------------------------------------------
-    async def create_one(self, user: CreateUser) -> PublicStoredUser:
+    async def create_one(self, user: CreateUser) -> PrivateStoredUser:
         """Create a new user"""
         existing_user = await self.users.get_one_by_fields({"username": user.username})
         if existing_user is not None:
@@ -46,10 +46,10 @@ class UsersService:
 
         new_user = await self.users.save_one(insert_user)
         logger.debug("New user created: %s", new_user)
-        # return new_user
-        return PublicStoredUser.model_validate(
-            await self.users.get_by_id(new_user.inserted_id)
-        )
+        return new_user
+        # return PrivateStoredUser.model_validate(
+        #     await self.users.get_by_id(new_user.id)
+        # )
 
     # -------------------------------------------------
     async def get_one(
