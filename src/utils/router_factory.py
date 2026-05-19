@@ -40,8 +40,9 @@ class GenericRouterFactory:
         async def get_all(
             params: Annotated[Any, Depends(self.full_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
+            security: AuthorizationDependency,
         ):
-
+            security.is_admin_or_user_or_raise()
             return await service.get_all(params)
 
         # -------------------------------------------------
@@ -75,7 +76,9 @@ class GenericRouterFactory:
         async def add_many(
             data: List[dict],
             service: Annotated[BaseService, Depends(self.service_dep)],
+            security: AuthorizationDependency,
         ):
+            security.is_admin_or_user_or_raise()
             return await service.add_many(data)
 
         # -------------------------------------------------
@@ -86,7 +89,7 @@ class GenericRouterFactory:
             service: Annotated[BaseService, Depends(self.service_dep)],
             security: AuthorizationDependency,
         ):
-            security.is_admin_or_raise()  # Verifica que el usuario sea admin antes de permitir la eliminación
+            security.is_admin_or_user_or_raise()  # Verifica que el usuario sea admin antes de permitir la eliminación
             return await service.delete_many(params)
 
         # -------------------------------------------------
@@ -94,7 +97,9 @@ class GenericRouterFactory:
         async def export(
             params: Annotated[Any, Depends(self.lite_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
+            security: AuthorizationDependency,
         ):
+            security.is_admin_or_user_or_raise()
             return await service.export(params)
 
     # -------------------------------------------------
