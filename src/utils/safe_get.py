@@ -1,10 +1,11 @@
 __all__ = ["sanitize_dataframe_for_json", "sanitize_dataframe_for_json_with_datetime"]
 
 from datetime import datetime
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
-from decimal import Decimal
+
 
 # -------------------------------------------------
 def sanitize_dataframe_for_json(df: pd.DataFrame) -> pd.DataFrame:
@@ -16,7 +17,9 @@ def sanitize_dataframe_for_json(df: pd.DataFrame) -> pd.DataFrame:
     """
     with pd.option_context("future.no_silent_downcasting", True):
         # Reemplazar NaN e infinitos por None
-        df_clean = df.replace([np.nan, np.inf, -np.inf, pd.NaT], None).infer_objects(copy=False)
+        df_clean = df.replace([np.nan, np.inf, -np.inf, pd.NaT], None).infer_objects(
+            copy=False
+        )
 
         df_clean = df_clean.astype(object).where(pd.notnull(df_clean), None)
 
@@ -37,9 +40,15 @@ def sanitize_dataframe_for_json_with_datetime(df: pd.DataFrame) -> pd.DataFrame:
     - np.nan, np.inf, -np.inf con None
     - np.* types con sus equivalentes nativos
     """
+
+    if not df.empty and "_id" in df.columns:
+        df["_id"] = df["_id"].astype(str)
+
     with pd.option_context("future.no_silent_downcasting", True):
         # Reemplazar NaN e infinitos por None
-        df_clean = df.replace([np.nan, np.inf, -np.inf, pd.NaT], None).infer_objects(copy=False)
+        df_clean = df.replace([np.nan, np.inf, -np.inf, pd.NaT], None).infer_objects(
+            copy=False
+        )
 
         df_clean = df_clean.astype(object).where(pd.notnull(df_clean), None)
 
