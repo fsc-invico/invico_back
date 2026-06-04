@@ -111,7 +111,7 @@ class BaseService(ABC, Generic[R, D, F, L]):
                 if not df.empty:
                     # Usamos tu utilidad de sanitización
                     df = sanitize_dataframe_for_json_with_datetime(df)
-                    df = df.drop(columns=["_id"], errors="ignore")
+                    df = df.drop(columns=["_id", "id"], errors="ignore")
                     sanitized_pairs.append((df, sheet_name))
 
             # 2. Lógica de Google Sheets (opcional)
