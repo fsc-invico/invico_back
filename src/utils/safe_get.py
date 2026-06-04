@@ -41,8 +41,11 @@ def sanitize_dataframe_for_json_with_datetime(df: pd.DataFrame) -> pd.DataFrame:
     - np.* types con sus equivalentes nativos
     """
 
-    if not df.empty and "_id" in df.columns:
-        df["_id"] = df["_id"].astype(str)
+    if not df.empty:
+        for col in ["_id", "id"]:
+            if col in df.columns:
+                # Convertimos a string solo si la columna tiene objetos tipo ObjectId
+                df[col] = df[col].astype(str)
 
     with pd.option_context("future.no_silent_downcasting", True):
         # Reemplazar NaN e infinitos por None
