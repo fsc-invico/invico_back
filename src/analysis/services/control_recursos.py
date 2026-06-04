@@ -100,7 +100,7 @@ class ControlRecursosService(
             data_pairs=[(df, "control_recursos")],
             filename="reporte_control_recursos.xlsx",
             upload_to_google_sheets=True,
-            google_sheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
+            spreadsheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
         )
 
 
