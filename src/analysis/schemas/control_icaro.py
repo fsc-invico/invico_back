@@ -7,10 +7,12 @@ __all__ = [
     "ControlIcaroAnualLiteFilter",
     "ControlIcaroComprobantesReport",
     "ControlIcaroComprobantesDocument",
-    "ControlIcaroComprobantesFilter",
+    "ControlIcaroComprobantesFullFilter",
+    "ControlIcaroComprobantesLiteFilter",
     "ControlIcaroPa6Report",
     "ControlIcaroPa6Document",
-    "ControlIcaroPa6Filter",
+    "ControlIcaroPa6FullFilter",
+    "ControlIcaroPa6LiteFilter",
 ]
 
 from datetime import date
@@ -67,7 +69,6 @@ class ControlIcaroAnualDocument(ControlIcaroAnualReport):
     id: PydanticObjectId = Field(alias="_id")
 
 
-# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class ControlIcaroAnualFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
@@ -81,7 +82,6 @@ class ControlIcaroAnualLiteFilter(CamelModel):
     # Aquí podrías añadir: incluir_detalles: bool = False
 
 
-# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class ControlIcaroComprobantesReport(BaseModel):
     ejercicio: int
@@ -117,9 +117,16 @@ class ControlIcaroComprobantesDocument(ControlIcaroComprobantesReport):
 
 
 # -------------------------------------------------
-class ControlIcaroComprobantesFilter(BaseFilterParams):
+class ControlIcaroComprobantesFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlIcaroComprobantesLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
 
 
 # -------------------------------------------------
@@ -163,5 +170,13 @@ class ControlIcaroPa6Document(ControlIcaroPa6Report):
 
 
 # -------------------------------------------------
-class ControlIcaroPa6Filter(BaseFilterParams):
+class ControlIcaroPa6FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlIcaroPa6LiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
