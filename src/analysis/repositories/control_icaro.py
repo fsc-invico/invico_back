@@ -1,7 +1,7 @@
 __all__ = [
     "ControlIcaroAnualRepositoryDependency",
     "ControlIcaroComprobantesRepositoryDependency",
-    "ControlIcaroPa6RepositoryDependency",
+    "ControlIcaroPA6RepositoryDependency",
 ]
 
 from typing import Annotated
@@ -12,7 +12,7 @@ from ...config import BaseRepository
 from ..schemas.control_icaro import (
     ControlIcaroAnualDocument,
     ControlIcaroComprobantesDocument,
-    ControlIcaroPa6Document,
+    ControlIcaroPA6Document,
 )
 
 
@@ -41,9 +41,9 @@ ControlIcaroComprobantesRepositoryDependency = Annotated[
 
 
 # -------------------------------------------------
-class ControlIcaroPa6Repository(BaseRepository[ControlIcaroPa6Document]):
+class ControlIcaroPA6Repository(BaseRepository[ControlIcaroPA6Document]):
     collection_name = "control_icaro_pa6"
-    model = ControlIcaroPa6Document
+    model = ControlIcaroPA6Document
 
 
-ControlIcaroPa6RepositoryDependency = Annotated[ControlIcaroPa6Repository, Depends()]
+ControlIcaroPA6RepositoryDependency = Annotated[ControlIcaroPA6Repository, Depends()]

@@ -9,10 +9,10 @@ __all__ = [
     "ControlIcaroComprobantesDocument",
     "ControlIcaroComprobantesFullFilter",
     "ControlIcaroComprobantesLiteFilter",
-    "ControlIcaroPa6Report",
-    "ControlIcaroPa6Document",
-    "ControlIcaroPa6FullFilter",
-    "ControlIcaroPa6LiteFilter",
+    "ControlIcaroPA6Report",
+    "ControlIcaroPA6Document",
+    "ControlIcaroPA6FullFilter",
+    "ControlIcaroPA6LiteFilter",
 ]
 
 from datetime import date
@@ -130,7 +130,7 @@ class ControlIcaroComprobantesLiteFilter(CamelModel):
 
 
 # -------------------------------------------------
-class ControlIcaroPa6Report(BaseModel):
+class ControlIcaroPA6Report(BaseModel):
     ejercicio: int
     siif_nro_fondo: Optional[str] = None
     icaro_nro_fondo: Optional[str] = None
@@ -165,18 +165,18 @@ class ControlIcaroPa6Report(BaseModel):
 
 
 # -------------------------------------------------
-class ControlIcaroPa6Document(ControlIcaroPa6Report):
+class ControlIcaroPA6Document(ControlIcaroPA6Report):
     id: PydanticObjectId = Field(alias="_id")
 
 
 # -------------------------------------------------
-class ControlIcaroPa6FullFilter(BaseFilterParams):
+class ControlIcaroPA6FullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ControlIcaroPa6LiteFilter(CamelModel):
+class ControlIcaroPA6LiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
