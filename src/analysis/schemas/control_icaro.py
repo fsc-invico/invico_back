@@ -1,15 +1,16 @@
 __all__ = [
-    "ControlCompletoParams",
-    "ControlCompletoSyncParams",
-    "ControlAnualReport",
-    "ControlAnualDocument",
-    "ControlAnualFilter",
-    "ControlComprobantesReport",
-    "ControlComprobantesDocument",
-    "ControlComprobantesFilter",
-    "ControlPa6Report",
-    "ControlPa6Document",
-    "ControlPa6Filter",
+    "ControlIcaroCompletoParams",
+    "ControlIcaroCompletoSyncParams",
+    "ControlIcaroAnualReport",
+    "ControlIcaroAnualDocument",
+    "ControlIcaroAnualFullFilter",
+    "ControlIcaroAnualLiteFilter",
+    "ControlIcaroComprobantesReport",
+    "ControlIcaroComprobantesDocument",
+    "ControlIcaroComprobantesFilter",
+    "ControlIcaroPa6Report",
+    "ControlIcaroPa6Document",
+    "ControlIcaroPa6Filter",
 ]
 
 from datetime import date
@@ -18,11 +19,11 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams
+from ...utils import BaseFilterParams, CamelModel
 
 
 # --------------------------------------------------
-class ControlCompletoParams(BaseModel):
+class ControlIcaroCompletoParams(BaseModel):
     ejercicio_desde: int = Field(default=date.today().year)
     ejercicio_hasta: int = Field(default=date.today().year)
 
@@ -35,20 +36,20 @@ class ControlCompletoParams(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_range(self) -> "ControlCompletoParams":
+    def check_range(self) -> "ControlIcaroCompletoParams":
         if self.ejercicio_hasta < self.ejercicio_desde:
             raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
         return self
 
 
 # --------------------------------------------------
-class ControlCompletoSyncParams(ControlCompletoParams):
+class ControlIcaroCompletoSyncParams(ControlIcaroCompletoParams):
     siif_username: Optional[str] = None
     siif_password: Optional[str] = None
 
 
 # -------------------------------------------------
-class ControlAnualReport(BaseModel):
+class ControlIcaroAnualReport(BaseModel):
     ejercicio: int
     estructura: Optional[str] = None
     fuente: int
@@ -62,18 +63,27 @@ class ControlAnualReport(BaseModel):
 
 
 # -------------------------------------------------
-class ControlAnualDocument(ControlAnualReport):
+class ControlIcaroAnualDocument(ControlIcaroAnualReport):
     id: PydanticObjectId = Field(alias="_id")
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ControlAnualFilter(BaseFilterParams):
+class ControlIcaroAnualFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ControlComprobantesReport(BaseModel):
+class ControlIcaroAnualLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlIcaroComprobantesReport(BaseModel):
     ejercicio: int
     siif_nro: Optional[str] = None
     icaro_nro: Optional[str] = None
@@ -102,18 +112,18 @@ class ControlComprobantesReport(BaseModel):
 
 
 # -------------------------------------------------
-class ControlComprobantesDocument(ControlComprobantesReport):
+class ControlIcaroComprobantesDocument(ControlIcaroComprobantesReport):
     id: PydanticObjectId = Field(alias="_id")
 
 
 # -------------------------------------------------
-class ControlComprobantesFilter(BaseFilterParams):
+class ControlIcaroComprobantesFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
     fuente: Optional[int] = None
 
 
 # -------------------------------------------------
-class ControlPa6Report(BaseModel):
+class ControlIcaroPa6Report(BaseModel):
     ejercicio: int
     siif_nro_fondo: Optional[str] = None
     icaro_nro_fondo: Optional[str] = None
@@ -148,10 +158,10 @@ class ControlPa6Report(BaseModel):
 
 
 # -------------------------------------------------
-class ControlPa6Document(ControlPa6Report):
+class ControlIcaroPa6Document(ControlIcaroPa6Report):
     id: PydanticObjectId = Field(alias="_id")
 
 
 # -------------------------------------------------
-class ControlPa6Filter(BaseFilterParams):
+class ControlIcaroPa6Filter(BaseFilterParams):
     ejercicio: Optional[int] = None
