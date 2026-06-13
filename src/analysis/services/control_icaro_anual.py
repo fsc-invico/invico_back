@@ -97,8 +97,10 @@ class ControlIcaroAnualService(
         # 3. Usar el método de la clase base
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
         return self.export_to_excel(
-            data_pairs=[(df, "control_icaro_anual")],
-            filename="reporte_control_icaro_anual.xlsx",
+            data_pairs=[(df, "control_ejecucion_anual_db")],
+            filename="Control Icaro vs SIIF.xlsx",
+            upload_to_google_sheets=True,
+            spreadsheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
         )
 
 

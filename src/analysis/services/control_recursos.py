@@ -98,7 +98,7 @@ class ControlRecursosService(
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
         return self.export_to_excel(
             data_pairs=[(df, "control_recursos")],
-            filename="reporte_control_recursos.xlsx",
+            filename="Control Recursos.xlsx",
             upload_to_google_sheets=True,
             spreadsheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
         )

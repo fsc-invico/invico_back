@@ -104,8 +104,10 @@ class ControlIcaroComprobantesService(
         # 3. Usar el método de la clase base
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
         return self.export_to_excel(
-            data_pairs=[(df, "control_icaro_comprobantes")],
-            filename="reporte_control_icaro_comprobantes.xlsx",
+            data_pairs=[(df, "control_comprobantes_db")],
+            filename="Control Icaro vs SIIF.xlsx",
+            upload_to_google_sheets=True,
+            spreadsheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
         )
 
 
