@@ -1,4 +1,5 @@
 # utils/base_service.py
+import math
 from abc import ABC, abstractmethod
 from io import BytesIO
 from typing import Any, Generic, List, Optional, Tuple, Type, TypeVar
@@ -122,6 +123,18 @@ class BaseService(ABC, Generic[R, D, F, L]):
 
                 gs = GoogleSheets()
                 for df, sheet_name in sanitized_pairs:
+                    # --- PRINT DE CONTROL ---
+                    print(f"📊 Controlando columnas de la hoja: {sheet_name}")
+                    for col in df.columns:
+                        has_nan = (
+                            df[col]
+                            .apply(lambda x: isinstance(x, float) and math.isnan(x))
+                            .any()
+                        )
+                        if has_nan:
+                            print(f"🚨 ¡La columna '{col}' TIENE NaNs encubiertos!")
+                    # -------------------------
+
                     gs.to_google_sheets(
                         df=df,
                         spreadsheet_key=spreadsheet_key,
