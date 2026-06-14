@@ -1,6 +1,8 @@
 __all__ = [
-    "ControlIcaroCompletoParams",
-    "ControlIcaroCompletoSyncParams",
+    "ControlIcaroParams",
+    "ControlIcaroSyncParams",
+    "ControlIcaroLiteFilter",
+    "ControlIcaroFullFilter",
     "ControlIcaroAnualReport",
     "ControlIcaroAnualDocument",
     "ControlIcaroAnualFullFilter",
@@ -25,7 +27,7 @@ from ...utils import BaseFilterParams, CamelModel
 
 
 # --------------------------------------------------
-class ControlIcaroCompletoParams(BaseModel):
+class ControlIcaroParams(BaseModel):
     ejercicio_desde: int = Field(default=date.today().year)
     ejercicio_hasta: int = Field(default=date.today().year)
 
@@ -38,16 +40,29 @@ class ControlIcaroCompletoParams(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_range(self) -> "ControlIcaroCompletoParams":
+    def check_range(self) -> "ControlIcaroParams":
         if self.ejercicio_hasta < self.ejercicio_desde:
             raise ValueError("Ejercicio Desde no puede ser menor que Ejercicio Hasta")
         return self
 
 
 # --------------------------------------------------
-class ControlIcaroCompletoSyncParams(ControlIcaroCompletoParams):
+class ControlIcaroSyncParams(ControlIcaroParams):
     siif_username: Optional[str] = None
     siif_password: Optional[str] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlIcaroLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class ControlIcaroFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
 
 
 # -------------------------------------------------
