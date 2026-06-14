@@ -122,12 +122,37 @@ class BaseService(ABC, Generic[R, D, F, L]):
                 )  # Import local para evitar ciclos
 
                 gs = GoogleSheets()
+
                 for df, sheet_name in sanitized_pairs:
+                    # 🔥 LA MAGIA: Convertimos a registros nativos puros dict de Python.
+                    # Esto elimina CUALQUIER rastro de pd.NA, int64, bool o float64 de Pandas.
+                    raw_records = df.to_dict(orient="records")
+
+                    cleaned_records = []
+                    for row in raw_records:
+                        cleaned_row = {}
+                        for k, v in row.items():
+                            # Aseguramos que cualquier residuo flote como None puro
+                            if (
+                                v is None
+                                or pd.isna(v)
+                                or (isinstance(v, float) and math.isnan(v))
+                            ):
+                                cleaned_row[k] = None
+                            else:
+                                cleaned_row[k] = v
+                        cleaned_records.append(cleaned_row)
+
+                    # Reconstruimos un DataFrame forzando el tipo 'object' celda por celda.
+                    # Al pasarle explicitly dtype=object en el constructor, Pandas se ve obligado
+                    # a mantener los None como None y no puede usar sus tipos optimizados (str, bool).
+                    df_final_json = pd.DataFrame(cleaned_records, dtype=object)
+
                     # --- PRINT DE CONTROL ---
                     print(f"📊 Controlando columnas de la hoja: {sheet_name}")
-                    for col in df.columns:
+                    for col in df_final_json.columns:
                         has_nan = (
-                            df[col]
+                            df_final_json[col]
                             .apply(lambda x: isinstance(x, float) and math.isnan(x))
                             .any()
                         )
@@ -136,7 +161,7 @@ class BaseService(ABC, Generic[R, D, F, L]):
                     # -------------------------
 
                     gs.to_google_sheets(
-                        df=df,
+                        df=df_final_json,
                         spreadsheet_key=spreadsheet_key,
                         wks_name=sheet_name,
                     )
