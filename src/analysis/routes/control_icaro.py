@@ -14,8 +14,8 @@ control_icaro_router = APIRouter(prefix="/controlIcaro")
 
 
 # -------------------------------------------------
-@control_icaro_router.post("/export")
-async def login_with_cookie(
+@control_icaro_router.get("/export", name="Export to Google Sheets and Excel")
+async def export(
     params: Annotated[ControlIcaroLiteFilter, Depends()],
     service: ControlIcaroServiceDependency,
     security: AuthorizationDependency,
