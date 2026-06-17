@@ -65,7 +65,9 @@ COLLECTIONS = [
     "control_escribanos_sgf_vs_sscc",
     "control_debitos_bancarios",
     "control_viaticos_rendicion",
-    "control_banco",
+    "control_banco_cruzado",
+    "control_banco_siif",
+    "control_banco_sscc",
     "reporte_modulos_basicos_icaro",
 ]
 

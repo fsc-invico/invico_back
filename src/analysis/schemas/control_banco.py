@@ -1,9 +1,20 @@
 __all__ = [
     "ControlBancoParams",
     "ControlBancoSyncParams",
-    "ControlBancoFilter",
-    "ControlBancoReport",
-    "ControlBancoDocument",
+    "ControlBancoLiteFilter",
+    "ControlBancoFullFilter",
+    "ControlBancoCruzadoReport",
+    "ControlBancoCruzadoDocument",
+    "ControlBancoCruzadoLiteFilter",
+    "ControlBancoCruzadoFullFilter",
+    "ControlBancoSIIFReport",
+    "ControlBancoSIIFDocument",
+    "ControlBancoSIIFLiteFilter",
+    "ControlBancoSIIFFullFilter",
+    "ControlBancoSSCCReport",
+    "ControlBancoSSCCDocument",
+    "ControlBancoSSCCLiteFilter",
+    "ControlBancoSSCCFullFilter",
 ]
 
 import os
@@ -48,8 +59,21 @@ class ControlBancoSyncParams(ControlBancoParams):
     )
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class ControlBancoReport(BaseModel):
+class ControlBancoLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class ControlBancoFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+
+
+# -------------------------------------------------
+class ControlBancoCruzadoReport(BaseModel):
     ejercicio: int
     mes: str
     fecha: datetime
@@ -61,11 +85,90 @@ class ControlBancoReport(BaseModel):
 
 
 # -------------------------------------------------
-class ControlBancoDocument(ControlBancoReport):
+class ControlBancoCruzadoDocument(ControlBancoCruzadoReport):
     id: PydanticObjectId = Field(alias="_id")
 
 
 # -------------------------------------------------
-class ControlBancoFilter(BaseFilterParams):
+class ControlBancoCruzadoFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlBancoCruzadoLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class ControlBancoSIIFReport(BaseModel):
+    ejercicio: int
+    fecha: datetime
+    fecha_aprobado: datetime
+    nro_entrada: str
+    nro_original: str
+    cta_contable: str
+    creditos: float
+    debitos: float
+    saldo: float
+    auxiliar_1: str
+    auxiliar_2: str
+    cta_cte: str
+    desc_cta_contable: str
+    clase: str
+
+
+# -------------------------------------------------
+class ControlBancoSIIFDocument(ControlBancoSIIFReport):
+    id: PydanticObjectId = Field(alias="_id")
+
+
+# -------------------------------------------------
+class ControlBancoSIIFFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlBancoSIIFLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class ControlBancoSSCCReport(BaseModel):
+    ejercicio: int
+    mes: str
+    fecha: datetime
+    cta_cte: str
+    movimiento: Optional[str] = None
+    es_cheque: bool
+    beneficiario: Optional[str] = None
+    importe: float
+    concepto: Optional[str] = None
+    moneda: Optional[str] = None
+    libramiento: Optional[str] = None
+    cod_imputacion: str
+    imputacion: str
+    clase: str
+
+
+# -------------------------------------------------
+class ControlBancoSSCCDocument(ControlBancoSSCCReport):
+    id: PydanticObjectId = Field(alias="_id")
+
+
+# -------------------------------------------------
+class ControlBancoSSCCFullFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+
+
+# Este se usa para el Excel y Borrar (Sin limit/offset)
+# -------------------------------------------------
+class ControlBancoSSCCLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
