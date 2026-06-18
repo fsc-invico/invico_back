@@ -50,7 +50,10 @@ class Rcocc31Service(
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
                 model=Rcocc31Report,
-                field_id="estructura",  # O el campo que identifique la fila en caso de error
+                field_id=[
+                    "cta_contable",
+                    "nro_entrada",
+                ],  # O el campo que identifique la fila en caso de error
             )
 
             # 2. Determinar filtro de borrado (Idempotencia)
@@ -59,15 +62,19 @@ class Rcocc31Service(
             if validation_result.validated:
                 # Tomamos el ejercicio del primer registro válido
                 ejercicio_detectado = validation_result.validated[0].ejercicio
-                delete_filter = {"ejercicio": ejercicio_detectado}
+                cta_contable_detectada = validation_result.validated[0].cta_contable
+                delete_filter = {
+                    "ejercicio": ejercicio_detectado,
+                    "cta_contable": cta_contable_detectada,
+                }
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
                 repository=self.repository,
                 validation=validation_result,
                 delete_filter=delete_filter,
-                title="Sincronización SIIF RF602",
-                label="RF602",
+                title="Sincronización SIIF RCOCC31",
+                label="RCOCC31",
                 logger=logger,  # Asegúrate de tener el logger importado
             )
 
