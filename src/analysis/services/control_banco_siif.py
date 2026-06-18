@@ -55,7 +55,6 @@ class ControlBancoSIIFService(
                 data_list=data,
                 model=ControlBancoSIIFReport,
                 field_id=[
-                    "ejercicio",
                     "cta_contable",
                     "nro_entrada",
                 ],  # O el campo que identifique la fila en caso de error

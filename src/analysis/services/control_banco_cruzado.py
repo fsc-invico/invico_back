@@ -57,7 +57,6 @@ class ControlBancoCruzadoService(
                 data_list=data,
                 model=ControlBancoCruzadoReport,
                 field_id=[
-                    "ejercicio",
                     "mes",
                     "clase",
                     "cta_cte",

@@ -55,7 +55,6 @@ class ControlBancoSSCCService(
                 data_list=data,
                 model=ControlBancoSSCCReport,
                 field_id=[
-                    "ejercicio",
                     "mes",
                     "cta_cte",
                     "cod_imputacion",
