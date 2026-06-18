@@ -105,13 +105,15 @@ class ControlBancoCruzadoLiteFilter(CamelModel):
 # -------------------------------------------------
 class ControlBancoSIIFReport(BaseModel):
     ejercicio: int
+    mes: str
     fecha: datetime
     fecha_aprobado: datetime
     nro_entrada: str
     nro_original: str
     cta_contable: str
-    creditos: float
+    tipo_comprobante: str
     debitos: float
+    creditos: float
     saldo: float
     auxiliar_1: str
     auxiliar_2: str
