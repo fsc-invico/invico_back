@@ -23,7 +23,6 @@ class ResumenRendObrasReport(BaseModel):
     mes: str
     fecha: datetime
     beneficiario: str
-    cod_obra: str
     desc_obra: str
     destino: str
     libramiento: str

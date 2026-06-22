@@ -25,7 +25,6 @@ class ResumenRendProvReport(BaseModel):
     beneficiario: str
     destino: str
     libramiento: str
-    movimiento: str
     cta_cte: str
     importe_bruto: NonNegativeFloat
     gcias: NonNegativeFloat
@@ -39,6 +38,7 @@ class ResumenRendProvReport(BaseModel):
     otras: NonNegativeFloat
     retenciones: NonNegativeFloat
     importe_neto: NonNegativeFloat
+    movimiento: str
 
 
 # -------------------------------------------------
