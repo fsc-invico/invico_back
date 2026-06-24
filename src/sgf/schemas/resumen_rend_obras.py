@@ -38,6 +38,7 @@ class ResumenRendObrasReport(BaseModel):
     retenciones: NonNegativeFloat
     importe_neto: NonNegativeFloat
     movimiento: str
+    cuit: Optional[str] = None
 
 
 # -------------------------------------------------

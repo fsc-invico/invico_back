@@ -6,7 +6,6 @@ __all__ = [
 ]
 
 
-from datetime import datetime
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field, NonNegativeFloat
@@ -35,6 +34,7 @@ class InformeContableReport(BaseModel):
     invico: NonNegativeFloat
     retenciones: NonNegativeFloat
     importe_neto: NonNegativeFloat
+    cuit: Optional[str] = None
 
 
 # -------------------------------------------------
