@@ -81,7 +81,7 @@ class Rdeu012Service(
         # 1. Creamos el objeto de filtros normal
         search_params = Rdeu012FullFilter(
             query_filter=params.query_filter,
-            mesAño=params.mes_hasta,
+            ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
 

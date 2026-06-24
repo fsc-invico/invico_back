@@ -5,7 +5,7 @@ __all__ = [
     "Rdeu012LiteFilter",
 ]
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -45,16 +45,12 @@ class Rdeu012Document(Rdeu012Report):
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
 class Rdeu012FullFilter(BaseFilterParams):
-    mes_hasta: Optional[str] = Field(
-        alias="mesAño", default=date.today().strftime("%m/%Y")
-    )
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class Rdeu012LiteFilter(CamelModel):
     query_filter: str = ""
-    mes_hasta: Optional[str] = Field(
-        alias="mesAño", default=date.today().strftime("%m/%Y")
-    )
+    ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
