@@ -3,7 +3,8 @@ __all__ = [
     "ControlObrasSyncParams",
     "ControlObrasReport",
     "ControlObrasDocument",
-    "ControlObrasFilter",
+    "ControlObrasFullFilter",
+    "ControlObrasLiteFilter",
 ]
 
 import os
@@ -69,6 +70,12 @@ class ControlObrasDocument(ControlObrasReport):
 
 
 # -------------------------------------------------
-class ControlObrasFilter(BaseFilterParams):
-    ejercicio: Optional[int] = None
-    fuente: Optional[int] = None
+class ControlObrasFullFilter(BaseFilterParams):
+    ejercicio: Optional[str] = None
+
+
+# -------------------------------------------------
+class ControlObrasLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[str] = None
+    # Aquí podrías añadir: incluir_detalles: bool = False
