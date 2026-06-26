@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
 from ...config import logger
+from ...icaro.repositories import CargaRepositoryDependency
+from ...sgf.repositories import ResumenRendProvRepositoryDependency
 from ...utils import (
     BaseService,
     RouteReturnSchema,
@@ -37,13 +39,15 @@ class ControlObrasService(
         ControlObrasLiteFilter,
     ]
 ):
-    repository: ControlObrasRepositoryDependency
+    ctrl_obras: ControlObrasRepositoryDependency
+    sgf_repo: ResumenRendProvRepositoryDependency
+    icaro_repo: CargaRepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
         # Usamos __post_init__ para pasarle los datos a la clase base.
         super().__init__(
-            repository=self.repository,
+            repository=self.ctrl_obras,
             filter_schema=ControlObrasFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
 
@@ -71,7 +75,7 @@ class ControlObrasService(
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
-                repository=self.repository,
+                repository=self.ctrl_obras,
                 validation=validation_result,
                 delete_filter=delete_filter,
                 title="Sincronización Control Obras",
@@ -90,14 +94,27 @@ class ControlObrasService(
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
+        print(search_params)
 
         # 2. Traemos los datos sin paginar
-        data = await self.repository.find_with_filter_params(params=search_params)
+        data_ctrl_obras = await self.ctrl_obras.find_with_filter_params(
+            params=search_params
+        )
+        data_sgf = await self.sgf_repo.find_with_filter_params(params=search_params)
+        data_icaro = await self.icaro_repo.find_with_filter_params(params=search_params)
 
         # 3. Usar el método de la clase base
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        df_ctrl_obras = pd.DataFrame(
+            [d.model_dump(by_alias=True) for d in data_ctrl_obras]
+        )
+        df_sgf = pd.DataFrame([d.model_dump(by_alias=True) for d in data_sgf])
+        df_icaro = pd.DataFrame([d.model_dump(by_alias=True) for d in data_icaro])
         return self.export_to_excel(
-            data_pairs=[(df, "control_recursos")],
+            data_pairs=[
+                (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
+                (df_sgf, "resumen_rend_cuit"),
+                (df_icaro, "icaro_carga_neto_rdeu"),
+            ],
             filename="Control Obras.xlsx",
             upload_to_google_sheets=True,
             spreadsheet_key="16v2ovmQnS1v73-WxTOK6b9Tx9DRugGc70ufpjVi-rPA",
