@@ -1,10 +1,14 @@
+from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     ResumenRendProvDocument,
     ResumenRendProvFullFilter,
     ResumenRendProvLiteFilter,
 )
-from ..services import ResumenRendProvService  # La clase del servicio
+from ..services import (
+    ResumenRendProvService,
+    ResumenRendProvServiceDependency,
+)
 
 factory = GenericRouterFactory(
     service_dependency=ResumenRendProvService,
@@ -16,10 +20,16 @@ factory = GenericRouterFactory(
 
 resumen_rend_prov_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# resumen_rend_prov_router = factory.get_router()
 
-
-# @resumen_rend_prov_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@resumen_rend_prov_router.get(
+    "/dropDuplicates/{ejercicio}",
+    description="Get All without duplicates",
+)
+async def drop_duplicates(
+    ejercicio: int,
+    service: ResumenRendProvServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.drop_duplicates(ejercicio=ejercicio)

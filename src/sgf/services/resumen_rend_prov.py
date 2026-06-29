@@ -15,6 +15,7 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
@@ -106,6 +107,127 @@ class ResumenRendProvService(
             data_pairs=[(df, "SGF_Resumen_Rend_Prov")],
             filename="reporte_resumen_rend_prov.xlsx",
         )
+
+    # -------------------------------------------------
+    async def drop_duplicates(self, ejercicio: int):
+        params = {
+            "limit": 0,
+            "ejercicio": ejercicio,
+        }
+        data = await self.repository.find_by_filter(filters={}, limit=100)
+        print(data)
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+
+        df = df.loc[df["origen"] != "FUNCIONAMIENTO"]
+
+        # Filtramos los registros de honorarios en EPAM
+        df_epam = df.copy()
+        keep = ["HONORARIOS"]
+        df_epam = df_epam.loc[df_epam["origen"] == "EPAM"]
+        df_epam = df_epam.loc[~df_epam.destino.str.contains("|".join(keep))]
+        df = df.loc[df["origen"] != "EPAM"]
+        df = pd.DataFrame(pd.concat([df, df_epam], ignore_index=True))
+
+        # Filtramos los registros duplicados en la 106
+        df_106 = df.copy()
+        df_106 = df_106.loc[df_106["cta_cte"] == "106"]
+        df_106 = df_106.drop_duplicates(
+            subset=["mes", "fecha", "beneficiario", "libramiento", "importe_bruto"]
+        )
+        df = pd.concat([df[df["cta_cte"] != "106"], df_106], ignore_index=True)
+
+        # Filtramos los registros duplicados en la 07
+        df_07 = df.copy()
+        df_07 = df_07.loc[df_07["cta_cte"] == "130832-07"]
+        df_07 = df_07.sort_values(["libramiento", "destino"], ascending=False)
+        df_07 = df_07.drop_duplicates(
+            subset=[
+                "mes",
+                "fecha",
+                "beneficiario",
+                "libramiento",
+                "importe_bruto",
+                "gcias",
+                "sellos",
+                "iibb",
+                "suss",
+                "invico",
+                "seguro",
+                "salud",
+                "mutual",
+                "otras",
+                "retenciones",
+                "importe_neto",
+            ]
+        )
+        df = pd.concat([df[df["cta_cte"] != "130832-07"], df_07], ignore_index=True)
+
+        # Filtramos los registros duplicados en la 03
+        df_03 = df.copy()
+        df_03 = df_03.loc[df_03["cta_cte"] == "130832-03"]
+        df_03 = df_03.sort_values(["libramiento", "destino"], ascending=False)
+        df_03 = df_03.drop_duplicates(
+            subset=[
+                "mes",
+                "fecha",
+                "beneficiario",
+                "libramiento",
+                "importe_bruto",
+                "gcias",
+                "sellos",
+                "iibb",
+                "suss",
+                "invico",
+                "seguro",
+                "salud",
+                "mutual",
+                "otras",
+                "retenciones",
+                "importe_neto",
+            ]
+        )
+        df = pd.concat([df[df["cta_cte"] != "130832-03"], df_03], ignore_index=True)
+
+        # Filtramos los registros duplicados en la 03
+        df_13 = df.copy()
+        df_13 = df_13.loc[df_13["cta_cte"] == "130832-13"]
+        df_13 = df_13.sort_values(["libramiento", "destino"], ascending=False)
+        df_13 = df_13.drop_duplicates(
+            subset=[
+                "mes",
+                "fecha",
+                "beneficiario",
+                "libramiento",
+                "importe_bruto",
+                "gcias",
+                "sellos",
+                "iibb",
+                "suss",
+                "invico",
+                "seguro",
+                "salud",
+                "mutual",
+                "otras",
+                "retenciones",
+                "importe_neto",
+            ]
+        )
+        df = pd.concat([df[df["cta_cte"] != "130832-13"], df_13], ignore_index=True)
+
+        # Filtramos los registros duplicados en la 221078150
+        df_2210178150 = df.copy()
+        df_2210178150 = df_2210178150.loc[df_2210178150["cta_cte"] == "2210178150"]
+        df_2210178150 = df_2210178150.drop_duplicates(
+            subset=["mes", "fecha", "beneficiario", "libramiento", "importe_bruto"]
+        )
+        # df = df[df["cta_cte"] != "2210178150"]
+        df = pd.concat(
+            [df[df["cta_cte"] != "2210178150"], df_2210178150], ignore_index=True
+        )
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="record")
 
 
 ResumenRendProvServiceDependency = Annotated[ResumenRendProvService, Depends()]
