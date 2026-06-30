@@ -109,13 +109,10 @@ class ResumenRendProvService(
         )
 
     # -------------------------------------------------
-    async def drop_duplicates(self, ejercicio: int):
-        params = {
-            "limit": 0,
-            "ejercicio": ejercicio,
-        }
-        data = await self.repository.find_by_filter(filters={}, limit=100)
-        print(data)
+    async def drop_duplicates(self, params: ResumenRendProvFullFilter):
+
+        data = await self.repository.find_with_filter_params(params=params)
+
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
 
         df = df.loc[df["origen"] != "FUNCIONAMIENTO"]
@@ -226,8 +223,9 @@ class ResumenRendProvService(
         )
 
         df = sanitize_dataframe_for_json_with_datetime(df)
+        df = df.head(100)
 
-        return df.to_dict(orient="record")
+        return df.to_dict(orient="records")
 
 
 ResumenRendProvServiceDependency = Annotated[ResumenRendProvService, Depends()]
