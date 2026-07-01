@@ -12,7 +12,8 @@ from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
 from ...config import logger
-from ...icaro.repositories import CargaRepositoryDependency
+from ...icaro.schemas import CargaFullFilter
+from ...icaro.services import CargaServiceDependency
 from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
 from ...utils import (
@@ -42,7 +43,7 @@ class ControlObrasService(
 ):
     ctrl_obras: ControlObrasRepositoryDependency
     resumen_rend_service: ResumenRendProvServiceDependency
-    icaro_repo: CargaRepositoryDependency
+    icaro_service: CargaServiceDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -96,10 +97,15 @@ class ControlObrasService(
             limit=None,  # Para traer todo
         )
         resumen_rend_params = ResumenRendProvFullFilter(
-            query_filter=params.query_filter,
+            query_filter="",
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
             origen=None,
+        )
+        icaro_params = CargaFullFilter(
+            query_filter="",
+            ejercicio=params.ejercicio,
+            limit=None,
         )
 
         # 2. Traemos los datos sin paginar
@@ -109,16 +115,14 @@ class ControlObrasService(
         data_sgf = await self.resumen_rend_service.unique_obras(
             params=resumen_rend_params
         )
-        data_icaro = await self.icaro_repo.find_with_filter_params(
-            params=ctrl_obras_params
-        )
+        data_icaro = await self.icaro_service.neto_rdeu(params=icaro_params)
 
         # 3. Usar el método de la clase base
         df_ctrl_obras = pd.DataFrame(
             [d.model_dump(by_alias=True) for d in data_ctrl_obras]
         )
         df_sgf = pd.DataFrame(data_sgf)
-        df_icaro = pd.DataFrame([d.model_dump(by_alias=True) for d in data_icaro])
+        df_icaro = pd.DataFrame(data_icaro)
         return self.export_to_excel(
             data_pairs=[
                 (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),

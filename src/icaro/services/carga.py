@@ -200,9 +200,7 @@ class CargaService(
             )
 
         # Si hay datos, el flujo continúa normalmente...
-        rdeu = pd.DataFrame(
-            [d.model_dump(by_alias=True, mode="json") for d in rdeu_docs]
-        )
+        rdeu = pd.DataFrame(rdeu_docs)
 
         # Incorporamos, con signo negativo, los registros de CARGA Icaro que hayan quedado en la deuda flotante (RDEU)
         icaro_cyo = icaro.loc[~icaro["tipo"].isin(["PA6", "REG"])]
