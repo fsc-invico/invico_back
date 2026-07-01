@@ -14,9 +14,11 @@ from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
 from ...config import logger
+from ...siif.repositories import Rdeu012RepositoryDependency
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
@@ -30,6 +32,7 @@ class CargaService(
     BaseService[CargaReport, CargaDocument, CargaFullFilter, CargaLiteFilter]
 ):
     repository: CargaRepositoryDependency
+    rdeu_repo: Rdeu012RepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -169,6 +172,117 @@ class CargaService(
         return self.export_to_excel(
             data_pairs=[(df, "ICARO_CARGA")], filename="reporte_icaro_carga.xlsx"
         )
+
+    # -------------------------------------------------
+    async def neto_rdeu(self, params: CargaFullFilter) -> List[dict]:
+
+        icaro_docs = await self.repository.find_with_filter_params(params=params)
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not icaro_docs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros en ICARO's Carga para el ejercicio o filtros seleccionados.",
+            )
+
+        # Si hay datos, el flujo continúa normalmente...
+        icaro = pd.DataFrame(
+            [d.model_dump(by_alias=True, mode="json") for d in icaro_docs]
+        )
+
+        rdeu_docs = await self.rdeu_repo.get_all()
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not rdeu_docs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros en RDEU's SIIF para el ejercicio o filtros seleccionados.",
+            )
+
+        # Si hay datos, el flujo continúa normalmente...
+        rdeu = pd.DataFrame(
+            [d.model_dump(by_alias=True, mode="json") for d in rdeu_docs]
+        )
+
+        # Incorporamos, con signo negativo, los registros de CARGA Icaro que hayan quedado en la deuda flotante (RDEU)
+        icaro_cyo = icaro.loc[~icaro["tipo"].isin(["PA6", "REG"])]
+        rdeu_deuda = rdeu.loc[:, ["nro_comprobante", "saldo", "mes"]]
+        rdeu_deuda = rdeu_deuda.drop_duplicates(subset=["nro_comprobante", "mes"])
+        rdeu_deuda = pd.merge(rdeu_deuda, icaro_cyo, how="inner", copy=False)
+        rdeu_deuda["importe"] = rdeu_deuda.saldo * (-1)
+        rdeu_deuda["tipo"] = "RDEU"
+        rdeu_deuda = rdeu_deuda.drop(columns=["saldo"])
+        rdeu_deuda = pd.concat([rdeu_deuda, icaro_cyo], copy=False)
+        icaro_pa6 = icaro = icaro.loc[icaro["tipo"].isin(["PA6"])]
+        rdeu_deuda = pd.concat([rdeu_deuda, icaro_pa6], copy=False)
+        icaro_carga_neto_rdeu = rdeu_deuda
+
+        # Ajustamos la Deuda Flotante Pagada
+        rdeu = pd.DataFrame(rdeu_docs)
+        rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
+        rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
+            months=1
+        )
+        rdeu["mes_hasta"] = rdeu["fecha_hasta"].dt.strftime("%m/%Y")
+        rdeu["ejercicio"] = pd.to_numeric(rdeu["mes_hasta"].str[-4:])
+
+        # Incorporamos los comprobantes de gastos pagados
+        # en periodos posteriores (Deuda Flotante)
+        # if ejercicio is not None:
+        #     if isinstance(ejercicio, list):
+        #         rdeu = rdeu.loc[rdeu["ejercicio"].isin(ejercicio)]
+        #     else:
+        #         rdeu = rdeu.loc[rdeu["ejercicio"].isin([ejercicio])]
+        rdeu = rdeu.loc[rdeu["ejercicio"] == int(params.ejercicio)]
+
+        icaro = icaro.loc[~icaro["tipo"].isin(["PA6", "REG"])]
+        icaro = icaro.loc[
+            :,
+            [
+                "nro_comprobante",
+                "actividad",
+                "partida",
+                "fondo_reparo",
+                "nro_certificado",
+                "avance",
+                "origen",
+                "desc_obra",
+            ],
+        ]
+        rdeu = pd.merge(rdeu, icaro, on="nro_comprobante", copy=False)
+        rdeu["importe"] = rdeu.saldo
+        rdeu["tipo"] = "RDEU"
+        rdeu["id_carga"] = rdeu["nro_comprobante"] + "C"
+        rdeu = rdeu.loc[~rdeu["actividad"].isna()]
+        rdeu = rdeu.drop(columns=["fecha", "mes"])
+        rdeu = rdeu.rename(columns={"fecha_hasta": "fecha", "mes_hasta": "mes"})
+        rdeu = rdeu.loc[
+            :,
+            [
+                "ejercicio",
+                "nro_comprobante",
+                "fuente",
+                "cuit",
+                "cta_cte",
+                "tipo",
+                "importe",
+                "id_carga",
+                "actividad",
+                "partida",
+                "fondo_reparo",
+                "nro_certificado",
+                "avance",
+                "origen",
+                "desc_obra",
+                "fecha",
+                "mes",
+            ],
+        ]
+        df = pd.concat([rdeu, icaro_carga_neto_rdeu], copy=False)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
 
 
 CargaServiceDependency = Annotated[CargaService, Depends()]

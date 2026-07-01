@@ -1,3 +1,7 @@
+from typing import Annotated
+
+from fastapi import Depends
+
 from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
@@ -17,6 +21,20 @@ factory = GenericRouterFactory(
 )
 
 carga_router = factory.get_router()
+
+
+# -------------------------------------------------
+@carga_router.get(
+    "/netoRDEU",
+    description="Get All merged with RDEU SIIF",
+)
+async def neto_rdeu(
+    params: Annotated[CargaFullFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.neto_rdeu(params=params)
 
 
 # -------------------------------------------------
