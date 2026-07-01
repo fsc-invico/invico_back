@@ -38,3 +38,17 @@ async def drop_duplicates(
 ):
     security.is_admin_or_user_or_raise()
     return await service.drop_duplicates(params=params)
+
+
+# -------------------------------------------------
+@resumen_rend_prov_router.get(
+    "/uniqueObras",
+    description="Get unique obras",
+)
+async def unique_obras(
+    params: Annotated[ResumenRendProvFullFilter, Depends()],
+    service: ResumenRendProvServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.unique_obras(params=params)

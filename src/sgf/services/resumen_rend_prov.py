@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -113,17 +113,15 @@ class ResumenRendProvService(
 
         data = await self.repository.find_with_filter_params(params=params)
 
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros para el ejercicio o filtros seleccionados.",
+            )
+
+        # Si hay datos, el flujo continúa normalmente...
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
-
-        df = df.loc[df["origen"] != "FUNCIONAMIENTO"]
-
-        # Filtramos los registros de honorarios en EPAM
-        df_epam = df.copy()
-        keep = ["HONORARIOS"]
-        df_epam = df_epam.loc[df_epam["origen"] == "EPAM"]
-        df_epam = df_epam.loc[~df_epam.destino.str.contains("|".join(keep))]
-        df = df.loc[df["origen"] != "EPAM"]
-        df = pd.DataFrame(pd.concat([df, df_epam], ignore_index=True))
 
         # Filtramos los registros duplicados en la 106
         df_106 = df.copy()
@@ -223,7 +221,27 @@ class ResumenRendProvService(
         )
 
         df = sanitize_dataframe_for_json_with_datetime(df)
-        df = df.head(100)
+
+        return df.to_dict(orient="records")
+
+    # -------------------------------------------------
+    async def unique_obras(self, params: ResumenRendProvFullFilter):
+
+        data = await self.drop_duplicates(params=params)
+
+        df = pd.DataFrame(data)
+
+        df = df.loc[df["origen"] != "FUNCIONAMIENTO"]
+
+        # Filtramos los registros de honorarios en EPAM
+        df_epam = df.copy()
+        keep = ["HONORARIOS"]
+        df_epam = df_epam.loc[df_epam["origen"] == "EPAM"]
+        df_epam = df_epam.loc[~df_epam.destino.str.contains("|".join(keep))]
+        df = df.loc[df["origen"] != "EPAM"]
+        df = pd.DataFrame(pd.concat([df, df_epam], ignore_index=True))
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
 

@@ -13,7 +13,8 @@ from fastapi.responses import StreamingResponse
 # from pydantic import ValidationError
 from ...config import logger
 from ...icaro.repositories import CargaRepositoryDependency
-from ...sgf.repositories import ResumenRendProvRepositoryDependency
+from ...sgf.schemas import ResumenRendProvFullFilter
+from ...sgf.services import ResumenRendProvServiceDependency
 from ...utils import (
     BaseService,
     RouteReturnSchema,
@@ -40,7 +41,7 @@ class ControlObrasService(
     ]
 ):
     ctrl_obras: ControlObrasRepositoryDependency
-    sgf_repo: ResumenRendProvRepositoryDependency
+    resumen_rend_service: ResumenRendProvServiceDependency
     icaro_repo: CargaRepositoryDependency
 
     def __post_init__(self):
@@ -89,25 +90,34 @@ class ControlObrasService(
     # -------------------------------------------------
     async def export(self, params: ControlObrasLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        search_params = ControlObrasFullFilter(
+        ctrl_obras_params = ControlObrasFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
-        print(search_params)
+        resumen_rend_params = ResumenRendProvFullFilter(
+            query_filter=params.query_filter,
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+            origen=None,
+        )
 
         # 2. Traemos los datos sin paginar
         data_ctrl_obras = await self.ctrl_obras.find_with_filter_params(
-            params=search_params
+            params=ctrl_obras_params
         )
-        data_sgf = await self.sgf_repo.find_with_filter_params(params=search_params)
-        data_icaro = await self.icaro_repo.find_with_filter_params(params=search_params)
+        data_sgf = await self.resumen_rend_service.unique_obras(
+            params=resumen_rend_params
+        )
+        data_icaro = await self.icaro_repo.find_with_filter_params(
+            params=ctrl_obras_params
+        )
 
         # 3. Usar el método de la clase base
         df_ctrl_obras = pd.DataFrame(
             [d.model_dump(by_alias=True) for d in data_ctrl_obras]
         )
-        df_sgf = pd.DataFrame([d.model_dump(by_alias=True) for d in data_sgf])
+        df_sgf = pd.DataFrame(data_sgf)
         df_icaro = pd.DataFrame([d.model_dump(by_alias=True) for d in data_icaro])
         return self.export_to_excel(
             data_pairs=[
