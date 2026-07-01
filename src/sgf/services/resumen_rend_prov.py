@@ -121,7 +121,7 @@ class ResumenRendProvService(
             )
 
         # Si hay datos, el flujo continúa normalmente...
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
 
         # Filtramos los registros duplicados en la 106
         df_106 = df.copy()
