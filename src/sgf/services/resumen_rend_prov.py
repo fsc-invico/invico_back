@@ -117,7 +117,7 @@ class ResumenRendProvService(
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No se encontraron registros para el ejercicio o filtros seleccionados.",
+                detail="No se encontraron registros de Resumen Rend Prov para el ejercicio o filtros seleccionados.",
             )
 
         # Si hay datos, el flujo continúa normalmente...
