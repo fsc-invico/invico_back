@@ -6,7 +6,7 @@ from typing import Annotated, List
 
 import pandas as pd
 from bson import ObjectId
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -63,7 +63,7 @@ class ResumenRendObrasService(
 
             # 2. Determinar filtro de borrado (Idempotencia)
             # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
-            delete_filter = {}
+            delete_filter = {"id_carga": {"$in": ["", None]}}
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
