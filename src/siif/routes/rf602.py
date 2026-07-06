@@ -8,6 +8,7 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     Rf602Document,
     Rf602FullFilter,
     Rf602LiteFilter,
+    Rf602WithDescEstructuras,
 )
 from ..services import Rf602Service, Rf602ServiceDependency
 
@@ -26,7 +27,7 @@ rf602_router = factory.get_router()
 @rf602_router.get(
     "/withDescEstructuras",
     description="Get rf602 with Descriptions of Estructuras",
-    # response_model=list[Rf602DescEstructuras],
+    response_model=list[Rf602WithDescEstructuras],
 )
 async def desc_estructuras(
     params: Annotated[Rf602FullFilter, Depends()],

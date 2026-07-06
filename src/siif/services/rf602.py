@@ -20,7 +20,13 @@ from ...utils import (
     validate_and_extract_data_from_list,
 )
 from ..repositories import Rf602RepositoryDependency
-from ..schemas import Rf602Document, Rf602FullFilter, Rf602LiteFilter, Rf602Report
+from ..schemas import (
+    Rf602Document,
+    Rf602FullFilter,
+    Rf602LiteFilter,
+    Rf602Report,
+    Rf602WithDescEstructuras,
+)
 from ..services.rf610 import Rf610ServiceDependency
 
 
@@ -91,7 +97,9 @@ class Rf602Service(
         )
 
     # -------------------------------------------------
-    async def with_desc_estructuras(self, params: Rf602FullFilter) -> List[dict]:
+    async def with_desc_estructuras(
+        self, params: Rf602FullFilter
+    ) -> List[Rf602WithDescEstructuras]:
         data = await self.repository.find_with_filter_params(params=params)
 
         if not data:
@@ -106,45 +114,36 @@ class Rf602Service(
         rf610_df = pd.DataFrame(
             await self.rf610_service.desc_estructuras(params=params)
         )
-        # print(
-        #     "RF610 DataFrame:", rf610_df.head()
-        # )
         if not rf610_df.empty:
-            df = df.merge(
-                rf610_df,
-                how="left",
-                on="estructura",
-                copy=False,
-            )
-        # print("Merged DataFrame:", df.head(), df.columns)
-        df.drop(
-            labels=[
-                "org",
-                "pendiente",
-                "subprograma",
-                "proyecto",
-                "actividad",
-            ],
-            axis=1,
-            inplace=True,
-        )
+            df = df.merge(rf610_df, how="left", on="estructura")
+        # df.drop(
+        #     labels=[
+        #         "org",
+        #         "pendiente",
+        #         "subprograma",
+        #         "proyecto",
+        #         "actividad",
+        #     ],
+        #     axis=1,
+        #     inplace=True,
+        # )
 
-        df["programa"] = df["programa"].astype(int)
-        df["fuente"] = df["fuente"].astype(int)
+        # df["programa"] = df["programa"].astype(int)
+        # df["fuente"] = df["fuente"].astype(int)
 
-        first_cols = [
-            "ejercicio",
-            "estructura",
-            "partida",
-            "fuente",
-            "desc_programa",
-            "desc_subprograma",
-            "desc_proyecto",
-            "desc_actividad",
-            "programa",
-            "grupo",
-        ]
-        df = df.loc[:, first_cols].join(df.drop(first_cols, axis=1))
+        # first_cols = [
+        #     "ejercicio",
+        #     "estructura",
+        #     "partida",
+        #     "fuente",
+        #     "desc_programa",
+        #     "desc_subprograma",
+        #     "desc_proyecto",
+        #     "desc_actividad",
+        #     "programa",
+        #     "grupo",
+        # ]
+        # df = df.loc[:, first_cols].join(df.drop(first_cols, axis=1))
 
         df = pd.DataFrame(df)
         df.reset_index(drop=True, inplace=True)

@@ -3,6 +3,7 @@ __all__ = [
     "Rf602Document",
     "Rf602FullFilter",
     "Rf602LiteFilter",
+    "Rf602WithDescEstructuras",
 ]
 
 
@@ -57,3 +58,11 @@ class Rf602LiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class Rf602WithDescEstructuras(Rf602Report):
+    desc_programa: Optional[str] = None
+    desc_subprograma: Optional[str] = None
+    desc_proyecto: Optional[str] = None
+    desc_actividad: Optional[str] = None
