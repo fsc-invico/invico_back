@@ -3,6 +3,7 @@ __all__ = [
     "Rf610Document",
     "Rf610LiteFilter",
     "Rf610FullFilter",
+    "Rf610DescEstructuras",
 ]
 
 from typing import Optional
@@ -57,3 +58,12 @@ class Rf610FullFilter(BaseFilterParams):
 class Rf610LiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
+
+
+# -------------------------------------------------
+class Rf610DescEstructuras(BaseModel):
+    estructura: str
+    desc_programa: Optional[str] = None
+    desc_subprograma: Optional[str] = None
+    desc_proyecto: Optional[str] = None
+    desc_actividad: Optional[str] = None

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -15,11 +15,18 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
 from ..repositories import Rf610RepositoryDependency
-from ..schemas import Rf610Document, Rf610FullFilter, Rf610LiteFilter, Rf610Report
+from ..schemas import (
+    Rf610DescEstructuras,
+    Rf610Document,
+    Rf610FullFilter,
+    Rf610LiteFilter,
+    Rf610Report,
+)
 
 
 @dataclass
@@ -86,6 +93,71 @@ class Rf610Service(
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_RF610")], filename="reporte_rf610.xlsx"
         )
+
+    # -------------------------------------------------
+    async def desc_estructuras(
+        self, params: Rf610FullFilter
+    ) -> List[Rf610DescEstructuras]:
+        data = await self.repository.find_with_filter_params(params=params)
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Estructuras en SIIF's RF610 para el ejercicio o filtros seleccionados.",
+            )
+
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
+
+        df.sort_values(
+            by=["ejercicio", "estructura"], inplace=True, ascending=[False, True]
+        )
+        # Programas únicos
+        df_prog = df.loc[:, ["programa", "desc_programa"]]
+        df_prog.drop_duplicates(subset=["programa"], inplace=True, keep="first")
+        # Subprogramas únicos
+        df_subprog = df.loc[:, ["programa", "subprograma", "desc_subprograma"]]
+        df_subprog.drop_duplicates(
+            subset=["programa", "subprograma"], inplace=True, keep="first"
+        )
+        # Proyectos únicos
+        df_proy = df.loc[:, ["programa", "subprograma", "proyecto", "desc_proyecto"]]
+        df_proy.drop_duplicates(
+            subset=["programa", "subprograma", "proyecto"], inplace=True, keep="first"
+        )
+        # Actividades únicos
+        # Reemplazar los NaN por una cadena vacía en la columna 'desc_actividad'
+        df["desc_actividad"] = df["desc_actividad"].fillna("")
+
+        df_act = df.loc[
+            :,
+            [
+                "estructura",
+                "programa",
+                "subprograma",
+                "proyecto",
+                "actividad",
+                "desc_actividad",
+            ],
+        ]
+
+        df_act.drop_duplicates(subset=["estructura"], inplace=True, keep="first")
+        # Merge all
+        df = df_act.merge(df_prog, how="left", on="programa")
+        df = df.merge(df_subprog, how="left", on=["programa", "subprograma"])
+        df = df.merge(df_proy, how="left", on=["programa", "subprograma", "proyecto"])
+        df["desc_programa"] = df.programa + " - " + df.desc_programa
+        df["desc_subprograma"] = df.subprograma + " - " + df.desc_subprograma
+        df["desc_proyecto"] = df.proyecto + " - " + df.desc_proyecto
+        df["desc_actividad"] = df.actividad + " - " + df.desc_actividad
+        df.drop(
+            labels=["programa", "subprograma", "proyecto", "actividad"],
+            axis=1,
+            inplace=True,
+        )
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 Rf610ServiceDependency = Annotated[Rf610Service, Depends()]
