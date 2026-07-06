@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
@@ -15,11 +15,13 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
 from ..repositories import Rf602RepositoryDependency
 from ..schemas import Rf602Document, Rf602FullFilter, Rf602LiteFilter, Rf602Report
+from ..services.rf610 import Rf610ServiceDependency
 
 
 @dataclass
@@ -28,6 +30,7 @@ class Rf602Service(
     BaseService[Rf602Report, Rf602Document, Rf602FullFilter, Rf602LiteFilter]
 ):
     repository: Rf602RepositoryDependency
+    rf610_service: Rf610ServiceDependency  # Dependencia del servicio RF610 para obtener descripciones
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -86,6 +89,68 @@ class Rf602Service(
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_RF602")], filename="reporte_rf602.xlsx"
         )
+
+    # -------------------------------------------------
+    async def with_desc_estructuras(self, params: Rf602FullFilter) -> List[dict]:
+        data = await self.repository.find_with_filter_params(params=params)
+
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Estructuras en SIIF's RF602 para el ejercicio o filtros seleccionados.",
+            )
+
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
+        df = df.sort_values(by=["ejercicio", "estructura"], ascending=[False, True])
+
+        rf610_df = pd.DataFrame(
+            await self.rf610_service.desc_estructuras(params=params)
+        )
+        # print(
+        #     "RF610 DataFrame:", rf610_df.head()
+        # )
+        if not rf610_df.empty:
+            df = df.merge(
+                rf610_df,
+                how="left",
+                on="estructura",
+                copy=False,
+            )
+        # print("Merged DataFrame:", df.head(), df.columns)
+        df.drop(
+            labels=[
+                "org",
+                "pendiente",
+                "subprograma",
+                "proyecto",
+                "actividad",
+            ],
+            axis=1,
+            inplace=True,
+        )
+
+        df["programa"] = df["programa"].astype(int)
+        df["fuente"] = df["fuente"].astype(int)
+
+        first_cols = [
+            "ejercicio",
+            "estructura",
+            "partida",
+            "fuente",
+            "desc_programa",
+            "desc_subprograma",
+            "desc_proyecto",
+            "desc_actividad",
+            "programa",
+            "grupo",
+        ]
+        df = df.loc[:, first_cols].join(df.drop(first_cols, axis=1))
+
+        df = pd.DataFrame(df)
+        df.reset_index(drop=True, inplace=True)
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 Rf602ServiceDependency = Annotated[Rf602Service, Depends()]
