@@ -13,6 +13,7 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
@@ -21,6 +22,7 @@ from ..schemas import (
     EstructurasDocument,
     EstructurasFullFilter,
     EstructurasLiteFilter,
+    EstructurasPivot,
     EstructurasReport,
 )
 
@@ -189,6 +191,78 @@ class EstructurasService(
         except Exception as e:
             logger.error(f"Error en delete_one_hard: {str(e)}")
             self._handle_error("Error durante el proceso de delete_one_hard", e)
+
+    # -------------------------------------------------
+    async def desc_estructuras(
+        self, params: EstructurasFullFilter
+    ) -> List[EstructurasPivot]:
+        data = await self.repository.find_with_filter_params(params=params)
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Estructuras en Icaro para los filtros seleccionados.",
+            )
+
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
+
+        df = df.drop(columns=["id", "updated_at"], errors="ignore")
+
+        df_prog = df.loc[df["estructura"].str.len() == 2].copy()
+        df_prog = df_prog.rename(
+            columns={"estructura": "programa", "desc_estructura": "desc_programa"}
+        )
+        # print("df_prog", df_prog.head())
+        df_subprog = df.loc[df["estructura"].str.len() == 5].copy()
+        df_subprog = df_subprog.rename(
+            columns={"estructura": "subprograma", "desc_estructura": "desc_subprograma"}
+        )
+        # print("df_subprog", df_subprog.head())
+        df_proy = df.loc[df["estructura"].str.len() == 8].copy()
+        df_proy = df_proy.rename(
+            columns={"estructura": "proyecto", "desc_estructura": "desc_proyecto"}
+        )
+        # print("df_proy", df_proy.head())
+        df_act = df.loc[df["estructura"].str.len() == 11].copy()
+        df_act = df_act.rename(
+            columns={"estructura": "actividad", "desc_estructura": "desc_actividad"}
+        )
+        df_act["programa"] = df_act["actividad"].str[0:2]
+        df_act["subprograma"] = df_act["actividad"].str[0:5]
+        df_act["proyecto"] = df_act["actividad"].str[0:8]
+
+        if df_prog.empty or df_subprog.empty or df_proy.empty or df_act.empty:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Estructuras en Icaro para los filtros seleccionados.",
+            )
+
+        # Merge all
+        df = df_act.merge(df_proy, how="left", on="proyecto", copy=False)
+        df = df.merge(df_subprog, how="left", on="subprograma", copy=False)
+        df = df.merge(df_prog, how="left", on="programa", copy=False)
+
+        # 🔥 LIMPIEZA TOTAL: Eliminamos cualquier registro huérfano de los cruces
+        df = df.dropna(subset=["desc_programa", "desc_subprograma", "desc_proyecto"])
+
+        # Combine number with description
+        df["nro_desc_programa"] = df["actividad"].str[0:2] + " - " + df["desc_programa"]
+        df["nro_desc_subprograma"] = (
+            df["actividad"].str[3:5] + " - " + df["desc_subprograma"]
+        )
+        df["nro_desc_proyecto"] = df["actividad"].str[6:8] + " - " + df["desc_proyecto"]
+        df["nro_desc_actividad"] = (
+            df["actividad"].str[9:11] + " - " + df["desc_actividad"]
+        )
+        # print(df.info())
+        # registro_nulo = df[df["desc_proyecto"].isna()]
+        # print(registro_nulo)
+        # # print(df.tail())
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 EstructurasServiceDependency = Annotated[EstructurasService, Depends()]

@@ -9,6 +9,7 @@ __all__ = [
     "EstructurasDocument",
     "EstructurasFullFilter",
     "EstructurasLiteFilter",
+    "EstructurasPivot",
 ]
 
 
@@ -43,3 +44,19 @@ class EstructurasFullFilter(BaseFilterParams):
 class EstructurasLiteFilter(CamelModel):
     query_filter: str = ""
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class EstructurasPivot(BaseModel):
+    programa: str
+    desc_programa: str
+    nro_desc_programa: str
+    subprograma: str
+    desc_subprograma: str
+    nro_desc_subprograma: str
+    proyecto: str
+    desc_proyecto: str
+    nro_desc_proyecto: str
+    actividad: str
+    desc_actividad: str
+    nro_desc_actividad: str

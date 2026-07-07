@@ -1,9 +1,14 @@
+from typing import Annotated
+
+from fastapi import Depends
+
 from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     EstructurasDocument,
     EstructurasFullFilter,
     EstructurasLiteFilter,
+    EstructurasPivot,
     EstructurasReport,
 )
 from ..services import EstructurasService, EstructurasServiceDependency
@@ -49,3 +54,18 @@ async def delete_one(
 ):
     security.is_admin_or_user_or_raise()
     return await service.delete_one(id=id)
+
+
+# -------------------------------------------------
+@estructuras_router.get(
+    "/descEstructuras",
+    description="Get All Estructuras with Descriptions",
+    response_model=list[EstructurasPivot],
+)
+async def desc_estructuras(
+    params: Annotated[EstructurasFullFilter, Depends()],
+    service: EstructurasServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.desc_estructuras(params=params)
