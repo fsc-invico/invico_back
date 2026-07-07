@@ -4,6 +4,7 @@ __all__ = [
     "CargaFullFilter",
     "CargaLiteFilter",
     "CargaWithDescProveedor",
+    "CargaFullDescSIIF",
 ]
 
 from datetime import datetime, timezone
@@ -63,3 +64,12 @@ class CargaLiteFilter(CamelModel):
 # -------------------------------------------------
 class CargaWithDescProveedor(CargaReport):
     desc_proveedor: Optional[str] = None
+
+
+# -------------------------------------------------
+class CargaFullDescSIIF(CargaWithDescProveedor):
+    desc_proveedor: Optional[str] = None
+    desc_programa: Optional[str] = None
+    desc_subprograma: Optional[str] = None
+    desc_proyecto: Optional[str] = None
+    desc_actividad: Optional[str] = None

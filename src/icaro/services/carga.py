@@ -15,6 +15,8 @@ from fastapi.responses import StreamingResponse
 # from pydantic import ValidationError
 from ...config import logger
 from ...siif.repositories import Rdeu012RepositoryDependency
+from ...siif.schemas import Rf602FullFilter
+from ...siif.services import Rf610ServiceDependency
 from ...utils import (
     BaseService,
     RouteReturnSchema,
@@ -25,6 +27,7 @@ from ...utils import (
 from ..repositories import CargaRepositoryDependency, ProveedoresRepositoryDependency
 from ..schemas import (
     CargaDocument,
+    CargaFullDescSIIF,
     CargaFullFilter,
     CargaLiteFilter,
     CargaReport,
@@ -40,6 +43,7 @@ class CargaService(
     repository: CargaRepositoryDependency
     rdeu_repo: Rdeu012RepositoryDependency
     proveedores_repo: ProveedoresRepositoryDependency
+    rf610_service: Rf610ServiceDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -313,6 +317,34 @@ class CargaService(
             prov.drop_duplicates(subset=["cuit"], inplace=True)
             # prov.rename(columns={"desc_proveedor": "proveedor"}, inplace=True)
             df = df.merge(prov, how="left", on="cuit", copy=False)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
+
+    # -------------------------------------------------
+    async def full_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
+
+        df = pd.DataFrame(await self.with_desc_proveedores(params=params))
+
+        search_params = Rf602FullFilter(
+            query_filter="",
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+
+        df_siif = pd.DataFrame(
+            await self.rf610_service.desc_estructuras(params=search_params)
+        )
+
+        df["estructura"] = df["actividad"] + "-" + df["partida"]
+        df = df.merge(
+            df_siif,
+            how="left",
+            on="estructura",
+            copy=False,
+        )
+        df.drop(labels=["estructura"], axis="columns", inplace=True)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
         json_data = df.to_dict(orient="records")

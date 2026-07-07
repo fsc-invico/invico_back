@@ -6,6 +6,7 @@ from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     CargaDocument,
+    CargaFullDescSIIF,
     CargaFullFilter,
     CargaLiteFilter,
     CargaReport,
@@ -83,3 +84,18 @@ async def with_desc_proveedores(
 ):
     security.is_admin_or_user_or_raise()
     return await service.with_desc_proveedores(params=params)
+
+
+# -------------------------------------------------
+@carga_router.get(
+    "/fullDescSIIF",
+    description="Get All Carga with Proveedores's and SIIF Estructruas's Descriptions",
+    response_model=list[CargaFullDescSIIF],
+)
+async def full_desc_siif(
+    params: Annotated[CargaFullFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.full_desc_siif(params=params)
