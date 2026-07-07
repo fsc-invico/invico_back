@@ -3,6 +3,7 @@ __all__ = [
     "CargaDocument",
     "CargaFullFilter",
     "CargaLiteFilter",
+    "CargaWithDescProveedor",
 ]
 
 from datetime import datetime, timezone
@@ -57,3 +58,8 @@ class CargaLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class CargaWithDescProveedor(CargaReport):
+    desc_proveedor: Optional[str] = None

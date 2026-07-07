@@ -9,6 +9,7 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     CargaFullFilter,
     CargaLiteFilter,
     CargaReport,
+    CargaWithDescProveedor,
 )
 from ..services import CargaService, CargaServiceDependency  # La clase del servicio
 
@@ -67,3 +68,18 @@ async def delete_one(
 ):
     security.is_admin_or_user_or_raise()
     return await service.delete_one(id=id)
+
+
+# -------------------------------------------------
+@carga_router.get(
+    "/withDescProveedores",
+    description="Get All Carga with Proveedores's Descriptions",
+    response_model=list[CargaWithDescProveedor],
+)
+async def with_desc_proveedores(
+    params: Annotated[CargaFullFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.with_desc_proveedores(params=params)

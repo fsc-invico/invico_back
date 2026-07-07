@@ -22,8 +22,14 @@ from ...utils import (
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
-from ..repositories import CargaRepositoryDependency
-from ..schemas import CargaDocument, CargaFullFilter, CargaLiteFilter, CargaReport
+from ..repositories import CargaRepositoryDependency, ProveedoresRepositoryDependency
+from ..schemas import (
+    CargaDocument,
+    CargaFullFilter,
+    CargaLiteFilter,
+    CargaReport,
+    CargaWithDescProveedor,
+)
 
 
 @dataclass
@@ -33,6 +39,7 @@ class CargaService(
 ):
     repository: CargaRepositoryDependency
     rdeu_repo: Rdeu012RepositoryDependency
+    proveedores_repo: ProveedoresRepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -279,6 +286,37 @@ class CargaService(
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
+
+    # -------------------------------------------------
+    async def with_desc_proveedores(
+        self, params: CargaFullFilter
+    ) -> List[CargaWithDescProveedor]:
+        data = await self.repository.find_with_filter_params(params=params)
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Carga en Icaro para los filtros seleccionados.",
+            )
+
+        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
+
+        proveedores_docs = await self.proveedores_repo.get_all()
+
+        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, simplementete devolvemos ICARO
+        if not proveedores_docs:
+            df["desc_proveedor"] = None
+        else:
+            prov = pd.DataFrame(proveedores_docs)
+            prov = prov.loc[:, ["cuit", "desc_proveedor"]]
+            prov.drop_duplicates(subset=["cuit"], inplace=True)
+            # prov.rename(columns={"desc_proveedor": "proveedor"}, inplace=True)
+            df = df.merge(prov, how="left", on="cuit", copy=False)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 CargaServiceDependency = Annotated[CargaService, Depends()]
