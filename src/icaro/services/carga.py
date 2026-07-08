@@ -328,8 +328,8 @@ class CargaService(
         df = pd.DataFrame(await self.with_desc_proveedores(params=params))
 
         search_params = Rf602FullFilter(
-            query_filter="",
-            ejercicio=params.ejercicio,
+            query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
+            ejercicio=None,
             limit=None,  # Para traer todo
         )
 

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .analysis.routes import control_router
+from .analysis.routes import control_router, reporte_router
 from .auth.routes import auth_router, users_router
 from .config import Database
 from .icaro.routes import icaro_router
@@ -44,7 +44,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 # Include our API routes
 app.include_router(control_router)
-# app.include_router(reporte_router)
+app.include_router(reporte_router)
 app.include_router(siif_router)
 app.include_router(sgf_router)
 app.include_router(sscc_router)
