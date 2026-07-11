@@ -1,20 +1,18 @@
 __all__ = ["ReportePlanillometroService", "ReportePlanillometroServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
 from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
+from ...utils import sanitize_dataframe_for_json_with_datetime
 from ..repositories import ControlObrasRepositoryDependency
 from ..schemas import (
     ControlObrasFullFilter,
@@ -80,22 +78,13 @@ class ReportePlanillometroService:
     async def generate_planillometro_icaro(
         self,
         params: ReportePlanillometroFilter,
-        # ejercicio: int = None,
-        # ultimos_ejercicios: str = "All",
-        # desagregar_desc_subprog: bool = True,
-        # desagregar_obras: bool = False,
-        # desagregar_partida: bool = False,
-        # desagregar_fuente: bool = False,
-        # agregar_acum_2008: bool = True,
-        # date_up_to: dt.date = None,
-        # include_pa6: bool = False,
     ) -> List[dict]:
-        params = CargaFullFilter(
+        icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6",
             ejercicio=params.ejercicio,
             limit=None,
         )
-        df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=params))
+        df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
         df.sort_values(["actividad", "partida", "fuente"], inplace=True)
 
         # Grupos de columnas
@@ -119,20 +108,20 @@ class ReportePlanillometroService:
         # Incluimos PA6 (ultimo ejercicio)
         if params.include_pa6:
             df = df.loc[df.ejercicio.astype(int) < int(params.ejercicio)]
-            params = CargaFullFilter(
+            icaro_params = CargaFullFilter(
                 query_filter="partida~42[1-2]{1}, tipo!=REG",
                 ejercicio=params.ejercicio,
                 limit=None,
             )
             df_last = pd.DataFrame(
-                await self.icaro_service.full_desc_siif(params=params)
+                await self.icaro_service.full_desc_siif(params=icaro_params)
             )
             df = pd.concat([df, df_last], axis=0)
 
         # Filtramos hasta una fecha máxima
-        # if date_up_to:
-        #     date_up_to = np.datetime64(date_up_to)
-        #     df = df.loc[df["fecha"] <= date_up_to]
+        if params.date_up_to:
+            date_up_to = np.datetime64(params.date_up_to)
+            df = df.loc[df["fecha"] <= date_up_to]
 
         # # Agregamos ejecución acumulada de Patricia
         # if agregar_acum_2008:
@@ -186,16 +175,16 @@ class ReportePlanillometroService:
         df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
 
         df_ejercicios = df.copy()
-        if params.ultimos_ejercicios != "All":
+        if params.ultimos_ejercicios is None:
+            ejercicios = df_ejercicios.sort_values(
+                "ejercicio", ascending=False
+            ).ejercicio.unique()
+        else:
             ejercicios = int(params.ultimos_ejercicios)
             ejercicios = df_ejercicios.sort_values(
                 "ejercicio", ascending=False
             ).ejercicio.unique()[0:ejercicios]
             # df_anos = df_anos.loc[df_anos.ejercicio.isin(ejercicios)]
-        else:
-            ejercicios = df_ejercicios.sort_values(
-                "ejercicio", ascending=False
-            ).ejercicio.unique()
 
         # Ejercicio actual
         df_ejec_actual = df.copy()
@@ -281,7 +270,12 @@ class ReportePlanillometroService:
         if not params.desagregar_partida:
             df = df.drop(columns=["partida"])
 
-        return df
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 ReportePlanillometroServiceDependency = Annotated[

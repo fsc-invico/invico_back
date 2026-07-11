@@ -20,5 +20,6 @@ class ReportePlanillometroFilter(CamelModel):
     desagregar_partida: bool = False
     desagregar_fuente: bool = False
     agregar_acum_2008: bool = True
+    ultimos_ejercicios: Optional[int] = None
     date_up_to: Optional[dt.date] = None
     include_pa6: bool = False

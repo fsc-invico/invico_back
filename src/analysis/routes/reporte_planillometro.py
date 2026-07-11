@@ -21,4 +21,4 @@ async def compute(
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.generate_planillometro_icaro(ejercicio=params.ejercicio)
+    return await service.generate_planillometro_icaro(params=params)
