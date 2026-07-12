@@ -1,12 +1,15 @@
 __all__ = [
     "ReportePlanillometroFilter",
+    "ReportePlanillometroReport",
+    "ReportePlanillometroDocument",
 ]
 
 
 import datetime as dt
 from typing import Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
+from pydantic_mongo import PydanticObjectId
 
 from ...utils import CamelModel
 
@@ -23,3 +26,27 @@ class ReportePlanillometroFilter(CamelModel):
     ultimos_ejercicios: Optional[int] = None
     date_up_to: Optional[dt.date] = None
     include_pa6: bool = False
+
+
+# -------------------------------------------------
+class ReportePlanillometroReport(BaseModel):
+    desc_programa: Optional[str] = None
+    desc_subprograma: Optional[str] = None
+    desc_proyecto: Optional[str] = None
+    desc_actividad: Optional[str] = None
+    estructura: Optional[str] = None
+    partida: Optional[str] = None
+    desc_obra: Optional[str] = None
+    fuente: Optional[str] = None
+    alta: int
+    ejercicio: int
+    ejecucion: float
+    acum: float
+    en_curso: float
+    terminadas_ant: float
+    terminadas_actual: float
+
+
+# -------------------------------------------------
+class ReportePlanillometroDocument(ReportePlanillometroReport):
+    id: PydanticObjectId = Field(alias="_id")

@@ -1,9 +1,9 @@
-from typing import Annotated
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
-from ..schemas import ReportePlanillometroFilter
+from ..schemas import ReportePlanillometroFilter, ReportePlanillometroReport
 from ..services import ReportePlanillometroServiceDependency
 
 reporte_planillometro_router = APIRouter(prefix="/reportePlanillometro")
@@ -13,7 +13,7 @@ reporte_planillometro_router = APIRouter(prefix="/reportePlanillometro")
 @reporte_planillometro_router.post(
     "/compute",
     description="Compute control obras",
-    # response_model=List[RouteReturnSchema],
+    response_model=List[ReportePlanillometroReport],
 )
 async def compute(
     params: Annotated[ReportePlanillometroFilter, Depends()],

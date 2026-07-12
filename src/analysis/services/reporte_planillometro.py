@@ -19,6 +19,7 @@ from ..schemas import (
     ControlObrasFullFilter,
     ControlObrasLiteFilter,
     ReportePlanillometroFilter,
+    ReportePlanillometroReport,
 )
 
 
@@ -80,7 +81,7 @@ class ReportePlanillometroService:
     async def generate_planillometro_icaro(
         self,
         params: ReportePlanillometroFilter,
-    ) -> List[dict]:
+    ) -> List[ReportePlanillometroReport]:
         icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6",
             ejercicio=params.ejercicio,
