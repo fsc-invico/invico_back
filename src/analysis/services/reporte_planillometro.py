@@ -1,4 +1,7 @@
-__all__ = ["ReportePlanillometroService", "ReportePlanillometroServiceDependency"]
+__all__ = [
+    "ReportePlanillometroService",
+    "ReportePlanillometroServiceDependency",
+]
 
 from dataclasses import dataclass
 from typing import Annotated, List
@@ -10,15 +13,12 @@ from fastapi.responses import StreamingResponse
 
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
-from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
 from ...siif.repositories import PlanillometroHistRepositoryDependency
 from ...utils import sanitize_dataframe_for_json_with_datetime
-from ..repositories import ControlObrasRepositoryDependency
 from ..schemas import (
-    ControlObrasFullFilter,
-    ControlObrasLiteFilter,
     ReportePlanillometroFilter,
+    ReportePlanillometroLiteFilter,
     ReportePlanillometroReport,
 )
 
@@ -26,59 +26,12 @@ from ..schemas import (
 @dataclass
 # -------------------------------------------------
 class ReportePlanillometroService:
-    ctrl_obras: ControlObrasRepositoryDependency
     resumen_rend_service: ResumenRendProvServiceDependency
     icaro_service: CargaServiceDependency
     planillometro_hist_repo: PlanillometroHistRepositoryDependency
 
     # -------------------------------------------------
-    async def export(self, params: ControlObrasLiteFilter) -> StreamingResponse:
-        # 1. Creamos el objeto de filtros normal
-        ctrl_obras_params = ControlObrasFullFilter(
-            query_filter=params.query_filter,
-            ejercicio=params.ejercicio,
-            limit=None,  # Para traer todo
-        )
-        resumen_rend_params = ResumenRendProvFullFilter(
-            query_filter="",
-            ejercicio=params.ejercicio,
-            limit=None,  # Para traer todo
-            origen=None,
-        )
-        icaro_params = CargaFullFilter(
-            query_filter="",
-            ejercicio=params.ejercicio,
-            limit=None,
-        )
-
-        # 2. Traemos los datos sin paginar
-        data_ctrl_obras = await self.ctrl_obras.find_with_filter_params(
-            params=ctrl_obras_params
-        )
-        data_sgf = await self.resumen_rend_service.unique_obras(
-            params=resumen_rend_params
-        )
-        data_icaro = await self.icaro_service.neto_rdeu(params=icaro_params)
-
-        # 3. Usar el método de la clase base
-        df_ctrl_obras = pd.DataFrame(
-            [d.model_dump(by_alias=True) for d in data_ctrl_obras]
-        )
-        df_sgf = pd.DataFrame(data_sgf)
-        df_icaro = pd.DataFrame(data_icaro)
-        return self.export_to_excel(
-            data_pairs=[
-                (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
-                (df_sgf, "resumen_rend_cuit"),
-                (df_icaro, "icaro_carga_neto_rdeu"),
-            ],
-            filename="Control Obras.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="16v2ovmQnS1v73-WxTOK6b9Tx9DRugGc70ufpjVi-rPA",
-        )
-
-    # -------------------------------------------------
-    async def generate_planillometro_icaro(
+    async def generate(
         self,
         params: ReportePlanillometroFilter,
     ) -> List[ReportePlanillometroReport]:
@@ -282,6 +235,48 @@ class ReportePlanillometroService:
         df = sanitize_dataframe_for_json_with_datetime(df)
         json_data = df.to_dict(orient="records")
         return json_data
+
+    # -------------------------------------------------
+    async def export_eecc(
+        self, params: ReportePlanillometroLiteFilter
+    ) -> StreamingResponse:
+        # 1. Creamos el objeto de filtros normal
+        icaro_params = ReportePlanillometroFilter(
+            ejercicio=params.ejercicio,
+            ultimos_ejercicios=5,
+            include_pa6=False,
+            desagregar_desc_subprog=False,
+            limit=None,  # Para traer todo
+        )
+        # 2. Traemos los datos sin paginar
+        data_planillometro = await self.generate(params=icaro_params)
+
+        # 3. Usar el método de la clase base
+        df_planillometro = pd.DataFrame(
+            [d.model_dump(by_alias=True) for d in data_planillometro]
+        )
+        df_planillometro = df_planillometro.rename(
+            columns={
+                "desc_programa": "desc_prog",
+                "desc_proyecto": "desc_proy",
+                "desc_actividad": "desc_act",
+            }
+        )
+
+        # sgv = await get_sgv_saldos_barrios_evolucion()
+        # sgv["ejercicio"] = sgv["ejercicio"].astype(str)
+        # sgv["cod_barrio"] = sgv["cod_barrio"].astype(int)
+        # sgv = sgv.sort_values(by=["ejercicio", "cod_barrio"], ascending=[True, True])
+
+        return self.export_to_excel(
+            data_pairs=[
+                (df_planillometro, "bd_planillometro"),
+                # (sgv, "bd_recuperos"),
+            ],
+            filename="Reporte Planillometro.xlsx",
+            upload_to_google_sheets=True,
+            spreadsheet_key="1Hmb7xmzhZBoicnL5_tN7mr1kOj-r3gw8lCkPErR8Xd4",
+        )
 
 
 ReportePlanillometroServiceDependency = Annotated[
