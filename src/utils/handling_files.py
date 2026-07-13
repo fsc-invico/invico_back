@@ -16,7 +16,7 @@ __all__ = [
     "GoogleExportResponse",
 ]
 
-
+import math
 import os
 import sqlite3
 from io import BytesIO
@@ -28,7 +28,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import logger
-from .google_sheets import GoogleSheets
 from .safe_get import (
     sanitize_dataframe_for_json,
     sanitize_dataframe_for_json_with_datetime,
@@ -127,6 +126,10 @@ def export_dataframe_as_excel_response(
 
         # 2️⃣ Upload a Google Sheets
         if upload_to_google_sheets and google_sheet_key:
+            from .google_sheets import (
+                GoogleSheets,
+            )  # Import local para evitar ciclos
+
             gs_service = GoogleSheets()
             gs_service.to_google_sheets(
                 df=df,
@@ -158,7 +161,7 @@ def export_dataframe_as_excel_response(
 
 # --------------------------------------------------
 def export_multiple_dataframes_to_excel(
-    df_sheet_pairs: List[Tuple[pd.DataFrame, str]],
+    data_pairs: List[Tuple[pd.DataFrame, str]],
     filename: str = "data.xlsx",
     spreadsheet_key: Optional[str] = None,
     upload_to_google_sheets: bool = False,
@@ -176,7 +179,7 @@ def export_multiple_dataframes_to_excel(
     try:
         # 1️⃣ Sanitizar y preparar DataFrames
         sanitized_pairs = []
-        for df, sheet_name in df_sheet_pairs:
+        for df, sheet_name in data_pairs:
             if not df.empty:
                 df = sanitize_dataframe_for_json_with_datetime(df)
                 df = df.drop(columns=["_id"], errors="ignore")
@@ -184,11 +187,49 @@ def export_multiple_dataframes_to_excel(
 
         # 2️⃣ Subir a Google Sheets
         if upload_to_google_sheets and spreadsheet_key:
+            from .google_sheets import (
+                GoogleSheets,
+            )  # Import local para evitar ciclos
+
             gs = GoogleSheets()
             for df, sheet_name in sanitized_pairs:
-                # if not df.empty:
+                # 🔥 LA MAGIA: Convertimos a registros nativos puros dict de Python.
+                # Esto elimina CUALQUIER rastro de pd.NA, int64, bool o float64 de Pandas.
+                raw_records = df.to_dict(orient="records")
+
+                cleaned_records = []
+                for row in raw_records:
+                    cleaned_row = {}
+                    for k, v in row.items():
+                        # Aseguramos que cualquier residuo flote como None puro
+                        if (
+                            v is None
+                            or pd.isna(v)
+                            or (isinstance(v, float) and math.isnan(v))
+                        ):
+                            cleaned_row[k] = None
+                        else:
+                            cleaned_row[k] = v
+                    cleaned_records.append(cleaned_row)
+
+                # Reconstruimos un DataFrame forzando el tipo 'object' celda por celda.
+                # Al pasarle explicitly dtype=object en el constructor, Pandas se ve obligado
+                # a mantener los None como None y no puede usar sus tipos optimizados (str, bool).
+                df_final_json = pd.DataFrame(cleaned_records, dtype=object)
+
+                # --- PRINT DE CONTROL ---
+                print(f"📊 Controlando columnas de la hoja: {sheet_name}")
+                for col in df_final_json.columns:
+                    has_nan = (
+                        df_final_json[col]
+                        .apply(lambda x: isinstance(x, float) and math.isnan(x))
+                        .any()
+                    )
+                    if has_nan:
+                        print(f"🚨 ¡La columna '{col}' TIENE NaNs encubiertos!")
+                # -------------------------
                 gs.to_google_sheets(
-                    df=df,
+                    df=df_final_json,
                     spreadsheet_key=spreadsheet_key,
                     wks_name=sheet_name,
                 )
@@ -251,6 +292,10 @@ def upload_multiple_dataframes_to_google_sheets(
             sanitized_pairs.append((df, sheet_name))
 
         # 2️⃣ Subir a Google Sheets
+        from .google_sheets import (
+            GoogleSheets,
+        )  # Import local para evitar ciclos
+
         gs = GoogleSheets()
         for df, sheet_name in sanitized_pairs:
             gs.to_google_sheets(

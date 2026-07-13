@@ -55,6 +55,5 @@ class ReportePlanillometroFilter(CamelModel):
 
 # -------------------------------------------------
 class ReportePlanillometroLiteFilter(CamelModel):
-    query_filter: str = ""
-    ejercicio: Optional[str] = None
+    ejercicio: int
     # Aquí podrías añadir: incluir_detalles: bool = False

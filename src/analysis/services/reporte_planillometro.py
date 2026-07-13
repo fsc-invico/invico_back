@@ -15,7 +15,10 @@ from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
 from ...sgf.services import ResumenRendProvServiceDependency
 from ...siif.repositories import PlanillometroHistRepositoryDependency
-from ...utils import sanitize_dataframe_for_json_with_datetime
+from ...utils import (
+    export_multiple_dataframes_to_excel,
+    sanitize_dataframe_for_json_with_datetime,
+)
 from ..schemas import (
     ReportePlanillometroFilter,
     ReportePlanillometroLiteFilter,
@@ -242,7 +245,7 @@ class ReportePlanillometroService:
     ) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
         icaro_params = ReportePlanillometroFilter(
-            ejercicio=params.ejercicio,
+            ejercicio=str(params.ejercicio),
             ultimos_ejercicios=5,
             include_pa6=False,
             desagregar_desc_subprog=False,
@@ -252,9 +255,7 @@ class ReportePlanillometroService:
         data_planillometro = await self.generate(params=icaro_params)
 
         # 3. Usar el método de la clase base
-        df_planillometro = pd.DataFrame(
-            [d.model_dump(by_alias=True) for d in data_planillometro]
-        )
+        df_planillometro = pd.DataFrame(data_planillometro)
         df_planillometro = df_planillometro.rename(
             columns={
                 "desc_programa": "desc_prog",
@@ -268,7 +269,7 @@ class ReportePlanillometroService:
         # sgv["cod_barrio"] = sgv["cod_barrio"].astype(int)
         # sgv = sgv.sort_values(by=["ejercicio", "cod_barrio"], ascending=[True, True])
 
-        return self.export_to_excel(
+        return export_multiple_dataframes_to_excel(
             data_pairs=[
                 (df_planillometro, "bd_planillometro"),
                 # (sgv, "bd_recuperos"),
