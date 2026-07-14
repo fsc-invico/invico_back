@@ -55,21 +55,28 @@ class Rf610Service(
                 field_id="estructura",  # O el campo que identifique la fila en caso de error
             )
 
-            # 2. Determinar filtro de borrado (Idempotencia)
-            # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
-            delete_filter = {}
-            if validation_result.validated:
-                # Tomamos el ejercicio del primer registro válido
-                ejercicio_detectado = validation_result.validated[0].ejercicio
-                delete_filter = {"ejercicio": ejercicio_detectado}
+            # 🔥 CONTROL CRÍTICO: Si no hay registros válidos, lanzamos un 400 Bad Request.
+            # (Asumo que validation_result.validated es una lista vacía o None cuando falla todo)
+            if not validation_result.validated:
+                # Si validation_result tiene una lista de errores detallados, los exponemos al frontend
+                detail_msg = "No se encontraron registros válidos para procesar."
+                if hasattr(validation_result, "errors") and validation_result.errors:
+                    # Formateamos los primeros errores para no saturar el log pero dar contexto claro
+                    detail_msg += f" Errores detectados: {validation_result.errors[:2]}"
 
+                raise HTTPException(status_code=400, detail=detail_msg)
+
+            # 2. Determinar filtro de borrado (Idempotencia)
+            # A esta altura ya es 100% seguro que al menos hay un registro válido en el índice [0]
+            ejercicio_detectado = validation_result.validated[0].ejercicio
+            delete_filter = {"ejercicio": ejercicio_detectado}
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
                 repository=self.repository,
                 validation=validation_result,
                 delete_filter=delete_filter,
                 title="Sincronización SIIF RF610",
-                label="RF610",
+                label=f"RF610 del Ejercicio {ejercicio_detectado}",
                 logger=logger,  # Asegúrate de tener el logger importado
             )
 
