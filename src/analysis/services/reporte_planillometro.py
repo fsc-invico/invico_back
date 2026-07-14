@@ -13,7 +13,6 @@ from fastapi.responses import StreamingResponse
 
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
-from ...sgf.services import ResumenRendProvServiceDependency
 from ...siif.repositories import PlanillometroHistRepositoryDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
@@ -29,7 +28,6 @@ from ..schemas import (
 @dataclass
 # -------------------------------------------------
 class ReportePlanillometroService:
-    resumen_rend_service: ResumenRendProvServiceDependency
     icaro_service: CargaServiceDependency
     planillometro_hist_repo: PlanillometroHistRepositoryDependency
 
@@ -39,8 +37,8 @@ class ReportePlanillometroService:
         params: ReportePlanillometroFilter,
     ) -> List[ReportePlanillometroReport]:
         icaro_params = CargaFullFilter(
-            query_filter="partida~42[1-2]{1}, tipo!=PA6",
-            ejercicio=params.ejercicio,
+            query_filter="partida~42[1-2]{1}, tipo!=PA6, "
+            + f"ejercicio<={int(params.ejercicio)}",
             limit=None,
         )
         df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
