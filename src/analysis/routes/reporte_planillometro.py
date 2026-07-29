@@ -14,7 +14,7 @@ reporte_planillometro_router = APIRouter(prefix="/reportePlanillometro")
 
 
 # -------------------------------------------------
-@reporte_planillometro_router.post(
+@reporte_planillometro_router.get(
     "",
     description="Reporte Planillometro",
     response_model=List[ReportePlanillometroReport],
