@@ -82,51 +82,51 @@ class ReportePlanillometroService:
             date_up_to = np.datetime64(params.date_up_to)
             df = df.loc[df["fecha"] <= date_up_to]
 
-        # Agregamos ejecución acumulada de Patricia
-        if params.agregar_acum_2008:
-            df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
-            if not df_acum_2008.empty:
-                df_acum_2008["ejercicio"] = 2008
-                df_acum_2008["avance"] = 1
-                df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
-                df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
-                df["estructura"] = df["actividad"] + "-" + df["partida"]
+        # # Agregamos ejecución acumulada de Patricia
+        # if params.agregar_acum_2008:
+        #     df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
+        #     if not df_acum_2008.empty:
+        #         df_acum_2008["ejercicio"] = 2008
+        #         df_acum_2008["avance"] = 1
+        #         df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
+        #         df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
+        #         df["estructura"] = df["actividad"] + "-" + df["partida"]
 
-                estructuras_unicas = set(df["estructura"].unique())
-                df_dif = df_acum_2008.loc[
-                    df_acum_2008["estructura"].isin(estructuras_unicas)
-                ].copy()
-                df_dif = df_dif.drop(
-                    columns=[
-                        "desc_programa",
-                        "desc_subprograma",
-                        "desc_proyecto",
-                        "desc_actividad",
-                    ],
-                    errors="ignore",
-                )
+        #         estructuras_unicas = set(df["estructura"].unique())
+        #         df_dif = df_acum_2008.loc[
+        #             df_acum_2008["estructura"].isin(estructuras_unicas)
+        #         ].copy()
+        #         df_dif = df_dif.drop(
+        #             columns=[
+        #                 "desc_programa",
+        #                 "desc_subprograma",
+        #                 "desc_proyecto",
+        #                 "desc_actividad",
+        #             ],
+        #             errors="ignore",
+        #         )
 
-                columns_to_merge = [
-                    "estructura",
-                    "desc_programa",
-                    "desc_proyecto",
-                    "desc_actividad",
-                ]
-                if params.desagregar_desc_subprog:
-                    columns_to_merge.insert(2, "desc_subprograma")
+        #         columns_to_merge = [
+        #             "estructura",
+        #             "desc_programa",
+        #             "desc_proyecto",
+        #             "desc_actividad",
+        #         ]
+        #         if params.desagregar_desc_subprog:
+        #             columns_to_merge.insert(2, "desc_subprograma")
 
-                df_dif = pd.merge(
-                    df_dif,
-                    df.loc[:, columns_to_merge].drop_duplicates(),
-                    on=["estructura"],
-                    how="left",
-                )
-                df_acum_2008 = df_acum_2008.loc[
-                    ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
-                ]
-                df_acum_2008 = pd.concat([df_acum_2008, df_dif])
-                df = pd.concat([df, df_acum_2008], ignore_index=True)
-                df = df.drop(columns=["estructura"], errors="ignore")
+        #         df_dif = pd.merge(
+        #             df_dif,
+        #             df.loc[:, columns_to_merge].drop_duplicates(),
+        #             on=["estructura"],
+        #             how="left",
+        #         )
+        #         df_acum_2008 = df_acum_2008.loc[
+        #             ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
+        #         ]
+        #         df_acum_2008 = pd.concat([df_acum_2008, df_dif])
+        #         df = pd.concat([df, df_acum_2008], ignore_index=True)
+        #         df = df.drop(columns=["estructura"], errors="ignore")
 
         # # Ejercicio alta
         # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
@@ -266,27 +266,27 @@ class ReportePlanillometroService:
             .rename(columns={"importe": "ejecucion"})
         )
 
-        # --- 3. CÁLCULO DE ACUMULADOS HISTÓRICOS ---
-        # Para evitar que cumsum omita años sin movimientos, acumulamos por ejercicio directamente sobre df
-        # Calculamos el acumulado de importe para cada combinación (group_cols + ejercicio_corte)
-        df_acum_list = []
-        for ej in ejercicios_unicos:
-            df_sub = df.loc[df["ejercicio"] <= ej]
-            if not df_sub.empty:
-                df_temp = (
-                    df_sub.groupby(group_cols)["importe"]
-                    .sum()
-                    .reset_index()
-                    .rename(columns={"importe": "acum"})
-                )
-                df_temp["ejercicio"] = ej
-                df_acum_list.append(df_temp)
+        # # --- 3. CÁLCULO DE ACUMULADOS HISTÓRICOS ---
+        # # Para evitar que cumsum omita años sin movimientos, acumulamos por ejercicio directamente sobre df
+        # # Calculamos el acumulado de importe para cada combinación (group_cols + ejercicio_corte)
+        # df_acum_list = []
+        # for ej in ejercicios_unicos:
+        #     df_sub = df.loc[df["ejercicio"] <= ej]
+        #     if not df_sub.empty:
+        #         df_temp = (
+        #             df_sub.groupby(group_cols)["importe"]
+        #             .sum()
+        #             .reset_index()
+        #             .rename(columns={"importe": "acum"})
+        #         )
+        #         df_temp["ejercicio"] = ej
+        #         df_acum_list.append(df_temp)
 
-        df_acum = (
-            pd.concat(df_acum_list, ignore_index=True)
-            if df_acum_list
-            else pd.DataFrame(columns=group_cols + ["ejercicio", "acum"])
-        )
+        # df_acum = (
+        #     pd.concat(df_acum_list, ignore_index=True)
+        #     if df_acum_list
+        #     else pd.DataFrame(columns=group_cols + ["ejercicio", "acum"])
+        # )
 
         # # --- 4. OBRAS EN CURSO Y TERMINADAS (Fiel a la lógica de dominio + Cero CPU) ---
         # df_curso_list = []
@@ -376,9 +376,9 @@ class ReportePlanillometroService:
         df_final = pd.merge(
             df_base_grid, df_ejec, on=group_cols + ["ejercicio"], how="left"
         )
-        df_final = pd.merge(
-            df_final, df_acum, on=group_cols + ["ejercicio"], how="left"
-        )
+        # df_final = pd.merge(
+        #     df_final, df_acum, on=group_cols + ["ejercicio"], how="left"
+        # )
         # df_final = pd.merge(
         #     df_final, df_curso, on=group_cols + ["ejercicio"], how="left"
         # )
