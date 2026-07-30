@@ -38,7 +38,7 @@ class ReportePlanillometroService:
     ) -> List[ReportePlanillometroReport]:
         icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6, "
-            + f"ejercicio<={int(params.ejercicio)}",
+            + f"ejercicio={int(params.ejercicio)}",  # volver a colocar ejercicio={int(params.ejercicio)}
             limit=None,
         )
         df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
@@ -229,42 +229,42 @@ class ReportePlanillometroService:
         # df = sanitize_dataframe_for_json_with_datetime(df)
         # json_data = df.to_dict(orient="records")
 
-        # Ejercicios a procesar
-        ejercicios_unicos = sorted(df["ejercicio"].unique(), reverse=True)
-        if params.ultimos_ejercicios is not None:
-            ejercicios_unicos = ejercicios_unicos[: int(params.ultimos_ejercicios)]
+        # # Ejercicios a procesar
+        # ejercicios_unicos = sorted(df["ejercicio"].unique(), reverse=True)
+        # if params.ultimos_ejercicios is not None:
+        #     ejercicios_unicos = ejercicios_unicos[: int(params.ultimos_ejercicios)]
 
-        # --- 1. MATRIZ DE ESTRUCTURAS Y ALTA HISTÓRICA COMPLETA ---
-        # Calculamos el alta tomando el dataset completo para no perder la primera aparición histórica
-        df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
-        df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
+        # # --- 1. MATRIZ DE ESTRUCTURAS Y ALTA HISTÓRICA COMPLETA ---
+        # # Calculamos el alta tomando el dataset completo para no perder la primera aparición histórica
+        # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
+        # df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
 
-        # print("df_alta", len(df_alta), df_alta.columns, df_alta.head())
+        # # print("df_alta", len(df_alta), df_alta.columns, df_alta.head())
 
-        # Estructuras únicas
-        idx_estructuras = df_alta[group_cols].drop_duplicates()
+        # # Estructuras únicas
+        # idx_estructuras = df_alta[group_cols].drop_duplicates()
 
-        # Generamos la grilla completa: (Todas las estructuras x Todos los ejercicios solicitados)
-        grid_frames = []
-        for ej in ejercicios_unicos:
-            temp = idx_estructuras.copy()
-            temp["ejercicio"] = ej
-            grid_frames.append(temp)
+        # # Generamos la grilla completa: (Todas las estructuras x Todos los ejercicios solicitados)
+        # grid_frames = []
+        # for ej in ejercicios_unicos:
+        #     temp = idx_estructuras.copy()
+        #     temp["ejercicio"] = ej
+        #     grid_frames.append(temp)
 
-        # print("grid_frames", len(grid_frames), grid_frames[0].head())
+        # # print("grid_frames", len(grid_frames), grid_frames[0].head())
 
-        df_base_grid = pd.concat(grid_frames, ignore_index=True)
-        df_base_grid = pd.merge(df_base_grid, df_alta, on=group_cols, how="left")
+        # df_base_grid = pd.concat(grid_frames, ignore_index=True)
+        # df_base_grid = pd.merge(df_base_grid, df_alta, on=group_cols, how="left")
 
-        # print("df_base_grid", len(df_base_grid), df_base_grid.head())
+        # # print("df_base_grid", len(df_base_grid), df_base_grid.head())
 
-        # --- 2. CÁLCULO DE EJECUCIÓN (Sin perder filas sin movimiento) ---
-        df_ejec = (
-            df.groupby(group_cols + ["ejercicio"])["importe"]
-            .sum()
-            .reset_index()
-            .rename(columns={"importe": "ejecucion"})
-        )
+        # # --- 2. CÁLCULO DE EJECUCIÓN (Sin perder filas sin movimiento) ---
+        # df_ejec = (
+        #     df.groupby(group_cols + ["ejercicio"])["importe"]
+        #     .sum()
+        #     .reset_index()
+        #     .rename(columns={"importe": "ejecucion"})
+        # )
 
         # # --- 3. CÁLCULO DE ACUMULADOS HISTÓRICOS ---
         # # Para evitar que cumsum omita años sin movimientos, acumulamos por ejercicio directamente sobre df
@@ -373,9 +373,9 @@ class ReportePlanillometroService:
         # )
 
         # --- 5. CONSOLIDACIÓN SOBRE LA MATRIZ BASE ---
-        df_final = pd.merge(
-            df_base_grid, df_ejec, on=group_cols + ["ejercicio"], how="left"
-        )
+        # df_final = pd.merge(
+        #     df_base_grid, df_ejec, on=group_cols + ["ejercicio"], how="left"
+        # )
         # df_final = pd.merge(
         #     df_final, df_acum, on=group_cols + ["ejercicio"], how="left"
         # )
@@ -395,34 +395,38 @@ class ReportePlanillometroService:
         # df_final["terminadas_actual"] = (
         #     df_final["acum"] - df_final["en_curso"] - df_final["terminadas_ant"]
         # )
-        df_final["actividad"] = df_final["actividad"] + "-" + df_final["partida"]
-        df_final.rename(columns={"actividad": "estructura"}, inplace=True)
+        # df_final["actividad"] = df_final["actividad"] + "-" + df_final["partida"]
+        # df_final.rename(columns={"actividad": "estructura"}, inplace=True)
 
-        if not params.desagregar_partida:
-            df_final.drop(columns=["partida"], inplace=True, errors="ignore")
+        # if not params.desagregar_partida:
+        #     df_final.drop(columns=["partida"], inplace=True, errors="ignore")
 
-        # --- 6. REORDENAMIENTO DE COLUMNAS (alta antes que ejercicio) ---
-        cols = df_final.columns.tolist()
-        if "alta" in cols and "ejercicio" in cols:
-            cols.remove("alta")
-            ej_idx = cols.index("ejercicio")
-            cols.insert(ej_idx, "alta")  # Insertar 'alta' justo antes de 'ejercicio'
-            df_final = df_final[cols]
+        # # --- 6. REORDENAMIENTO DE COLUMNAS (alta antes que ejercicio) ---
+        # cols = df_final.columns.tolist()
+        # if "alta" in cols and "ejercicio" in cols:
+        #     cols.remove("alta")
+        #     ej_idx = cols.index("ejercicio")
+        #     cols.insert(ej_idx, "alta")  # Insertar 'alta' justo antes de 'ejercicio'
+        #     df_final = df_final[cols]
 
-        df_final.sort_values(
-            ["estructura", "ejercicio"], ascending=[True, False], inplace=True
-        )
+        # df_final.sort_values(
+        #     ["estructura", "ejercicio"], ascending=[True, False], inplace=True
+        # )
 
         # --- 7. Elimino los registros cuyo campo alta es mayor que ejercicio
-        df_final = df_final.loc[df_final["alta"] <= df_final["ejercicio"]]
-        df_final["alta"] = df_final["alta"].astype(str)
+        # df_final = df_final.loc[df_final["alta"] <= df_final["ejercicio"]]
+        # df_final["alta"] = df_final["alta"].astype(str)
 
-        if params.limit is not None and params.limit > 0:
-            df_final = df_final.head(params.limit)
+        # if params.limit is not None and params.limit > 0:
+        #     df_final = df_final.head(params.limit)
 
-        df_final = sanitize_dataframe_for_json_with_datetime(df_final)
+        # df_final = sanitize_dataframe_for_json_with_datetime(df_final)
 
-        return df_final.to_dict(orient="records")
+        # return df_final.to_dict(orient="records")
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
 
     # -------------------------------------------------
     async def export_eecc(
