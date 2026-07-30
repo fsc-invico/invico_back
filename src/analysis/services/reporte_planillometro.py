@@ -60,7 +60,18 @@ class ReportePlanillometroService:
             group_cols = group_cols + ["fuente"]
 
         # Eliminamos aquellos ejercicios anteriores a 2009
+        print("Antes de filtrar ejercicios menores a 2009", len(df))
         df = df.loc[df.ejercicio.astype(int) >= 2009]
+        print("Despues de filtrar ejercicios menores a 2009", len(df))
+
+        # Probando agrupar para disminuir número de registros
+        print("Antes de agrupar", df.shape)
+        df_test = (
+            df.groupby(group_cols + ["ejercicio", "desc_obra"])
+            .agg({"importe": "sum", "avance": "max"})
+            .reset_index()
+        )
+        print("Despues de agrupar", df_test.shape, df_test.columns, df_test.head())
 
         # Incluimos PA6 (ultimo ejercicio)
         if params.include_pa6:
