@@ -372,75 +372,6 @@ class ReportePlanillometroService:
         #     else pd.DataFrame(columns=group_cols + ["ejercicio", "terminadas_ant"])
         # )
 
-        # --- 4. OBRAS EN CURSO Y TERMINADAS (Diseño Ultra Ligero de RAM/CPU) ---
-        if "desc_obra" in df.columns and not df.empty:
-            keys_obra = list(set(group_cols + ["desc_obra"]))
-
-            # 1. Matriz enana: avance máximo por obra en cada año que tuvo movimientos
-            df_avances_reales = (
-                df.groupby(keys_obra + ["ejercicio"])["avance"].max().reset_index()
-            )
-
-            # 2. Generamos grilla completa (Obra x Ejercicio) pero SOLO con las obras presentes
-            df_obras_unicas = df_avances_reales[keys_obra].drop_duplicates()
-            df_ejercicios_grid = pd.DataFrame({"ejercicio": ejercicios_unicos})
-
-            grid_obras = pd.merge(df_obras_unicas, df_ejercicios_grid, how="cross")
-
-            # 3. Reconstruimos la historia continua de avances (ffill + cummax)
-            # Esto se calcula sobre una tabla enana (p.ej. 20.000 filas max), tarda 0.01 segundos
-            df_historia_obras = pd.merge(
-                grid_obras, df_avances_reales, on=keys_obra + ["ejercicio"], how="left"
-            ).sort_values(keys_obra + ["ejercicio"])
-            df_historia_obras["avance_acum"] = (
-                df_historia_obras.groupby(keys_obra)["avance"].ffill().fillna(0)
-            )
-            df_historia_obras["avance_acum"] = df_historia_obras.groupby(keys_obra)[
-                "avance_acum"
-            ].cummax()
-
-            # --- A. OBRAS EN CURSO (avance_acum < 1 en el ejercicio_eval) ---
-            obras_curso_map = df_historia_obras.loc[
-                df_historia_obras["avance_acum"] < 1, keys_obra + ["ejercicio"]
-            ].rename(columns={"ejercicio": "ejercicio_eval"})
-
-            # Join directo solo sobre los años válidos (ejercicio_df <= ejercicio_eval)
-            df_c = pd.merge(df, obras_curso_map, on=keys_obra, how="inner")
-            df_c = df_c.loc[df_c["ejercicio"] <= df_c["ejercicio_eval"]]
-
-            df_curso = (
-                df_c.groupby(group_cols + ["ejercicio_eval"])["importe"]
-                .sum()
-                .reset_index()
-                .rename(columns={"importe": "en_curso", "ejercicio_eval": "ejercicio"})
-            )
-
-            # --- B. OBRAS TERMINADAS ANTERIOR (avance_acum == 1 en ejercicio anterior) ---
-            df_historia_obras["avance_prev"] = (
-                df_historia_obras.groupby(keys_obra)["avance_acum"].shift(1).fillna(0)
-            )
-            obras_term_ant_map = df_historia_obras.loc[
-                df_historia_obras["avance_prev"] == 1, keys_obra + ["ejercicio"]
-            ].rename(columns={"ejercicio": "ejercicio_eval"})
-
-            # Join directo solo sobre los años válidos (ejercicio_df < ejercicio_eval)
-            df_t = pd.merge(df, obras_term_ant_map, on=keys_obra, how="inner")
-            df_t = df_t.loc[df_t["ejercicio"] < df_t["ejercicio_eval"]]
-
-            df_term_ant = (
-                df_t.groupby(group_cols + ["ejercicio_eval"])["importe"]
-                .sum()
-                .reset_index()
-                .rename(
-                    columns={"importe": "terminadas_ant", "ejercicio_eval": "ejercicio"}
-                )
-            )
-        else:
-            df_curso = pd.DataFrame(columns=group_cols + ["ejercicio", "en_curso"])
-            df_term_ant = pd.DataFrame(
-                columns=group_cols + ["ejercicio", "terminadas_ant"]
-            )
-
         # --- 5. CONSOLIDACIÓN SOBRE LA MATRIZ BASE ---
         df_final = pd.merge(
             df_base_grid, df_ejec, on=group_cols + ["ejercicio"], how="left"
@@ -448,22 +379,22 @@ class ReportePlanillometroService:
         df_final = pd.merge(
             df_final, df_acum, on=group_cols + ["ejercicio"], how="left"
         )
-        df_final = pd.merge(
-            df_final, df_curso, on=group_cols + ["ejercicio"], how="left"
-        )
-        df_final = pd.merge(
-            df_final, df_term_ant, on=group_cols + ["ejercicio"], how="left"
-        )
+        # df_final = pd.merge(
+        #     df_final, df_curso, on=group_cols + ["ejercicio"], how="left"
+        # )
+        # df_final = pd.merge(
+        #     df_final, df_term_ant, on=group_cols + ["ejercicio"], how="left"
+        # )
 
-        # Rellenar ceros
-        df_final.fillna(
-            {"en_curso": 0, "terminadas_ant": 0, "ejecucion": 0, "acum": 0},
-            inplace=True,
-        )
+        # # Rellenar ceros
+        # df_final.fillna(
+        #     {"en_curso": 0, "terminadas_ant": 0, "ejecucion": 0, "acum": 0},
+        #     inplace=True,
+        # )
 
-        df_final["terminadas_actual"] = (
-            df_final["acum"] - df_final["en_curso"] - df_final["terminadas_ant"]
-        )
+        # df_final["terminadas_actual"] = (
+        #     df_final["acum"] - df_final["en_curso"] - df_final["terminadas_ant"]
+        # )
         df_final["actividad"] = df_final["actividad"] + "-" + df_final["partida"]
         df_final.rename(columns={"actividad": "estructura"}, inplace=True)
 
