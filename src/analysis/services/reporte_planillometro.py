@@ -38,7 +38,7 @@ class ReportePlanillometroService:
     ) -> List[ReportePlanillometroReport]:
         icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6, "
-            + f"ejercicio={int(params.ejercicio)}",  # volver a colocar ejercicio={int(params.ejercicio)}
+            + f"ejercicio<={int(params.ejercicio)}",  # volver a colocar ejercicio<={int(params.ejercicio)}
             limit=None,
         )
         df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
