@@ -150,14 +150,14 @@ class BaseService(ABC, Generic[R, D, F, L]):
 
                     # --- PRINT DE CONTROL ---
                     print(f"📊 Controlando columnas de la hoja: {sheet_name}")
-                    for col in df_final_json.columns:
-                        has_nan = (
-                            df_final_json[col]
-                            .apply(lambda x: isinstance(x, float) and math.isnan(x))
-                            .any()
-                        )
-                        if has_nan:
-                            print(f"🚨 ¡La columna '{col}' TIENE NaNs encubiertos!")
+
+                    # .isna().any() corre 100% en C a nivel C-API
+                    cols_con_nan = df_final_json.columns[
+                        df_final_json.isna().any()
+                    ].tolist()
+
+                    for col in cols_con_nan:
+                        print(f"🚨 ¡La columna '{col}' TIENE NaNs encubiertos!")
                     # -------------------------
 
                     gs.to_google_sheets(
