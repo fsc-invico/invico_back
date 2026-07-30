@@ -288,147 +288,168 @@ class ReportePlanillometroService:
             else pd.DataFrame(columns=group_cols + ["ejercicio", "acum"])
         )
 
-        # # --- 4. OBRAS EN CURSO Y TERMINADAS (Evaluación Temporal por Ejercicio) ---
+        # # --- 4. OBRAS EN CURSO Y TERMINADAS (Fiel a la lógica de dominio + Cero CPU) ---
         # df_curso_list = []
         # df_term_ant_list = []
 
-        # for ej in ejercicios_unicos:
-        #     # Subconjunto de datos hasta el ejercicio actual (<= ej)
-        #     df_sub_le = df.loc[df["ejercicio"] <= ej]
+        # if "desc_obra" in df.columns and not df.empty:
+        #     # 1. Agrupamos por (group_cols + desc_obra + ejercicio) para no cruzar estructuras
+        #     keys_obra = list(set(group_cols + ["desc_obra"]))
 
-        #     if not df_sub_le.empty and "desc_obra" in df_sub_le.columns:
-        #         # Calculamos el avance máximo que alcanzó cada obra HASTA este ejercicio
-        #         obras_estado = df_sub_le.groupby("desc_obra")["avance"].max()
+        #     # Matriz de avance histórico por obra dentro de su estructura
+        #     df_obras_hist = (
+        #         df.groupby(keys_obra + ["ejercicio"])["avance"].max().reset_index()
+        #     )
 
-        #         # 1. Obras en curso (avance acumulado hasta 'ej' < 1)
-        #         obras_curso_set = set(obras_estado[obras_estado < 1].index)
-        #         if obras_curso_set:
-        #             df_c = (
-        #                 df_sub_le.loc[df_sub_le["desc_obra"].isin(obras_curso_set)]
-        #                 .groupby(group_cols)["importe"]
-        #                 .sum()
-        #                 .reset_index()
-        #                 .rename(columns={"importe": "en_curso"})
+        #     for ej in ejercicios_unicos:
+        #         ej_int = int(ej)
+
+        #         # --- A. OBRAS EN CURSO (hasta el ejercicio ej) ---
+        #         # Subconjunto de avances HASTA el ejercicio evaluado
+        #         sub_avances_le = df_obras_hist.loc[df_obras_hist["ejercicio"] <= ej_int]
+        #         if not sub_avances_le.empty:
+        #             # Máximo avance que alcanzó la obra HASTA este ejercicio
+        #             max_le = (
+        #                 sub_avances_le.groupby(keys_obra)["avance"].max().reset_index()
         #             )
-        #             df_c["ejercicio"] = ej
-        #             df_curso_list.append(df_c)
+        #             # Filtramos solo las que están en curso (< 1)
+        #             obras_curso = max_le.loc[max_le["avance"] < 1, keys_obra]
 
-        #     # Subconjunto de datos para ejercicios estrictamente ANTERIORES (< ej)
-        #     df_sub_lt = df.loc[df["ejercicio"] < ej]
+        #             if not obras_curso.empty:
+        #                 # Unimos con df (filtro exacto <= ej_int sobre esas obras)
+        #                 df_c = (
+        #                     pd.merge(
+        #                         df.loc[df["ejercicio"] <= ej_int],
+        #                         obras_curso,
+        #                         on=keys_obra,
+        #                         how="inner",
+        #                     )
+        #                     .groupby(group_cols)["importe"]
+        #                     .sum()
+        #                     .reset_index()
+        #                     .rename(columns={"importe": "en_curso"})
+        #                 )
+        #                 df_c["ejercicio"] = ej
+        #                 df_curso_list.append(df_c)
 
-        #     if not df_sub_lt.empty and "desc_obra" in df_sub_lt.columns:
-        #         # Calculamos el avance máximo que alcanzó cada obra ANTES de este ejercicio
-        #         obras_estado_ant = df_sub_lt.groupby("desc_obra")["avance"].max()
-
-        #         # 2. Obras terminadas en ejercicios anteriores (avance acumulado antes de 'ej' == 1)
-        #         obras_term_set = set(obras_estado_ant[obras_estado_ant == 1].index)
-        #         if obras_term_set:
-        #             df_t = (
-        #                 df_sub_lt.loc[df_sub_lt["desc_obra"].isin(obras_term_set)]
-        #                 .groupby(group_cols)["importe"]
-        #                 .sum()
-        #                 .reset_index()
-        #                 .rename(columns={"importe": "terminadas_ant"})
+        #         # --- B. OBRAS TERMINADAS ANTERIOR (estrictamente ANTES de ej) ---
+        #         # Subconjunto de avances ANTES del ejercicio evaluado (< ej_int)
+        #         sub_avances_lt = df_obras_hist.loc[df_obras_hist["ejercicio"] < ej_int]
+        #         if not sub_avances_lt.empty:
+        #             # Máximo avance que alcanzó la obra ANTES de este ejercicio
+        #             max_lt = (
+        #                 sub_avances_lt.groupby(keys_obra)["avance"].max().reset_index()
         #             )
-        #             df_t["ejercicio"] = ej
-        #             df_term_ant_list.append(df_t)
+        #             # Filtramos solo las que YA estaban terminadas (== 1) antes de este ejercicio
+        #             obras_term_ant = max_lt.loc[max_lt["avance"] == 1, keys_obra]
 
-        # # Consolidamos los DataFrames temporales
+        #             if not obras_term_ant.empty:
+        #                 # Unimos con df (filtro exacto < ej_int sobre esas obras)
+        #                 df_t = (
+        #                     pd.merge(
+        #                         df.loc[df["ejercicio"] < ej_int],
+        #                         obras_term_ant,
+        #                         on=keys_obra,
+        #                         how="inner",
+        #                     )
+        #                     .groupby(group_cols)["importe"]
+        #                     .sum()
+        #                     .reset_index()
+        #                     .rename(columns={"importe": "terminadas_ant"})
+        #                 )
+        #                 df_t["ejercicio"] = ej
+        #                 df_term_ant_list.append(df_t)
+
+        # # Consolidación final
         # df_curso = (
         #     pd.concat(df_curso_list, ignore_index=True)
         #     if df_curso_list
         #     else pd.DataFrame(columns=group_cols + ["ejercicio", "en_curso"])
         # )
-
         # df_term_ant = (
         #     pd.concat(df_term_ant_list, ignore_index=True)
         #     if df_term_ant_list
         #     else pd.DataFrame(columns=group_cols + ["ejercicio", "terminadas_ant"])
         # )
 
-        # --- 4. OBRAS EN CURSO Y TERMINADAS (Fiel a la lógica de dominio + Cero CPU) ---
-        df_curso_list = []
-        df_term_ant_list = []
-
+        # --- 4. OBRAS EN CURSO Y TERMINADAS (Vectorización Total sin Bucles) ---
         if "desc_obra" in df.columns and not df.empty:
-            # 1. Agrupamos por (group_cols + desc_obra + ejercicio) para no cruzar estructuras
             keys_obra = list(set(group_cols + ["desc_obra"]))
 
-            # Matriz de avance histórico por obra dentro de su estructura
-            df_obras_hist = (
+            # 1. Matriz de avances por obra y ejercicio
+            df_avances = (
                 df.groupby(keys_obra + ["ejercicio"])["avance"].max().reset_index()
             )
 
-            for ej in ejercicios_unicos:
-                ej_int = int(ej)
+            # Grilla completa de (obras x todos los ejercicios a evaluar)
+            grid_obras = pd.merge(
+                df_avances[keys_obra].drop_duplicates(),
+                pd.DataFrame({"ejercicio_eval": ejercicios_unicos}),
+                how="cross",
+            )
 
-                # --- A. OBRAS EN CURSO (hasta el ejercicio ej) ---
-                # Subconjunto de avances HASTA el ejercicio evaluado
-                sub_avances_le = df_obras_hist.loc[df_obras_hist["ejercicio"] <= ej_int]
-                if not sub_avances_le.empty:
-                    # Máximo avance que alcanzó la obra HASTA este ejercicio
-                    max_le = (
-                        sub_avances_le.groupby(keys_obra)["avance"].max().reset_index()
-                    )
-                    # Filtramos solo las que están en curso (< 1)
-                    obras_curso = max_le.loc[max_le["avance"] < 1, keys_obra]
+            # --- A. OBRAS EN CURSO (hasta ejercicio_eval) ---
+            # Unimos los avances históricos donde ejercicio <= ejercicio_eval
+            df_c_hist = pd.merge(grid_obras, df_avances, on=keys_obra, how="inner")
+            df_c_hist = df_c_hist.loc[
+                df_c_hist["ejercicio"] <= df_c_hist["ejercicio_eval"]
+            ]
 
-                    if not obras_curso.empty:
-                        # Unimos con df (filtro exacto <= ej_int sobre esas obras)
-                        df_c = (
-                            pd.merge(
-                                df.loc[df["ejercicio"] <= ej_int],
-                                obras_curso,
-                                on=keys_obra,
-                                how="inner",
-                            )
-                            .groupby(group_cols)["importe"]
-                            .sum()
-                            .reset_index()
-                            .rename(columns={"importe": "en_curso"})
-                        )
-                        df_c["ejercicio"] = ej
-                        df_curso_list.append(df_c)
+            # Máximo avance alcanzado hasta 'ejercicio_eval'
+            max_c = (
+                df_c_hist.groupby(keys_obra + ["ejercicio_eval"])["avance"]
+                .max()
+                .reset_index()
+            )
+            # Obras con avance < 1
+            obras_curso = max_c.loc[max_c["avance"] < 1, keys_obra + ["ejercicio_eval"]]
 
-                # --- B. OBRAS TERMINADAS ANTERIOR (estrictamente ANTES de ej) ---
-                # Subconjunto de avances ANTES del ejercicio evaluado (< ej_int)
-                sub_avances_lt = df_obras_hist.loc[df_obras_hist["ejercicio"] < ej_int]
-                if not sub_avances_lt.empty:
-                    # Máximo avance que alcanzó la obra ANTES de este ejercicio
-                    max_lt = (
-                        sub_avances_lt.groupby(keys_obra)["avance"].max().reset_index()
-                    )
-                    # Filtramos solo las que YA estaban terminadas (== 1) antes de este ejercicio
-                    obras_term_ant = max_lt.loc[max_lt["avance"] == 1, keys_obra]
+            # Unimos con df para sumar importes (donde ejercicio_df <= ejercicio_eval)
+            df_curso = pd.merge(df, obras_curso, on=keys_obra, how="inner")
+            df_curso = df_curso.loc[df_curso["ejercicio"] <= df_curso["ejercicio_eval"]]
+            df_curso = (
+                df_curso.groupby(group_cols + ["ejercicio_eval"])["importe"]
+                .sum()
+                .reset_index()
+                .rename(columns={"importe": "en_curso", "ejercicio_eval": "ejercicio"})
+            )
 
-                    if not obras_term_ant.empty:
-                        # Unimos con df (filtro exacto < ej_int sobre esas obras)
-                        df_t = (
-                            pd.merge(
-                                df.loc[df["ejercicio"] < ej_int],
-                                obras_term_ant,
-                                on=keys_obra,
-                                how="inner",
-                            )
-                            .groupby(group_cols)["importe"]
-                            .sum()
-                            .reset_index()
-                            .rename(columns={"importe": "terminadas_ant"})
-                        )
-                        df_t["ejercicio"] = ej
-                        df_term_ant_list.append(df_t)
+            # --- B. OBRAS TERMINADAS ANTERIOR (estrictamente antes de ejercicio_eval) ---
+            # Unimos avances históricos donde ejercicio < ejercicio_eval
+            df_t_hist = pd.merge(grid_obras, df_avances, on=keys_obra, how="inner")
+            df_t_hist = df_t_hist.loc[
+                df_t_hist["ejercicio"] < df_t_hist["ejercicio_eval"]
+            ]
 
-        # Consolidación final
-        df_curso = (
-            pd.concat(df_curso_list, ignore_index=True)
-            if df_curso_list
-            else pd.DataFrame(columns=group_cols + ["ejercicio", "en_curso"])
-        )
-        df_term_ant = (
-            pd.concat(df_term_ant_list, ignore_index=True)
-            if df_term_ant_list
-            else pd.DataFrame(columns=group_cols + ["ejercicio", "terminadas_ant"])
-        )
+            # Máximo avance alcanzado ANTES de 'ejercicio_eval'
+            max_t = (
+                df_t_hist.groupby(keys_obra + ["ejercicio_eval"])["avance"]
+                .max()
+                .reset_index()
+            )
+            # Obras con avance == 1
+            obras_term_ant = max_t.loc[
+                max_t["avance"] == 1, keys_obra + ["ejercicio_eval"]
+            ]
+
+            # Unimos con df para sumar importes (donde ejercicio_df < ejercicio_eval)
+            df_term_ant = pd.merge(df, obras_term_ant, on=keys_obra, how="inner")
+            df_term_ant = df_term_ant.loc[
+                df_term_ant["ejercicio"] < df_term_ant["ejercicio_eval"]
+            ]
+            df_term_ant = (
+                df_term_ant.groupby(group_cols + ["ejercicio_eval"])["importe"]
+                .sum()
+                .reset_index()
+                .rename(
+                    columns={"importe": "terminadas_ant", "ejercicio_eval": "ejercicio"}
+                )
+            )
+        else:
+            df_curso = pd.DataFrame(columns=group_cols + ["ejercicio", "en_curso"])
+            df_term_ant = pd.DataFrame(
+                columns=group_cols + ["ejercicio", "terminadas_ant"]
+            )
 
         # --- 5. CONSOLIDACIÓN SOBRE LA MATRIZ BASE ---
         df_final = pd.merge(
