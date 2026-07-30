@@ -132,17 +132,12 @@ class ReportePlanillometroService:
         # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
         # df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
 
-        # df_ejercicios = df.copy()
-        # if params.ultimos_ejercicios is None:
-        #     ejercicios = df_ejercicios.sort_values(
-        #         "ejercicio", ascending=False
-        #     ).ejercicio.unique()
-        # else:
-        #     ejercicios = int(params.ultimos_ejercicios)
-        #     ejercicios = df_ejercicios.sort_values(
-        #         "ejercicio", ascending=False
-        #     ).ejercicio.unique()[0:ejercicios]
-        #     # df_anos = df_anos.loc[df_anos.ejercicio.isin(ejercicios)]
+        # # Ejercicios a procesar
+        # ejercicios = sorted(df["ejercicio"].unique(), reverse=True)
+        # if params.ultimos_ejercicios is not None:
+        #     ejercicios = ejercicios[: int(params.ultimos_ejercicios)]
+
+        # set_ejercicios = set(ejercicios)
 
         # # Ejercicio actual
         # df_ejec_actual = df.copy()
@@ -239,12 +234,12 @@ class ReportePlanillometroService:
         if params.ultimos_ejercicios is not None:
             ejercicios_unicos = ejercicios_unicos[: int(params.ultimos_ejercicios)]
 
-        set_ejercicios = set(ejercicios_unicos)
-
         # --- 1. MATRIZ DE ESTRUCTURAS Y ALTA HISTÓRICA COMPLETA ---
         # Calculamos el alta tomando el dataset completo para no perder la primera aparición histórica
         df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
         df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
+
+        # print("df_alta", len(df_alta), df_alta.columns, df_alta.head())
 
         # Estructuras únicas
         idx_estructuras = df_alta[group_cols].drop_duplicates()
@@ -256,12 +251,12 @@ class ReportePlanillometroService:
             temp["ejercicio"] = ej
             grid_frames.append(temp)
 
-        print("grid_frames", len(grid_frames), grid_frames[0].head())
+        # print("grid_frames", len(grid_frames), grid_frames[0].head())
 
         df_base_grid = pd.concat(grid_frames, ignore_index=True)
         df_base_grid = pd.merge(df_base_grid, df_alta, on=group_cols, how="left")
 
-        print("df_base_grid", len(df_base_grid), df_base_grid.head())
+        # print("df_base_grid", len(df_base_grid), df_base_grid.head())
 
         # --- 2. CÁLCULO DE EJECUCIÓN (Sin perder filas sin movimiento) ---
         df_ejec = (
@@ -294,35 +289,93 @@ class ReportePlanillometroService:
         )
 
         # --- 4. OBRAS EN CURSO Y TERMINADAS ---
-        df_obras = (
-            df.groupby(["desc_obra", "ejercicio"])
-            .agg(importe_obra=("importe", "sum"), max_avance=("avance", "max"))
-            .reset_index()
-        )
-        df_obras.sort_values(["desc_obra", "ejercicio"], inplace=True)
-        df_obras["avance_acum"] = df_obras.groupby("desc_obra")["max_avance"].cummax()
+        # df_obras = (
+        #     df.groupby(["desc_obra", "ejercicio"])
+        #     .agg(importe_obra=("importe", "sum"), max_avance=("avance", "max"))
+        #     .reset_index()
+        # )
+        # df_obras.sort_values(["desc_obra", "ejercicio"], inplace=True)
+        # df_obras["avance_acum"] = df_obras.groupby("desc_obra")["max_avance"].cummax()
 
-        obras_en_curso = df_obras.loc[df_obras["avance_acum"] < 1]
+        # obras_en_curso = df_obras.loc[df_obras["avance_acum"] < 1]
+        # df_curso = (
+        #     df.merge(
+        #         obras_en_curso[["desc_obra", "ejercicio"]],
+        #         on=["desc_obra", "ejercicio"],
+        #     )
+        #     .groupby(group_cols + ["ejercicio"])["importe"]
+        #     .sum()
+        #     .reset_index()
+        #     .rename(columns={"importe": "en_curso"})
+        # )
+
+        # obras_term = df_obras.loc[df_obras["avance_acum"] == 1]
+        # df_term_ant = (
+        #     df.merge(
+        #         obras_term[["desc_obra", "ejercicio"]], on=["desc_obra", "ejercicio"]
+        #     )
+        #     .groupby(group_cols + ["ejercicio"])["importe"]
+        #     .sum()
+        #     .reset_index()
+        #     .rename(columns={"importe": "terminadas_ant"})
+        # )
+
+        # --- 4. OBRAS EN CURSO Y TERMINADAS (Evaluación Temporal por Ejercicio) ---
+        df_curso_list = []
+        df_term_ant_list = []
+
+        for ej in ejercicios_unicos:
+            # Subconjunto de datos hasta el ejercicio actual (<= ej)
+            df_sub_le = df.loc[df["ejercicio"] <= ej]
+
+            if not df_sub_le.empty and "desc_obra" in df_sub_le.columns:
+                # Calculamos el avance máximo que alcanzó cada obra HASTA este ejercicio
+                obras_estado = df_sub_le.groupby("desc_obra")["avance"].max()
+
+                # 1. Obras en curso (avance acumulado hasta 'ej' < 1)
+                obras_curso_set = set(obras_estado[obras_estado < 1].index)
+                if obras_curso_set:
+                    df_c = (
+                        df_sub_le.loc[df_sub_le["desc_obra"].isin(obras_curso_set)]
+                        .groupby(group_cols)["importe"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"importe": "en_curso"})
+                    )
+                    df_c["ejercicio"] = ej
+                    df_curso_list.append(df_c)
+
+            # Subconjunto de datos para ejercicios estrictamente ANTERIORES (< ej)
+            df_sub_lt = df.loc[df["ejercicio"] < ej]
+
+            if not df_sub_lt.empty and "desc_obra" in df_sub_lt.columns:
+                # Calculamos el avance máximo que alcanzó cada obra ANTES de este ejercicio
+                obras_estado_ant = df_sub_lt.groupby("desc_obra")["avance"].max()
+
+                # 2. Obras terminadas en ejercicios anteriores (avance acumulado antes de 'ej' == 1)
+                obras_term_set = set(obras_estado_ant[obras_estado_ant == 1].index)
+                if obras_term_set:
+                    df_t = (
+                        df_sub_lt.loc[df_sub_lt["desc_obra"].isin(obras_term_set)]
+                        .groupby(group_cols)["importe"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"importe": "terminadas_ant"})
+                    )
+                    df_t["ejercicio"] = ej
+                    df_term_ant_list.append(df_t)
+
+        # Consolidamos los DataFrames temporales
         df_curso = (
-            df.merge(
-                obras_en_curso[["desc_obra", "ejercicio"]],
-                on=["desc_obra", "ejercicio"],
-            )
-            .groupby(group_cols + ["ejercicio"])["importe"]
-            .sum()
-            .reset_index()
-            .rename(columns={"importe": "en_curso"})
+            pd.concat(df_curso_list, ignore_index=True)
+            if df_curso_list
+            else pd.DataFrame(columns=group_cols + ["ejercicio", "en_curso"])
         )
 
-        obras_term = df_obras.loc[df_obras["avance_acum"] == 1]
         df_term_ant = (
-            df.merge(
-                obras_term[["desc_obra", "ejercicio"]], on=["desc_obra", "ejercicio"]
-            )
-            .groupby(group_cols + ["ejercicio"])["importe"]
-            .sum()
-            .reset_index()
-            .rename(columns={"importe": "terminadas_ant"})
+            pd.concat(df_term_ant_list, ignore_index=True)
+            if df_term_ant_list
+            else pd.DataFrame(columns=group_cols + ["ejercicio", "terminadas_ant"])
         )
 
         # --- 5. CONSOLIDACIÓN SOBRE LA MATRIZ BASE ---
@@ -366,8 +419,13 @@ class ReportePlanillometroService:
             ["estructura", "ejercicio"], ascending=[True, False], inplace=True
         )
 
+        # --- 7. Elimino los registros cuyo campo alta es mayor que ejercicio
+        df_final = df_final.loc[df_final["alta"] <= df_final["ejercicio"]]
+        df_final["alta"] = df_final["alta"].astype(str)
+
         if params.limit is not None and params.limit > 0:
             df_final = df_final.head(params.limit)
+
         df_final = sanitize_dataframe_for_json_with_datetime(df_final)
 
         return df_final.to_dict(orient="records")
