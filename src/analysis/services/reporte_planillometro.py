@@ -40,6 +40,7 @@ class ReportePlanillometroService:
             query_filter="partida~42[1-2]{1}, tipo!=PA6, "
             + f"ejercicio<={int(params.ejercicio)}",  # volver a colocar ejercicio<={int(params.ejercicio)}
             limit=None,
+            # agrupar=False,
         )
         df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
         df.sort_values(["actividad", "partida", "fuente"], inplace=True)
@@ -65,9 +66,9 @@ class ReportePlanillometroService:
         print("Despues de filtrar ejercicios menores a 2009", len(df))
 
         # Probando agrupar para disminuir número de registros
-        print("Antes de agrupar", df.shape)
+        print("Antes de agrupar", df.shape, df.columns, df.head())
         df_test = (
-            df.groupby(group_cols + ["ejercicio", "desc_obra"])
+            df.groupby(group_cols + ["ejercicio", "desc_obra", "fuente", "cuit"])
             .agg({"importe": "sum", "avance": "max"})
             .reset_index()
         )

@@ -99,3 +99,18 @@ async def full_desc_siif(
 ):
     security.is_admin_or_user_or_raise()
     return await service.full_desc_siif(params=params)
+
+
+# -------------------------------------------------
+@carga_router.get(
+    "/groupDescSIIF",
+    description="Get grouped Carga data with SIIF Estructruas's Descriptions",
+    response_model=list[CargaFullDescSIIF],
+)
+async def group_desc_siif(
+    params: Annotated[CargaFullFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.group_desc_siif(params=params)

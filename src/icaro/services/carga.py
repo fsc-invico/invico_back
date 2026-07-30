@@ -295,6 +295,9 @@ class CargaService(
     async def with_desc_proveedores(
         self, params: CargaFullFilter
     ) -> List[CargaWithDescProveedor]:
+        # if params.agrupar is True:
+        #     pass
+        # else:
         data = await self.repository.find_with_filter_params(params=params)
 
         # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
@@ -325,7 +328,83 @@ class CargaService(
     # -------------------------------------------------
     async def full_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
 
-        df = pd.DataFrame(await self.with_desc_proveedores(params=params))
+        # 1. Definimos las columnas de agrupación (group_cols)
+        group_cols = [
+            "ejercicio",
+            "actividad",
+            "partida",
+            "fuente",
+            "desc_obra",
+        ]
+
+        # 2. Construimos la clave del _id para el $group dinámicamente
+        # Agregamos ejercicio, desc_obra y fuente a la agrupación
+        id_group = {col: f"${col}" for col in group_cols}
+        # id_group.update(
+        #     {
+        #         "ejercicio": "$ejercicio",
+        #         "desc_obra": "$desc_obra",
+        #         "fuente": "$fuente",
+        #     }
+        # )
+
+        # 3. Pipeline de Agregación
+        pipeline = [
+            {
+                "$group": {
+                    "_id": id_group,
+                    # Operaciones de agregación equivalentes a .agg()
+                    "importe": {"$sum": "$importe"},
+                    "avance": {"$max": "$avance"},
+                }
+            },
+            {
+                # Aplanamos la estructura para que los campos del _id vuelvan a ser columnas normales
+                "$project": {
+                    "_id": 0,  # Ocultamos el campo _id por defecto de Mongo
+                    "ejercicio": "$_id.ejercicio",
+                    "actividad": "$_id.actividad",
+                    "partida": "$_id.partida",
+                    "fuente": "$_id.fuente",
+                    "desc_obra": "$_id.desc_obra",
+                    "importe": 1,
+                    "avance": 1,
+                }
+            },
+        ]
+
+        # 4. Ejecución en PyMongo y carga directa a DataFrame
+        # cursor = db["Carga ICARO"].aggregate(pipeline)
+        cursor = await self.repository.collection.aggregate(pipeline)
+        df = pd.DataFrame(list(cursor))
+
+        search_params = Rf602FullFilter(
+            query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
+            ejercicio=None,
+            limit=None,  # Para traer todo
+        )
+
+        df_siif = pd.DataFrame(
+            await self.rf610_service.desc_estructuras(params=search_params)
+        )
+
+        df["estructura"] = df["actividad"] + "-" + df["partida"]
+        df = df.merge(
+            df_siif,
+            how="left",
+            on="estructura",
+            copy=False,
+        )
+        df.drop(labels=["estructura"], axis="columns", inplace=True)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
+
+    # -------------------------------------------------
+    async def group_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
+
+        df = pd.DataFrame(await self.repository.find_with_filter_params(params=params))
 
         search_params = Rf602FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
