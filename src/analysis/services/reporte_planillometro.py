@@ -90,51 +90,51 @@ class ReportePlanillometroService:
                 df_last["ejercicio"] = df_last["ejercicio"].astype(int)
                 df = pd.concat([df, df_last], axis=0, ignore_index=True)
 
-        # # Agregamos ejecución acumulada de Patricia
-        # if params.agregar_acum_2008:
-        #     df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
-        #     if not df_acum_2008.empty:
-        #         df_acum_2008["ejercicio"] = 2008
-        #         df_acum_2008["avance"] = 1
-        #         df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
-        #         df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
-        #         df["estructura"] = df["actividad"] + "-" + df["partida"]
+        # Agregamos ejecución acumulada de Patricia
+        if params.agregar_acum_2008:
+            df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
+            if not df_acum_2008.empty:
+                df_acum_2008["ejercicio"] = 2008
+                df_acum_2008["avance"] = 1
+                df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
+                df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
+                df["estructura"] = df["actividad"] + "-" + df["partida"]
 
-        #         estructuras_unicas = set(df["estructura"].unique())
-        #         df_dif = df_acum_2008.loc[
-        #             df_acum_2008["estructura"].isin(estructuras_unicas)
-        #         ].copy()
-        #         df_dif = df_dif.drop(
-        #             columns=[
-        #                 "desc_programa",
-        #                 "desc_subprograma",
-        #                 "desc_proyecto",
-        #                 "desc_actividad",
-        #             ],
-        #             errors="ignore",
-        #         )
+                estructuras_unicas = set(df["estructura"].unique())
+                df_dif = df_acum_2008.loc[
+                    df_acum_2008["estructura"].isin(estructuras_unicas)
+                ].copy()
+                df_dif = df_dif.drop(
+                    columns=[
+                        "desc_programa",
+                        "desc_subprograma",
+                        "desc_proyecto",
+                        "desc_actividad",
+                    ],
+                    errors="ignore",
+                )
 
-        #         columns_to_merge = [
-        #             "estructura",
-        #             "desc_programa",
-        #             "desc_proyecto",
-        #             "desc_actividad",
-        #         ]
-        #         if params.desagregar_desc_subprog:
-        #             columns_to_merge.insert(2, "desc_subprograma")
+                columns_to_merge = [
+                    "estructura",
+                    "desc_programa",
+                    "desc_proyecto",
+                    "desc_actividad",
+                ]
+                if params.desagregar_desc_subprog:
+                    columns_to_merge.insert(2, "desc_subprograma")
 
-        #         df_dif = pd.merge(
-        #             df_dif,
-        #             df.loc[:, columns_to_merge].drop_duplicates(),
-        #             on=["estructura"],
-        #             how="left",
-        #         )
-        #         df_acum_2008 = df_acum_2008.loc[
-        #             ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
-        #         ]
-        #         df_acum_2008 = pd.concat([df_acum_2008, df_dif])
-        #         df = pd.concat([df, df_acum_2008], ignore_index=True)
-        #         df = df.drop(columns=["estructura"], errors="ignore")
+                df_dif = pd.merge(
+                    df_dif,
+                    df.loc[:, columns_to_merge].drop_duplicates(),
+                    on=["estructura"],
+                    how="left",
+                )
+                df_acum_2008 = df_acum_2008.loc[
+                    ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
+                ]
+                df_acum_2008 = pd.concat([df_acum_2008, df_dif])
+                df = pd.concat([df, df_acum_2008], ignore_index=True)
+                df = df.drop(columns=["estructura"], errors="ignore")
 
         # # Ejercicio alta
         # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
