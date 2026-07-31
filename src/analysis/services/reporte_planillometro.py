@@ -6,7 +6,6 @@ __all__ = [
 from dataclasses import dataclass
 from typing import Annotated, List
 
-import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
@@ -36,14 +35,28 @@ class ReportePlanillometroService:
         self,
         params: ReportePlanillometroFilter,
     ) -> List[ReportePlanillometroReport]:
+
         icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6, "
-            + f"ejercicio<={int(params.ejercicio)}",  # volver a colocar ejercicio<={int(params.ejercicio)}
+            + f"ejercicio<={int(params.ejercicio)}",
             limit=None,
-            # agrupar=False,
         )
-        df = pd.DataFrame(await self.icaro_service.full_desc_siif(params=icaro_params))
-        df.sort_values(["actividad", "partida", "fuente"], inplace=True)
+        # Filtramos hasta una fecha máxima (no funciona, HAY QUE HACERLO EN MONGO usando params)
+        # if params.date_up_to:
+        #     date_up_to = np.datetime64(params.date_up_to)
+        #     df = df.loc[df["fecha"] <= date_up_to]
+
+        # Traemos el DF agrupado
+        campos_agrupacion = ["ejercicio", "actividad", "partida", "desc_obra"]
+        if params.desagregar_fuente:
+            campos_agrupacion.insert(1, "fuente")
+            print(campos_agrupacion)
+        df = pd.DataFrame(
+            await self.icaro_service.group_desc_siif(
+                params=icaro_params, groub_by=campos_agrupacion
+            )
+        )
+        df.sort_values(["actividad", "partida"], inplace=True)
 
         # Grupos de columnas
         group_cols = ["desc_programa"]
@@ -60,20 +73,6 @@ class ReportePlanillometroService:
         if params.desagregar_fuente:
             group_cols = group_cols + ["fuente"]
 
-        # Eliminamos aquellos ejercicios anteriores a 2009
-        print("Antes de filtrar ejercicios menores a 2009", len(df))
-        df = df.loc[df.ejercicio.astype(int) >= 2009]
-        print("Despues de filtrar ejercicios menores a 2009", len(df))
-
-        # Probando agrupar para disminuir número de registros
-        print("Antes de agrupar", df.shape, df.columns, df.head())
-        df_test = (
-            df.groupby(group_cols + ["ejercicio", "desc_obra", "fuente", "cuit"])
-            .agg({"importe": "sum", "avance": "max"})
-            .reset_index()
-        )
-        print("Despues de agrupar", df_test.shape, df_test.columns, df_test.head())
-
         # Incluimos PA6 (ultimo ejercicio)
         if params.include_pa6:
             df = df.loc[df.ejercicio.astype(int) < int(params.ejercicio)]
@@ -83,16 +82,13 @@ class ReportePlanillometroService:
                 limit=None,
             )
             df_last = pd.DataFrame(
-                await self.icaro_service.full_desc_siif(params=icaro_params)
+                await self.icaro_service.group_desc_siif(
+                    params=icaro_params, groub_by=campos_agrupacion
+                )
             )
             if not df_last.empty:
                 df_last["ejercicio"] = df_last["ejercicio"].astype(int)
                 df = pd.concat([df, df_last], axis=0, ignore_index=True)
-
-        # Filtramos hasta una fecha máxima
-        if params.date_up_to:
-            date_up_to = np.datetime64(params.date_up_to)
-            df = df.loc[df["fecha"] <= date_up_to]
 
         # # Agregamos ejecución acumulada de Patricia
         # if params.agregar_acum_2008:

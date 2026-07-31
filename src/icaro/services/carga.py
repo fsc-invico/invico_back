@@ -328,55 +328,7 @@ class CargaService(
     # -------------------------------------------------
     async def full_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
 
-        # 1. Definimos las columnas de agrupación (group_cols)
-        group_cols = [
-            "ejercicio",
-            "actividad",
-            "partida",
-            "fuente",
-            "desc_obra",
-        ]
-
-        # 2. Construimos la clave del _id para el $group dinámicamente
-        # Agregamos ejercicio, desc_obra y fuente a la agrupación
-        id_group = {col: f"${col}" for col in group_cols}
-        # id_group.update(
-        #     {
-        #         "ejercicio": "$ejercicio",
-        #         "desc_obra": "$desc_obra",
-        #         "fuente": "$fuente",
-        #     }
-        # )
-
-        # 3. Pipeline de Agregación
-        pipeline = [
-            {
-                "$group": {
-                    "_id": id_group,
-                    # Operaciones de agregación equivalentes a .agg()
-                    "importe": {"$sum": "$importe"},
-                    "avance": {"$max": "$avance"},
-                }
-            },
-            {
-                # Aplanamos la estructura para que los campos del _id vuelvan a ser columnas normales
-                "$project": {
-                    "_id": 0,  # Ocultamos el campo _id por defecto de Mongo
-                    "ejercicio": "$_id.ejercicio",
-                    "actividad": "$_id.actividad",
-                    "partida": "$_id.partida",
-                    "fuente": "$_id.fuente",
-                    "desc_obra": "$_id.desc_obra",
-                    "importe": 1,
-                    "avance": 1,
-                }
-            },
-        ]
-
-        # 4. Ejecución en PyMongo y carga directa a DataFrame
-        # cursor = db["Carga ICARO"].aggregate(pipeline)
-        cursor = await self.repository.collection.aggregate(pipeline)
-        df = pd.DataFrame(list(cursor))
+        df = pd.DataFrame(await self.with_desc_proveedores(params=params))
 
         search_params = Rf602FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
@@ -402,9 +354,49 @@ class CargaService(
         return json_data
 
     # -------------------------------------------------
-    async def group_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
+    async def group_desc_siif(
+        self,
+        params: CargaFullFilter,
+        groub_by: list = ["ejercicio", "fuente", "actividad", "partida", "desc_obra"],
+    ) -> List[CargaFullDescSIIF]:
 
-        df = pd.DataFrame(await self.repository.find_with_filter_params(params=params))
+        # 1. Generamos el dict de filtro de MongoDB usando tu método existente
+        mongo_query = params.get_full_filter()
+
+        # 2. Definimos los campos de agrupación
+        campos_agrupacion = groub_by
+
+        # 3. Armamos el _id del $group y las proyecciones para el $project
+        id_group = {col: f"${col}" for col in campos_agrupacion}
+        projection = {col: f"$_id.{col}" for col in campos_agrupacion}
+        projection.update({"_id": 0, "importe": 1, "avance": 1})
+
+        # 4. Pipeline de Agregación
+        pipeline = [
+            # ETAPA 1: Filtra la colección ANTES de agrupar (Cero desperdicio de CPU)
+            {"$match": mongo_query},
+            # ETAPA 2: Agrupa únicamente sobre el resultado del $match
+            {
+                "$group": {
+                    "_id": id_group,
+                    "importe": {"$sum": "$importe"},
+                    "avance": {"$max": "$avance"},
+                }
+            },
+            # ETAPA 3: Proyección limpia para Pandas
+            {"$project": projection},
+        ]
+
+        # 5. Ejecución Asíncrona con Motor
+        # .aggregate(pipeline) devuelve un cursor asíncrono
+        cursor = self.repository.collection.aggregate(pipeline)
+
+        # Traemos los documentos a una lista de Python de forma asíncrona
+        # length=None trae todos los registros agregados (que ahora son solo ~3.200)
+        documentos = await cursor.to_list(length=None)
+
+        # 6. Convertimos a DataFrame de Pandas
+        df = pd.DataFrame(documentos)
 
         search_params = Rf602FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
