@@ -260,13 +260,51 @@ class ReportePlanillometroService:
                 df = pd.concat([df, df_acum_2008], ignore_index=True)
                 df = df.drop(columns=["estructura"], errors="ignore")
 
-        # --- OPTIMIZACIÓN CLAVE: Agrupación previa única ---
-        # 1. Obtenemos 'alta' (mínimo ejercicio)
-        df_base_grp = (
+        # --- OPTIMIZACIÓN CLAVE: Agrupación única ---
+        # Obtenemos 'alta' (mínimo ejercicio) y 'acum' (suma de importe) por grupo + desc_obra
+        df_prev_acum = df.loc[df["ejercicio"].astype(int) < int(params.ejercicio)]
+        df_prev_acum = (
             df.groupby(group_cols + ["desc_obra"])
-            .agg(acum=("importe", "sum"), alta=("ejercicio", "min"))
+            .agg(
+                acum=("importe", "sum"),
+                alta=("ejercicio", "min"),
+                avance=("avance", "max"),
+            )
             .reset_index()
         )
+        df_prev_acum["avance"] = df_prev_acum["avance"].fillna(0)
+        df_prev_acum["en_curso_ant"] = df_prev_acum.loc[df["avance"] < 1]["acum"]
+        df_prev_acum["terminada_ant"] = df_prev_acum.loc[df["avance"] == 1]["acum"]
+        df_prev_acum = df_prev_acum.drop(columns=["avance"], errors="ignore")
+
+        # Limitamos df al ejercicio solicitado
+        df = df.loc[df["ejercicio"].astype(int) == int(params.ejercicio)]
+        df = (
+            df.groupby(group_cols + ["desc_obra"])
+            .agg(
+                ejercucion=("importe", "sum"),
+                avance=("avance", "max"),
+            )
+            .reset_index()
+        )
+        df["avance"] = df["avance"].fillna(0)
+        df["en_curso_actual"] = df.loc[df["avance"] < 1]["ejercucion"]
+        df["terminada_actual"] = df.loc[df["avance"] == 1]["ejercucion"]
+        df = df.drop(columns=["avance"], errors="ignore")
+
+        # Join con df_prev_acum para obtener acumulados históricos y altas
+        df = pd.merge(df, df_prev_acum, how="outer", on=group_cols + ["desc_obra"])
+        fill_na_cols = [
+            "ejercucion",
+            "acum",
+            "en_curso_ant",
+            "terminada_ant",
+            "en_curso_actual",
+            "terminada_actual",
+        ]
+        df[fill_na_cols] = df[fill_na_cols].fillna(0)
+        print("df after merge with prev_acum", df.shape, df.info(), df.head())
+
         # df_alta = (
         #     df.groupby(group_cols)["ejercicio"]
         #     .min()
