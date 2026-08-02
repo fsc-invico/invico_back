@@ -9,6 +9,7 @@ from typing import Annotated, List
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
+from pandas import MultiIndex
 
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
@@ -92,150 +93,197 @@ class ReportePlanillometroService:
 
         # Agregamos ejecución acumulada de Patricia
         if params.agregar_acum_2008:
+            # df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
+            # if not df_acum_2008.empty:
+            #     df_acum_2008["ejercicio"] = 2008
+            #     df_acum_2008["avance"] = 1
+            #     df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
+            #     df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
+            #     df["estructura"] = df["actividad"] + "-" + df["partida"]
+
+            #     estructuras_unicas = set(df["estructura"].unique())
+            #     df_dif = df_acum_2008.loc[
+            #         df_acum_2008["estructura"].isin(estructuras_unicas)
+            #     ].copy()
+            #     df_dif = df_dif.drop(
+            #         columns=[
+            #             "desc_programa",
+            #             "desc_subprograma",
+            #             "desc_proyecto",
+            #             "desc_actividad",
+            #         ],
+            #         errors="ignore",
+            #     )
+
+            #     columns_to_merge = [
+            #         "estructura",
+            #         "desc_programa",
+            #         "desc_proyecto",
+            #         "desc_actividad",
+            #     ]
+            #     if params.desagregar_desc_subprog:
+            #         columns_to_merge.insert(2, "desc_subprograma")
+
+            #     df_dif = pd.merge(
+            #         df_dif,
+            #         df.loc[:, columns_to_merge].drop_duplicates(),
+            #         on=["estructura"],
+            #         how="left",
+            #     )
+            #     df_acum_2008 = df_acum_2008.loc[
+            #         ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
+            #     ]
+            #     df_acum_2008 = pd.concat([df_acum_2008, df_dif])
+
+            #     df = pd.concat([df, df_acum_2008], ignore_index=True)
+            #     df = df.drop(columns=["estructura"], errors="ignore")
+
             df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
             if not df_acum_2008.empty:
+                df["estructura"] = df["actividad"] + "-" + df["partida"]
                 df_acum_2008["ejercicio"] = 2008
                 df_acum_2008["avance"] = 1
                 df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
                 df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
-                df["estructura"] = df["actividad"] + "-" + df["partida"]
 
-                estructuras_unicas = set(df["estructura"].unique())
-                df_dif = df_acum_2008.loc[
-                    df_acum_2008["estructura"].isin(estructuras_unicas)
-                ].copy()
-                df_dif = df_dif.drop(
-                    columns=[
-                        "desc_programa",
-                        "desc_subprograma",
-                        "desc_proyecto",
-                        "desc_actividad",
-                    ],
+                # --- 1. Extraer los códigos de la estructura en ambos DataFrames ---
+                for dataframe in [df, df_acum_2008]:
+                    if "estructura" in dataframe.columns:
+                        partes = dataframe["estructura"].str.split("-", expand=True)
+                        dataframe["cod_programa"] = partes[0]
+                        dataframe["cod_subprograma"] = partes[1]
+                        dataframe["cod_proyecto"] = partes[2]
+                        dataframe["cod_actividad"] = partes[3]
+
+                # --- 2. Crear Mappings de Descripciones de "df" por Código ---
+                map_prog = (
+                    df[["cod_programa", "desc_programa"]]
+                    .dropna()
+                    .drop_duplicates(subset=["cod_programa"])
+                    .set_index("cod_programa")["desc_programa"]
+                )
+
+                map_proy = (
+                    df[["cod_programa", "cod_proyecto", "desc_proyecto"]]
+                    .dropna()
+                    .drop_duplicates(subset=["cod_programa", "cod_proyecto"])
+                    .set_index(["cod_programa", "cod_proyecto"])["desc_proyecto"]
+                )
+
+                map_act = (
+                    df[
+                        [
+                            "cod_programa",
+                            "cod_proyecto",
+                            "cod_actividad",
+                            "desc_actividad",
+                        ]
+                    ]
+                    .dropna()
+                    .drop_duplicates(
+                        subset=["cod_programa", "cod_proyecto", "cod_actividad"]
+                    )
+                    .set_index(["cod_programa", "cod_proyecto", "cod_actividad"])[
+                        "desc_actividad"
+                    ]
+                )
+
+                if params.desagregar_desc_subprog:
+                    map_subprog = (
+                        df[["cod_programa", "cod_subprograma", "desc_subprograma"]]
+                        .dropna()
+                        .drop_duplicates(subset=["cod_programa", "cod_subprograma"])
+                        .set_index(["cod_programa", "cod_subprograma"])[
+                            "desc_subprograma"
+                        ]
+                    )
+
+                # --- 3. Homogeneizar df_acum_2008 usando los Mappings de df ---
+
+                # A. Programa (Clave simple)
+                df_acum_2008["desc_programa"] = (
+                    df_acum_2008["cod_programa"]
+                    .map(map_prog)
+                    .fillna(df_acum_2008["desc_programa"])
+                )
+
+                # B. Proyecto (Clave Compuesta: Tupla de Pandas)
+                idx_proy = list(
+                    zip(df_acum_2008["cod_programa"], df_acum_2008["cod_proyecto"])
+                )
+                df_acum_2008["desc_proyecto"] = (
+                    pd.Series(idx_proy, index=df_acum_2008.index)
+                    .map(map_proy)
+                    .fillna(df_acum_2008["desc_proyecto"])
+                )
+
+                # C. Actividad (Clave Compuesta: Tupla de Pandas)
+                idx_act = list(
+                    zip(
+                        df_acum_2008["cod_programa"],
+                        df_acum_2008["cod_proyecto"],
+                        df_acum_2008["cod_actividad"],
+                    )
+                )
+                df_acum_2008["desc_actividad"] = (
+                    pd.Series(idx_act, index=df_acum_2008.index)
+                    .map(map_act)
+                    .fillna(df_acum_2008["desc_actividad"])
+                )
+
+                # D. Subprograma (Opcional)
+                if (
+                    params.desagregar_desc_subprog
+                    and "desc_subprograma" in df_acum_2008.columns
+                ):
+                    idx_sub = list(
+                        zip(
+                            df_acum_2008["cod_programa"],
+                            df_acum_2008["cod_subprograma"],
+                        )
+                    )
+                    df_acum_2008["desc_subprograma"] = (
+                        pd.Series(idx_sub, index=df_acum_2008.index)
+                        .map(map_subprog)
+                        .fillna(df_acum_2008["desc_subprograma"])
+                    )
+
+                # --- 4. Limpieza de columnas temporales ---
+                cols_aux = [c for c in df_acum_2008.columns if c.startswith("cod_")]
+                df_acum_2008 = df_acum_2008.drop(columns=cols_aux, errors="ignore")
+                df = df.drop(
+                    columns=[c for c in df.columns if c.startswith("cod_")],
                     errors="ignore",
                 )
 
-                columns_to_merge = [
-                    "estructura",
-                    "desc_programa",
-                    "desc_proyecto",
-                    "desc_actividad",
-                ]
-                if params.desagregar_desc_subprog:
-                    columns_to_merge.insert(2, "desc_subprograma")
-
-                df_dif = pd.merge(
-                    df_dif,
-                    df.loc[:, columns_to_merge].drop_duplicates(),
-                    on=["estructura"],
-                    how="left",
-                )
-                df_acum_2008 = df_acum_2008.loc[
-                    ~df_acum_2008["estructura"].isin(df_dif["estructura"].unique())
-                ]
-                df_acum_2008 = pd.concat([df_acum_2008, df_dif])
+                # --- 5. Unificación final ---
                 df = pd.concat([df, df_acum_2008], ignore_index=True)
                 df = df.drop(columns=["estructura"], errors="ignore")
 
-        # # Ejercicio alta
-        # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
-        # df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
+        # --- OPTIMIZACIÓN CLAVE: Agrupación previa única ---
+        # 1. Obtenemos 'alta' (mínimo ejercicio)
+        df_base_grp = (
+            df.groupby(group_cols + ["desc_obra"])
+            .agg(acum=("importe", "sum"), alta=("ejercicio", "min"))
+            .reset_index()
+        )
+        # df_alta = (
+        #     df.groupby(group_cols)["ejercicio"]
+        #     .min()
+        #     .reset_index()
+        #     .rename(columns={"ejercicio": "alta"})
+        # )
 
-        # # Ejercicios a procesar
-        # ejercicios = sorted(df["ejercicio"].unique(), reverse=True)
-        # if params.ultimos_ejercicios is not None:
-        #     ejercicios = ejercicios[: int(params.ultimos_ejercicios)]
-
-        # set_ejercicios = set(ejercicios)
-
-        # # Ejercicio actual
-        # df_ejec_actual = df.copy()
-        # df_ejec_actual = df_ejec_actual.loc[df_ejec_actual.ejercicio.isin(ejercicios)]
-        # df_ejec_actual = (
-        #     df_ejec_actual.groupby(group_cols + ["ejercicio"])
-        #     .importe.sum()
+        # # 2. Pre-agrupamos base por grupo + ejercicio
+        # df_base_grp = (
+        #     df.groupby(group_cols + ["ejercicio"])
+        #     .agg(importe=("importe", "sum"), max_avance=("avance", "max"))
         #     .reset_index()
         # )
-        # df_ejec_actual.rename(columns={"importe": "ejecucion"}, inplace=True)
 
-        # # Ejecucion Acumulada
-        # df_acum = pd.DataFrame()
-        # for ejercicio in ejercicios:
-        #     df_ejercicio = df.copy()
-        #     df_ejercicio = df_ejercicio.loc[
-        #         df_ejercicio.ejercicio.astype(int) <= int(ejercicio)
-        #     ]
-        #     df_ejercicio["ejercicio"] = ejercicio
-        #     df_ejercicio = (
-        #         df_ejercicio.groupby(group_cols + ["ejercicio"])
-        #         .importe.sum()
-        #         .reset_index()
-        #     )
-
-        #     df_ejercicio.rename(columns={"importe": "acum"}, inplace=True)
-        #     df_acum = pd.concat([df_acum, df_ejercicio])
-
-        # # Obras en curso
-        # df_curso = pd.DataFrame()
-        # for ejercicio in ejercicios:
-        #     df_ejercicio = df.copy()
-        #     df_ejercicio = df_ejercicio.loc[
-        #         df_ejercicio.ejercicio.astype(int) <= int(ejercicio)
-        #     ]
-        #     df_ejercicio["ejercicio"] = ejercicio
-        #     obras_curso = df_ejercicio.groupby(["desc_obra"]).avance.max().to_frame()
-        #     obras_curso = (
-        #         obras_curso.loc[obras_curso.avance < 1].reset_index().desc_obra
-        #     )
-        #     df_ejercicio = (
-        #         df_ejercicio.loc[df_ejercicio.desc_obra.isin(obras_curso)]
-        #         .groupby(group_cols + ["ejercicio"])
-        #         .importe.sum()
-        #         .reset_index()
-        #     )
-        #     df_ejercicio.rename(columns={"importe": "en_curso"}, inplace=True)
-        #     df_curso = pd.concat([df_curso, df_ejercicio])
-
-        # # Obras terminadas anterior
-        # df_term_ant = pd.DataFrame()
-        # for ejercicio in ejercicios:
-        #     df_ejercicio = df.copy()
-        #     df_ejercicio = df_ejercicio.loc[
-        #         df_ejercicio.ejercicio.astype(int) < int(ejercicio)
-        #     ]
-        #     df_ejercicio["ejercicio"] = ejercicio
-        #     obras_term_ant = df_ejercicio.groupby(["desc_obra"]).avance.max().to_frame()
-        #     obras_term_ant = (
-        #         obras_term_ant.loc[obras_term_ant.avance == 1].reset_index().desc_obra
-        #     )
-        #     df_ejercicio = (
-        #         df_ejercicio.loc[df_ejercicio.desc_obra.isin(obras_term_ant)]
-        #         .groupby(group_cols + ["ejercicio"])
-        #         .importe.sum()
-        #         .reset_index()
-        #     )
-        #     df_ejercicio.rename(columns={"importe": "terminadas_ant"}, inplace=True)
-        #     df_term_ant = pd.concat([df_term_ant, df_ejercicio])
-
-        # df = pd.merge(df_alta, df_acum, on=group_cols, how="left")
-        # df = pd.merge(df, df_ejec_actual, on=group_cols + ["ejercicio"], how="left")
-        # cols = df.columns.tolist()
-        # penultima_col = cols.pop(-2)  # Elimina la penúltima columna y la guarda
-        # cols.append(penultima_col)  # Agrega la penúltima columna al final
-        # df = df[cols]  # Reordena las columnas
-        # df = pd.merge(df, df_curso, on=group_cols + ["ejercicio"], how="left")
-        # df = pd.merge(df, df_term_ant, on=group_cols + ["ejercicio"], how="left")
-        # df = df.fillna(0)
-        # df["terminadas_actual"] = df.acum - df.en_curso - df.terminadas_ant
-        # df["actividad"] = df["actividad"] + "-" + df["partida"]
-        # df = df.rename(columns={"actividad": "estructura"})
-        # if not params.desagregar_partida:
-        #     df = df.drop(columns=["partida"])
-
-        # if params.limit is not None and params.limit > 0:
-        #     df = df.head(params.limit)
-
-        # df = sanitize_dataframe_for_json_with_datetime(df)
-        # json_data = df.to_dict(orient="records")
+        # # 3. Calculamos Acumulado histórico usando cumsum (sin bucles manuales)
+        # df_base_grp.sort_values(group_cols, inplace=True)
+        # df_base_grp["acum"] = df_base_grp.groupby(group_cols)["importe"].cumsum()
 
         # # Ejercicios a procesar
         # ejercicios_unicos = sorted(df["ejercicio"].unique(), reverse=True)
@@ -247,8 +295,6 @@ class ReportePlanillometroService:
         # df_alta = df.groupby(group_cols).ejercicio.min().reset_index()
         # df_alta.rename(columns={"ejercicio": "alta"}, inplace=True)
 
-        # # print("df_alta", len(df_alta), df_alta.columns, df_alta.head())
-
         # # Estructuras únicas
         # idx_estructuras = df_alta[group_cols].drop_duplicates()
 
@@ -259,12 +305,12 @@ class ReportePlanillometroService:
         #     temp["ejercicio"] = ej
         #     grid_frames.append(temp)
 
-        # # print("grid_frames", len(grid_frames), grid_frames[0].head())
+        # print("grid_frames", len(grid_frames), grid_frames[0].head())
 
         # df_base_grid = pd.concat(grid_frames, ignore_index=True)
         # df_base_grid = pd.merge(df_base_grid, df_alta, on=group_cols, how="left")
 
-        # # print("df_base_grid", len(df_base_grid), df_base_grid.head())
+        # print("df_base_grid", len(df_base_grid), df_base_grid.head())
 
         # # --- 2. CÁLCULO DE EJECUCIÓN (Sin perder filas sin movimiento) ---
         # df_ejec = (
