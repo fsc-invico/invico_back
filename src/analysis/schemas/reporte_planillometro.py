@@ -25,8 +25,7 @@ class ReportePlanillometroReport(BaseModel):
     partida: Optional[str] = None
     desc_obra: Optional[str] = None
     fuente: Optional[str] = None
-    alta: int
-    ejercicio: int
+    alta: str
     ejecucion: float
     acum: float
     en_curso: float
@@ -42,7 +41,7 @@ class ReportePlanillometroDocument(ReportePlanillometroReport):
 # -------------------------------------------------
 class ReportePlanillometroFilter(CamelModel):
     limit: Optional[int] = Field(100, gte=0)
-    ejercicio: Optional[str] = None
+    ejercicio: str
     desagregar_desc_subprog: bool = True
     desagregar_obras: bool = False
     desagregar_partida: bool = False

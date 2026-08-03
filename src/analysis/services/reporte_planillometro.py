@@ -37,6 +37,9 @@ class ReportePlanillometroService:
         params: ReportePlanillometroFilter,
     ) -> List[ReportePlanillometroReport]:
 
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
         icaro_params = CargaFullFilter(
             query_filter="partida~42[1-2]{1}, tipo!=PA6, "
             + f"ejercicio<={int(params.ejercicio)}",
@@ -241,20 +244,20 @@ class ReportePlanillometroService:
         df = (
             df.groupby(group_cols + ["desc_obra"])
             .agg(
-                ejercucion=("importe", "sum"),
+                ejecucion=("importe", "sum"),
                 avance=("avance", "max"),
             )
             .reset_index()
         )
         df["avance"] = df["avance"].fillna(0)
-        df["en_curso_actual"] = df.loc[df["avance"] < 1]["ejercucion"]
-        df["terminadas_actual"] = df.loc[df["avance"] == 1]["ejercucion"]
+        df["en_curso_actual"] = df.loc[df["avance"] < 1]["ejecucion"]
+        df["terminadas_actual"] = df.loc[df["avance"] == 1]["ejecucion"]
         df = df.drop(columns=["avance"], errors="ignore")
 
         # Join con df_prev_acum para obtener acumulados históricos y altas
         df = pd.merge(df, df_prev_acum, how="outer", on=group_cols + ["desc_obra"])
         fill_na_cols = [
-            "ejercucion",
+            "ejecucion",
             "acum",
             "en_curso_ant",
             "terminadas_ant",
@@ -267,7 +270,7 @@ class ReportePlanillometroService:
         df["alta"] = df["alta"].fillna(int(params.ejercicio))
 
         # Agregamos la ejecución actual al acum para obtener el acumulado final
-        df["acum"] = df["acum"] + df["ejercucion"]
+        df["acum"] = df["acum"] + df["ejecucion"]
 
         # Generamos la columna en_curso real y ajustamos terminadas_actual
         # 1. Definimos la condición claramente una sola vez
@@ -289,7 +292,7 @@ class ReportePlanillometroService:
             df.groupby(group_cols)
             .agg(
                 alta=("alta", "min"),
-                ejercucion=("ejercucion", "sum"),
+                ejecucion=("ejecucion", "sum"),
                 acum=("acum", "sum"),
                 en_curso=("en_curso", "sum"),
                 terminadas_ant=("terminadas_ant", "sum"),
