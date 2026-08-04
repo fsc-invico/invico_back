@@ -8,4 +8,5 @@ from .control_icaro_comprobantes import *
 from .control_icaro_pa6 import *
 from .control_obras import *
 from .control_recursos import *
+from .reporte_formulacion import *
 from .reporte_planillometro import *
