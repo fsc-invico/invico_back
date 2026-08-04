@@ -26,6 +26,7 @@ class ReportePlanillometroReport(BaseModel):
     desc_obra: Optional[str] = None
     fuente: Optional[str] = None
     alta: str
+    ejercicio: int
     ejecucion: float
     acum: float
     en_curso: float

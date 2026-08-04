@@ -1,6 +1,6 @@
 [project]
 name = "invico-back"
-version = "1.21.27"
+version = "1.21.28"
 description = ""
 authors = [
     {name = "Fernando Corrales",email = "fscpython@gmail.com"}

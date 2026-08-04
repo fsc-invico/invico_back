@@ -310,6 +310,11 @@ class ReportePlanillometroService:
         df.sort_values(["estructura"], ascending=[True], inplace=True)
         df["alta"] = df["alta"].astype("Int64").astype(str)
 
+        ## Procedemos a agregar el campo ejercicio
+        # Insertarla en la posición inmediatamente después de 'alta'
+        posicion_alta = df.columns.get_loc("alta")
+        df.insert(posicion_alta + 1, "ejercicio", int(params.ejercicio))
+
         if params.limit is not None and params.limit > 0:
             df = df.head(params.limit)
 
