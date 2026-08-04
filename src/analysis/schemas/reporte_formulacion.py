@@ -5,30 +5,28 @@ __all__ = [
     "ReporteFormulacionLiteFilter",
 ]
 
+from typing import Optional
 
 from pydantic import BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import BaseFilterParams, CamelModel
+from ...utils import CamelModel
 
 
 # -------------------------------------------------
 class ReporteFormulacionReport(BaseModel):
+    desc_programa: Optional[str] = None
+    desc_subprograma: Optional[str] = None
+    desc_proyecto: Optional[str] = None
+    desc_actividad: Optional[str] = None
+    estructura: Optional[str] = None
+    alta: str
     ejercicio: int
-    estructura: str
-    programa: str
-    desc_programa: str
-    desc_subprograma: str
-    desc_proyecto: str
-    desc_actividad: str
-    grupo: str
-    partida: str
-    fuente: str
-    credito_original: float
-    credito_vigente: float
-    comprometido: float
-    ordenado: float
-    saldo: float
+    ejecucion: float
+    acum: float
+    en_curso: float
+    terminadas_ant: float
+    terminadas_actual: float
 
 
 # -------------------------------------------------
@@ -37,10 +35,10 @@ class ReporteFormulacionDocument(ReporteFormulacionReport):
 
 
 # -------------------------------------------------
-class ReporteFormulacionFilter(BaseFilterParams):
+class ReporteFormulacionLiteFilter(CamelModel):
     ejercicio: int
 
 
 # -------------------------------------------------
-class ReporteFormulacionLiteFilter(CamelModel):
-    ejercicio: int
+class ReporteFormulacionFilter(ReporteFormulacionLiteFilter):
+    limit: Optional[int] = Field(default=100, ge=0)

@@ -41,15 +41,15 @@ class ReportePlanillometroDocument(ReportePlanillometroReport):
 
 # -------------------------------------------------
 class ReportePlanillometroFilter(CamelModel):
-    limit: Optional[int] = Field(100, gte=0)
-    ejercicio: str
+    limit: Optional[int] = Field(100, ge=0)
+    ejercicio: int
     desagregar_desc_subprog: bool = True
     desagregar_obras: bool = False
     desagregar_partida: bool = False
     desagregar_fuente: bool = False
     agregar_acum_2008: bool = True
-    ultimos_ejercicios: Optional[int] = None
-    date_up_to: Optional[dt.date] = None
+    # ultimos_ejercicios: Optional[int] = None
+    # date_up_to: Optional[dt.date] = None
     include_pa6: bool = False
 
 

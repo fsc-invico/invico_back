@@ -82,7 +82,7 @@ class ReportePlanillometroService:
             df = df.loc[df.ejercicio.astype(int) < int(params.ejercicio)]
             icaro_params = CargaFullFilter(
                 query_filter="partida~42[1-2]{1}, tipo!=REG",
-                ejercicio=params.ejercicio,
+                ejercicio=str(params.ejercicio),
                 limit=None,
             )
             df_last = pd.DataFrame(
@@ -329,7 +329,7 @@ class ReportePlanillometroService:
         # 1. Creamos el objeto de filtros normal
         icaro_params = ReportePlanillometroFilter(
             ejercicio=str(params.ejercicio),
-            ultimos_ejercicios=5,
+            # ultimos_ejercicios=5,
             include_pa6=False,
             desagregar_desc_subprog=False,
             limit=None,  # Para traer todo
