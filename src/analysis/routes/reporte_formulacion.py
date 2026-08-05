@@ -66,18 +66,18 @@ async def generate_gastos(
 
 # -------------------------------------------------
 @reporte_formulacion_router.get(
-    "/formulacion",
+    "/carga",
     description="Formulación Presupuestaria del año seleccionado",
     response_model=List[ReporteFormulacionCargaReport],
     response_model_exclude_none=True,
 )
-async def generate_formulacion(
+async def generate_carga(
     params: Annotated[ReporteFormulacionFilter, Depends()],
     service: ReporteFormulacionServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.generate_formulacion(params=params)
+    return await service.generate_carga(params=params)
 
 
 # -------------------------------------------------

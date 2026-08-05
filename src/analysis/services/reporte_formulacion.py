@@ -131,7 +131,7 @@ class ReporteFormulacionService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
-    async def generate_formulacion(
+    async def generate_carga(
         self,
         params: ReporteFormulacionFilter,
     ) -> List[ReporteFormulacionCargaReport]:
@@ -171,7 +171,7 @@ class ReporteFormulacionService:
         params.ejercicio = str(
             int(params.ejercicio + 1)
         )  # Incrementamos el ejercicio para la formulación
-        data_formulacion = await self.generate_formulacion(params=params)
+        data_formulacion = await self.generate_carga(params=params)
 
         # 3. Transformamos los datos a DataFrames de Pandas
         df_planillometro = pd.DataFrame(data_planillometro)
