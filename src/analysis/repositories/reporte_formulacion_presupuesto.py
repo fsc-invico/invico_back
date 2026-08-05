@@ -7,13 +7,15 @@ from typing import Annotated
 from fastapi import Depends
 
 from ...config import BaseRepository
-from ..schemas.reporte_formulacion import ReporteFormulacionReport
+from ..schemas.reporte_formulacion import ReporteFormulacionPlanillometroReport
 
 
 # -------------------------------------------------
-class ReporteFormulacionPresupuestoRepository(BaseRepository[ReporteFormulacionReport]):
+class ReporteFormulacionPresupuestoRepository(
+    BaseRepository[ReporteFormulacionPlanillometroReport]
+):
     collection_name = "reporte_formulacion_presupuesto"
-    model = ReporteFormulacionReport
+    model = ReporteFormulacionPlanillometroReport
 
 
 ReporteFormulacionPresupuestoRepositoryDependency = Annotated[
