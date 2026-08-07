@@ -42,6 +42,7 @@ class ControlAporteEmpresarioService:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
         recursos_params = Rci02FullFilter(
+            query_filter="es_invico=true, es_verificado=true",
             ejercicio=str(params.ejercicio),
             limit=params.limit,
         )
@@ -53,6 +54,12 @@ class ControlAporteEmpresarioService:
         df = df.drop(
             columns=["id"], errors="ignore"
         )  # Eliminar la columna 'id' si existe
+
+        df = df.rename(
+            columns={
+                "importe": "recurso",
+            }
+        )
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
