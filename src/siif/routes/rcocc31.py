@@ -1,10 +1,16 @@
+from typing import Annotated
+
+from fastapi import Depends
+
+from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     Rcocc31Document,
     Rcocc31FullFilter,
     Rcocc31LiteFilter,
+    Rcocc31SummarizedReport,
 )
-from ..services import Rcocc31Service  # La clase del servicio
+from ..services import Rcocc31Service, Rcocc31ServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=Rcocc31Service,
@@ -16,10 +22,18 @@ factory = GenericRouterFactory(
 
 rcocc31_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
 
-
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@rcocc31_router.get(
+    "/summarize",
+    description="Get grouped Rcocc31 data",
+    response_model=list[Rcocc31SummarizedReport],
+    response_model_exclude_none=True,
+)
+async def summarize(
+    params: Annotated[Rcocc31FullFilter, Depends()],
+    service: Rcocc31ServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.summarize(params=params)

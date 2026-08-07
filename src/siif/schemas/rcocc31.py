@@ -3,6 +3,7 @@ __all__ = [
     "Rcocc31Document",
     "Rcocc31FullFilter",
     "Rcocc31LiteFilter",
+    "Rcocc31SummarizedReport",
 ]
 
 from datetime import datetime
@@ -54,3 +55,18 @@ class Rcocc31LiteFilter(CamelModel):
     ejercicio: Optional[str] = None
     cta_contable: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class Rcocc31SummarizedReport(BaseModel):
+    ejercicio: Optional[int] = None
+    mes: Optional[str] = None
+    cta_contable: Optional[str] = None
+    nro_entrada: Optional[str] = None
+    nro_original: Optional[str] = None
+    auxiliar_1: Optional[str] = None
+    auxiliar_2: Optional[str] = None
+    tipo_comprobante: Optional[str] = None
+    creditos: float
+    debitos: float
+    saldo: float
