@@ -1,6 +1,6 @@
 __all__ = ["BaseFilterParams", "apply_auto_filter", "parse_filter_keys"]
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from bson import ObjectId
 from pydantic import Field, PrivateAttr
@@ -83,8 +83,23 @@ def get_filter_query(f):
 
 
 # -------------------------------------------------
-def format_value(v: str):
+def format_value(v: Any) -> Any:
+    # Si ya es un tipo primitivo parseado por Pydantic (bool, int, float, ObjectId), lo devolvemos tal cual
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float, ObjectId)):
+        return v
+
+    if not isinstance(v, str):
+        v = str(v)
+
     v = v.strip()
+
+    # Evaluación de booleanos explícitos
+    if v.lower() == "true":
+        return True
+    if v.lower() == "false":
+        return False
 
     # Forzar string con prefijo "str:", por ejemplo fuente=str:10
     if v.startswith("str:"):
@@ -139,6 +154,8 @@ class BaseFilterParams(CamelModel):
             if value is not None:
                 # Si es un Enum o tiene atributo 'value', lo extraemos
                 val = value.value if hasattr(value, "value") else value
+
+                # Si es una lista o string separado por comas
                 if isinstance(val, str) and "," in val:
                     elementos = [x.strip() for x in val.split(",")]
                     # Intentamos convertir a int, si no se puede, queda como str
@@ -151,10 +168,11 @@ class BaseFilterParams(CamelModel):
                         lista_final.append(format_value(e))
                     self._extra_filter.update({field: {"$in": lista_final}})
                 else:
-                    val = format_value(
-                        str(val)
+                    # Formateamos el valor preservando su tipo nativo
+                    val_formatted = format_value(
+                        val
                     )  # Intentamos formatear el valor (int, ObjectId, etc.)
-                    self._extra_filter.update({field: {"$eq": val}})
+                    self._extra_filter.update({field: val_formatted})
 
         # 3. Combinar con la lógica de data_filter (la que parsea el string)
         return data_filter(self.query_filter, extra_filter=self._extra_filter)
