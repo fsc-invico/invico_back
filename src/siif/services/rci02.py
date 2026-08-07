@@ -15,11 +15,18 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
 from ..repositories import Rci02RepositoryDependency
-from ..schemas import Rci02Document, Rci02FullFilter, Rci02LiteFilter, Rci02Report
+from ..schemas import (
+    Rci02Document,
+    Rci02FullFilter,
+    Rci02LiteFilter,
+    Rci02Report,
+    Rci02SummarizedReport,
+)
 
 
 @dataclass
@@ -85,6 +92,57 @@ class Rci02Service(
         return self.export_to_excel(
             data_pairs=[(df, "SIIF_Rci02")], filename="reporte_rci02.xlsx"
         )
+
+    # -------------------------------------------------
+    async def summarize(
+        self,
+        params: Rci02FullFilter,
+        groub_by: List[str] = ["ejercicio", "mes", "cta_cte"],
+    ) -> List[Rci02SummarizedReport]:
+
+        # 1. Generamos el dict de filtro de MongoDB usando tu método existente
+        mongo_query = params.get_full_filter()
+        print(
+            f"MongoDB Query: {mongo_query}"
+        )  # Para depuración, puedes eliminarlo después
+
+        # 2. Definimos los campos de agrupación
+        campos_agrupacion = groub_by
+
+        # 3. Armamos el _id del $group y las proyecciones para el $project
+        id_group = {col: f"${col}" for col in campos_agrupacion}
+        projection = {col: f"$_id.{col}" for col in campos_agrupacion}
+        projection.update({"_id": 0, "importe": 1})
+
+        # 4. Pipeline de Agregación
+        pipeline = [
+            # ETAPA 1: Filtra la colección ANTES de agrupar (Cero desperdicio de CPU)
+            {"$match": mongo_query},
+            # ETAPA 2: Agrupa únicamente sobre el resultado del $match
+            {
+                "$group": {
+                    "_id": id_group,
+                    "importe": {"$sum": "$importe"},
+                }
+            },
+            # ETAPA 3: Proyección limpia para Pandas
+            {"$project": projection},
+        ]
+
+        # 5. Ejecución Asíncrona con Motor
+        # .aggregate(pipeline) devuelve un cursor asíncrono
+        cursor = self.repository.collection.aggregate(pipeline)
+
+        # Traemos los documentos a una lista de Python de forma asíncrona
+        # length=None trae todos los registros agregados (que ahora son solo ~3.200)
+        documentos = await cursor.to_list(length=None)
+
+        # 6. Convertimos a DataFrame de Pandas
+        df = pd.DataFrame(documentos)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        json_data = df.to_dict(orient="records")
+        return json_data
 
 
 Rci02ServiceDependency = Annotated[Rci02Service, Depends()]

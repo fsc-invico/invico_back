@@ -3,6 +3,7 @@ __all__ = [
     "Rci02Document",
     "Rci02FullFilter",
     "Rci02LiteFilter",
+    "Rci02SummarizedReport",
 ]
 
 from datetime import datetime
@@ -52,3 +53,12 @@ class Rci02LiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class Rci02SummarizedReport(BaseModel):
+    ejercicio: Optional[int] = None
+    mes: Optional[str] = None
+    fuente: Optional[str] = None
+    cta_cte: Optional[str] = None
+    importe: float
