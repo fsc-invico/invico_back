@@ -15,6 +15,7 @@ from ...siif.services import (
     Rci02ServiceDependency,
     Rcocc31ServiceDependency,
 )
+from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
     sanitize_dataframe_for_json_with_datetime,
@@ -32,6 +33,7 @@ from ..schemas import (
 class ControlAporteEmpresarioService:
     recursos_service: Rci02ServiceDependency
     retenciones_service: Rcocc31ServiceDependency
+    cta_cte_service: CtasCtesServiceDependency
 
     # -------------------------------------------------
     async def get_recursos(
@@ -61,9 +63,7 @@ class ControlAporteEmpresarioService:
             }
         )
 
-        df = sanitize_dataframe_for_json_with_datetime(df)
-
-        return df.to_dict(orient="records")
+        return self.cta_cte_service.cta_cte_unifier(df, "siif_recursos_cta_cte")
 
         # -------------------------------------------------
 

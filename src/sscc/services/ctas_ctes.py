@@ -1,20 +1,17 @@
 __all__ = ["CtasCtesService", "CtasCtesServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
 from typing import Annotated, List
 
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
@@ -90,6 +87,29 @@ class CtasCtesService(
         return self.export_to_excel(
             data_pairs=[(df, "Ctas Ctes")], filename="reporte_ctas_ctes.xlsx"
         )
+
+    # --------------------------------------------------
+    async def cta_cte_unifier(self, original_df: pd.DataFrame, cta_cte_nexo: str):
+        """
+        Map cta_cte in original_df to map_to in Ctas Ctes collection using cta_cte_nexo
+        """
+        if not original_df.empty:
+            ctas_ctes = pd.DataFrame(await self.repository.get_all())
+            if not ctas_ctes.empty:
+                map_to = ctas_ctes.loc[:, ["map_to", cta_cte_nexo]]
+                df = pd.merge(
+                    original_df,
+                    map_to,
+                    how="left",
+                    left_on="cta_cte",
+                    right_on=cta_cte_nexo,
+                )
+                df["cta_cte"] = df["map_to"]
+                df.drop(["map_to", cta_cte_nexo], axis="columns", inplace=True)
+            else:
+                df = original_df
+
+        return df.to_dict(orient="records")
 
 
 CtasCtesServiceDependency = Annotated[CtasCtesService, Depends()]
