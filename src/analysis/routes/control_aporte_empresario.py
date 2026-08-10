@@ -4,14 +4,10 @@ from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
 from ..schemas import (
-    ReporteFormulacionCargaReport,
-    ReporteFormulacionFilter,
-    ReporteFormulacionGastosReport,
-    ReporteFormulacionLiteFilter,
-    ReporteFormulacionPlanillometroReport,
-    ReporteFormulacionRecursosReport,
+    ControlAporteEmpresarioFilter,
+    ControlAporteEmpresarioLiteFilter,
 )
-from ..services import ReporteFormulacionServiceDependency
+from ..services import ControlAporteEmpresarioServiceDependency
 
 control_aporte_empresario_router = APIRouter(prefix="/controlAporteEmpresario")
 
@@ -20,32 +16,32 @@ control_aporte_empresario_router = APIRouter(prefix="/controlAporteEmpresario")
 @control_aporte_empresario_router.get(
     "/recursos",
     description="Ejecución de Recursos del año seleccionado",
-    response_model=List[ReporteFormulacionRecursosReport],
+    # response_model=List[ReporteFormulacionRecursosReport],
     response_model_exclude_none=True,
 )
 async def generate_recursos(
-    params: Annotated[ReporteFormulacionFilter, Depends()],
-    service: ReporteFormulacionServiceDependency,
+    params: Annotated[ControlAporteEmpresarioFilter, Depends()],
+    service: ControlAporteEmpresarioServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.generate_recursos(params=params)
+    return await service.get_recursos(params=params)
 
 
-# # -------------------------------------------------
-# @control_aporte_empresario_router.get(
-#     "/gastos",
-#     description="Ejecución de Gastos del año seleccionado",
-#     response_model=List[ReporteFormulacionGastosReport],
-#     response_model_exclude_none=True,
-# )
-# async def generate_gastos(
-#     params: Annotated[ReporteFormulacionFilter, Depends()],
-#     service: ReporteFormulacionServiceDependency,
-#     security: AuthorizationDependency,
-# ):
-#     security.is_admin_or_user_or_raise()
-#     return await service.generate_gastos(params=params)
+# -------------------------------------------------
+@control_aporte_empresario_router.get(
+    "/retenciones",
+    description="Ejecución de Retenciones del año seleccionado",
+    # response_model=List[ReporteFormulacionRecursosReport],
+    response_model_exclude_none=True,
+)
+async def generate_retenciones(
+    params: Annotated[ControlAporteEmpresarioFilter, Depends()],
+    service: ControlAporteEmpresarioServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_retenciones(params=params)
 
 
 # -------------------------------------------------
@@ -54,8 +50,8 @@ async def generate_recursos(
     name="Reportes exportables para Formulación Presupuestaria - Google Sheets and Excel",
 )
 async def export(
-    params: Annotated[ReporteFormulacionLiteFilter, Depends()],
-    service: ReporteFormulacionServiceDependency,
+    params: Annotated[ControlAporteEmpresarioLiteFilter, Depends()],
+    service: ControlAporteEmpresarioServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()

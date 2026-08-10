@@ -89,27 +89,43 @@ class CtasCtesService(
         )
 
     # --------------------------------------------------
-    async def cta_cte_unifier(self, original_df: pd.DataFrame, cta_cte_nexo: str):
+    async def cta_cte_unifier(
+        self, original_df: pd.DataFrame, cta_cte_nexo: str
+    ) -> pd.DataFrame:
         """
-        Map cta_cte in original_df to map_to in Ctas Ctes collection using cta_cte_nexo
-        """
-        if not original_df.empty:
-            ctas_ctes = pd.DataFrame(await self.repository.get_all())
-            if not ctas_ctes.empty:
-                map_to = ctas_ctes.loc[:, ["map_to", cta_cte_nexo]]
-                df = pd.merge(
-                    original_df,
-                    map_to,
-                    how="left",
-                    left_on="cta_cte",
-                    right_on=cta_cte_nexo,
-                )
-                df["cta_cte"] = df["map_to"]
-                df.drop(["map_to", cta_cte_nexo], axis="columns", inplace=True)
-            else:
-                df = original_df
+        Mapea la columna 'cta_cte' en original_df hacia 'map_to' de la colección Ctas Ctes
+        usando la columna nexo indicada.
 
-        return df.to_dict(orient="records")
+        Returns:
+            pd.DataFrame con la columna 'cta_cte' unificada.
+        """
+        if original_df.empty:
+            return original_df
+
+        # 1. Obtenemos los documentos (idealmente solo con la proyección de las dos claves)
+        cursor = self.repository.collection.find(
+            {cta_cte_nexo: {"$exists": True, "$ne": None}},
+            {"map_to": 1, cta_cte_nexo: 1, "_id": 0},
+        )
+        ctas_ctes_raw = await cursor.to_list(length=None)
+
+        if not ctas_ctes_raw:
+            return original_df
+
+        # 2. Armamos el diccionario clave-valor directamente en Python
+        # { "cta_cte_origen": "map_to_destino" }
+        mapping_dict = {
+            doc[cta_cte_nexo]: doc["map_to"]
+            for doc in ctas_ctes_raw
+            if cta_cte_nexo in doc and "map_to" in doc
+        }
+
+        # 3. Mapeamos en el DataFrame principal
+        df = original_df.copy()
+        mapped_values = df["cta_cte"].map(mapping_dict)
+        df["cta_cte"] = mapped_values.fillna(df["cta_cte"])
+
+        return df
 
 
 CtasCtesServiceDependency = Annotated[CtasCtesService, Depends()]

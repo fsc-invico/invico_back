@@ -21,10 +21,8 @@ from ...utils import (
     sanitize_dataframe_for_json_with_datetime,
 )
 from ..schemas import (
-    ReporteFormulacionFilter,
-    ReporteFormulacionGastosReport,
-    ReporteFormulacionLiteFilter,
-    ReporteFormulacionRecursosReport,
+    ControlAporteEmpresarioFilter,
+    ControlAporteEmpresarioLiteFilter,
 )
 
 
@@ -38,8 +36,8 @@ class ControlAporteEmpresarioService:
     # -------------------------------------------------
     async def get_recursos(
         self,
-        params: ReporteFormulacionFilter,
-    ) -> List[ReporteFormulacionRecursosReport]:
+        params: ControlAporteEmpresarioFilter,
+    ) -> list[dict]:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
@@ -50,8 +48,11 @@ class ControlAporteEmpresarioService:
         )
 
         data = await self.recursos_service.get_all(params=recursos_params)
+        if not data:
+            return []
 
-        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
+        # 1. Carga eficiente a DataFrame
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
 
         df = df.drop(
             columns=["id"], errors="ignore"
@@ -63,39 +64,95 @@ class ControlAporteEmpresarioService:
             }
         )
 
-        return self.cta_cte_service.cta_cte_unifier(df, "siif_recursos_cta_cte")
+        # 2. Unificación de Cuenta Corriente
+        df = await self.cta_cte_service.cta_cte_unifier(df, "siif_recursos_cta_cte")
 
-        # -------------------------------------------------
-
-    async def get_retenciones(
-        self,
-        params: ReporteFormulacionFilter,
-    ) -> List[ReporteFormulacionGastosReport]:
-        if params.ejercicio is None:
-            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
-
-        retenciones_params = Rcocc31FullFilter(
-            ejercicio=str(params.ejercicio),
-            limit=params.limit,
-        )
-
-        data = await self.retenciones_service.get_all(params=retenciones_params)
-
-        df = pd.DataFrame([d.model_dump(by_alias=True, mode="json") for d in data])
-
-        df = df.drop(
-            columns=["id"], errors="ignore"
-        )  # Eliminar la columna 'id' si existe
-
+        # 3. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
-    async def export(self, params: ReporteFormulacionLiteFilter) -> StreamingResponse:
+    async def get_retenciones(
+        self,
+        params: ControlAporteEmpresarioFilter,
+    ) -> list[dict]:
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        retenciones_params = Rcocc31FullFilter(
+            query_filter="tipo_comprobante!=APE",
+            ejercicio=str(params.ejercicio),
+            cta_contable="1112-2-6, 2122-1-2",
+            limit=params.limit,
+        )
+
+        data = await self.retenciones_service.get_all(params=retenciones_params)
+        if not data:
+            return []
+
+        # 1. Carga eficiente a DataFrame
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+
+        if df.empty or "cta_contable" not in df.columns:
+            return []
+
+        df = df.drop(
+            columns=["id"], errors="ignore"
+        )  # Eliminar la columna 'id' si existe
+
+        # 2. Filtrado e indexación de SIIF Banco (1112-2-6)
+        siif_banco = df.loc[df["cta_contable"] == "1112-2-6"]
+        siif_banco = siif_banco.loc[
+            :,
+            ["ejercicio", "nro_entrada", "auxiliar_1"],
+        ]
+        siif_banco = siif_banco.rename(columns={"auxiliar_1": "cta_cte"})
+
+        # 3. Filtrado de SIIF 337 (2122-1-2)
+        cols_337 = [
+            "ejercicio",
+            "mes",
+            "fecha",
+            "nro_entrada",
+            "tipo_comprobante",
+            "debitos",
+            "creditos",
+        ]
+        # Filtrar solo columnas existentes por seguridad
+        cols_337_presentes = [c for c in cols_337 if c in df.columns]
+
+        siif_337 = df.loc[df["cta_contable"] == "2122-1-2", cols_337_presentes].rename(
+            columns={
+                "debitos": "retencion_pagada",
+                "creditos": "retencion_practicada",
+            }
+        )
+
+        if siif_337.empty:
+            return []
+
+        merged_df = siif_337.merge(
+            siif_banco, how="left", on=["ejercicio", "nro_entrada"]
+        )
+
+        # 5. Unificación de Cuenta Corriente
+        merged_df = await self.cta_cte_service.cta_cte_unifier(
+            merged_df, "siif_contabilidad_cta_cte"
+        )
+
+        # 6. Sanitización final
+        merged_df = sanitize_dataframe_for_json_with_datetime(merged_df)
+
+        return merged_df.to_dict(orient="records")
+
+    # -------------------------------------------------
+    async def export(
+        self, params: ControlAporteEmpresarioLiteFilter
+    ) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
-        params = ReporteFormulacionFilter(
+        params = ControlAporteEmpresarioFilter(
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
