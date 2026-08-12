@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated
 
 import pandas as pd
 from fastapi import Depends
@@ -83,7 +83,7 @@ class ControlAporteEmpresarioService:
         retenciones_params = Rcocc31FullFilter(
             query_filter="tipo_comprobante!=APE",
             ejercicio=str(params.ejercicio),
-            cta_contable="1112-2-6, 2122-1-2",
+            cta_contable="2122-1-2, 1112-2-6",
             limit=params.limit,
         )
 
@@ -122,7 +122,10 @@ class ControlAporteEmpresarioService:
         # Filtrar solo columnas existentes por seguridad
         cols_337_presentes = [c for c in cols_337 if c in df.columns]
 
-        siif_337 = df.loc[df["cta_contable"] == "2122-1-2", cols_337_presentes].rename(
+        siif_337 = df.loc[
+            (df["cta_contable"] == "2122-1-2") & (df["auxiliar_1"] == "337"),
+            cols_337_presentes,
+        ].rename(
             columns={
                 "debitos": "retencion_pagada",
                 "creditos": "retencion_practicada",
