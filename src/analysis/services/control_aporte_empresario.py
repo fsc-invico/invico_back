@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, List
 
 import pandas as pd
 from fastapi import Depends
@@ -23,6 +23,7 @@ from ...utils import (
 from ..schemas import (
     ControlAporteEmpresarioFilter,
     ControlAporteEmpresarioLiteFilter,
+    ControlAporteEmpresarioReport,
 )
 
 
@@ -84,7 +85,7 @@ class ControlAporteEmpresarioService:
             query_filter="tipo_comprobante!=APE",
             ejercicio=str(params.ejercicio),
             cta_contable="2122-1-2, 1112-2-6",
-            limit=params.limit,
+            limit=None,
         )
 
         data = await self.retenciones_service.get_all(params=retenciones_params)
@@ -147,7 +148,56 @@ class ControlAporteEmpresarioService:
         # 6. Sanitización final
         merged_df = sanitize_dataframe_for_json_with_datetime(merged_df)
 
+        if params.limit is not None or params.limit > 0:
+            merged_df = merged_df.head(params.limit)
+
         return merged_df.to_dict(orient="records")
+
+    # -------------------------------------------------
+    async def generate(
+        self,
+        params: ControlAporteEmpresarioFilter,
+    ) -> List[ControlAporteEmpresarioReport]:
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        groupby_cols = ["ejercicio", "mes", "cta_cte"]
+
+        recursos_params = Rci02FullFilter(
+            query_filter="es_invico=true, es_verificado=true",
+            ejercicio=str(params.ejercicio),
+            limit=None,
+        )
+
+        data = await self.recursos_service.summarize(
+            params=recursos_params, groub_by=groupby_cols
+        )
+        siif_recursos = pd.DataFrame(data)
+
+        data = await self.get_retenciones(params=params)
+        siif_retenciones = pd.DataFrame(data)
+        siif_retenciones = (
+            siif_retenciones.groupby(groupby_cols)
+            .sum(numeric_only=True)
+            .reset_index()
+            .fillna(0)
+        )
+        siif_retenciones.drop(["retencion_practicada"], axis="columns", inplace=True)
+        siif_retenciones = siif_retenciones.rename(
+            columns={"retencion_pagada": "retencion"}
+        )
+        siif_retenciones["retencion"] = siif_retenciones["retencion"] * (-1)
+        siif_retenciones = siif_retenciones.set_index(groupby_cols)
+
+        df = siif_recursos.merge(
+            siif_retenciones, how="outer", left_index=True, right_index=True
+        )
+        df = df.reset_index()
+        df = df.fillna(0)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
 
     # -------------------------------------------------
     async def export(
@@ -163,16 +213,20 @@ class ControlAporteEmpresarioService:
         # 2. Traemos los datos sin paginar
         data_recursos = await self.get_recursos(params=params)
         data_retenciones = await self.get_retenciones(params=params)
+        data_control = await self.generate(params=params)
 
         # 3. Transformamos los datos a DataFrames de Pandas
         df_recursos = pd.DataFrame(data_recursos)
 
         df_retenciones = pd.DataFrame(data_retenciones)
 
+        df_control = pd.DataFrame(data_control)
+
         return export_multiple_dataframes_to_excel(
             data_pairs=[
                 (df_recursos, "recursos_db"),
                 (df_retenciones, "retenciones_db"),
+                (df_control, "recursos_vs_retenciones_db"),
             ],
             filename="Control Aporte Empresario.xlsx",
             upload_to_google_sheets=True,
