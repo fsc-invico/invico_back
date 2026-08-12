@@ -119,9 +119,6 @@ class Rcocc31Service(
 
         # 1. Generamos el dict de filtro de MongoDB usando tu método existente
         mongo_query = params.get_full_filter()
-        print(
-            f"MongoDB Query: {mongo_query}"
-        )  # Para depuración, puedes eliminarlo después
 
         # 2. Definimos los campos de agrupación
         campos_agrupacion = groub_by
