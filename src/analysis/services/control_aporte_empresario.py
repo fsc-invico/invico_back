@@ -168,31 +168,41 @@ class ControlAporteEmpresarioService:
             ejercicio=str(params.ejercicio),
             limit=None,
         )
-
         data = await self.recursos_service.summarize(
             params=recursos_params, groub_by=groupby_cols
         )
         siif_recursos = pd.DataFrame(data)
+        siif_recursos = siif_recursos.rename(
+            columns={
+                "importe": "recurso",
+            }
+        )
+        siif_recursos = await self.cta_cte_service.cta_cte_unifier(
+            siif_recursos, "siif_recursos_cta_cte"
+        )
 
         data = await self.get_retenciones(params=params)
         siif_retenciones = pd.DataFrame(data)
-        siif_retenciones = (
-            siif_retenciones.groupby(groupby_cols)
-            .sum(numeric_only=True)
-            .reset_index()
-            .fillna(0)
-        )
-        siif_retenciones.drop(["retencion_practicada"], axis="columns", inplace=True)
-        siif_retenciones = siif_retenciones.rename(
-            columns={"retencion_pagada": "retencion"}
-        )
-        siif_retenciones["retencion"] = siif_retenciones["retencion"] * (-1)
-        siif_retenciones = siif_retenciones.set_index(groupby_cols)
+        # Validación por si el DataFrame de retenciones llega vacío
+        if not siif_retenciones.empty and all(
+            col in siif_retenciones.columns for col in groupby_cols
+        ):
+            siif_retenciones = (
+                siif_retenciones.groupby(groupby_cols)
+                .sum(numeric_only=True)
+                .reset_index()
+                .fillna(0)
+            )
+            if "retencion_practicada" in siif_retenciones.columns:
+                siif_retenciones.drop(columns=["retencion_practicada"], inplace=True)
 
-        df = siif_recursos.merge(
-            siif_retenciones, how="outer", left_index=True, right_index=True
-        )
-        df = df.reset_index()
+            siif_retenciones = siif_retenciones.rename(
+                columns={"retencion_pagada": "retencion"}
+            )
+            if "retencion" in siif_retenciones.columns:
+                siif_retenciones["retencion"] = siif_retenciones["retencion"] * (-1)
+
+        df = siif_recursos.merge(siif_retenciones, how="outer", on=groupby_cols)
         df = df.fillna(0)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
