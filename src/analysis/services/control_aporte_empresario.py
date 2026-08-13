@@ -210,6 +210,11 @@ class ControlAporteEmpresarioService:
         df = siif_recursos.merge(siif_retenciones, how="outer", on=groupby_cols)
         df = df.fillna(0)
 
+        df = df.loc[
+            :,
+            ["ejercicio", "mes", "cta_cte", "recurso", "retencion"],
+        ]
+
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
