@@ -6,6 +6,7 @@ __all__ = [
 from dataclasses import dataclass
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
@@ -148,10 +149,14 @@ class ControlAporteEmpresarioService:
         # 6. Sanitización final
         merged_df = sanitize_dataframe_for_json_with_datetime(merged_df)
 
-        if params.limit is not None or params.limit > 0:
+        if params.limit is not None and params.limit > 0:
             merged_df = merged_df.head(params.limit)
 
-        return merged_df.to_dict(orient="records")
+        # 7. Reemplazo explicito de NaNs por None (null en JSON)
+        # Esto previene el error 'Out of range float values are not JSON compliant: nan'
+        records = merged_df.replace({np.nan: None}).to_dict(orient="records")
+
+        return records
 
     # -------------------------------------------------
     async def generate(
