@@ -1,3 +1,7 @@
+from typing import Annotated
+
+from fastapi import Depends
+
 from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
@@ -42,3 +46,14 @@ async def add_many_retenciones(
     return await service.add_many_with_id_carga(
         id_carga=id_carga, items=payload.retenciones
     )
+
+
+# -------------------------------------------------
+@retenciones_router.get("/withCarga")
+async def get_retenciones_with_carga(
+    params: Annotated[RetencionesFullFilter, Depends()],
+    service: RetencionesServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_retenciones_with_carga(params=params)

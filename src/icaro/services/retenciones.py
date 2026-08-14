@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,7 @@ from ...config import logger
 from ...utils import (
     BaseService,
     RouteReturnSchema,
+    sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
@@ -147,6 +149,79 @@ class RetencionesService(
             data_pairs=[(df, "ICARO_RETENCIONES")],
             filename="reporte_icaro_retenciones.xlsx",
         )
+
+    # -------------------------------------------------
+    async def get_retenciones_with_carga(
+        self,
+        params: RetencionesFullFilter,  # O el filtro que corresponda a retenciones
+    ) -> List[dict]:
+
+        # 1. Filtro generado a partir de los parámetros de retenciones
+        mongo_query = params.get_full_filter()
+
+        # 2. Pipeline de Agregación partiendo desde 'retenciones'
+        pipeline = [
+            # ETAPA 1: Filtramos la colección 'retenciones' primero
+            {"$match": mongo_query},
+            # ETAPA 2: Join con la colección 'carga'
+            {
+                "$lookup": {
+                    "from": "icaro_carga",  # Colección destino
+                    "localField": "id_carga",  # Campo en 'retenciones'
+                    "foreignField": "id_carga",  # Campo en 'carga'
+                    "as": "carga_info",  # Nombre temporal del array
+                }
+            },
+            # ETAPA 3: Aplanamos el array 'carga_info'.
+            # Como es una relación N:1, convierte el array de 1 elemento en un objeto plano.
+            # preserveNullAndEmptyArrays=True mantiene la retención aunque id_carga no exista en 'carga'.
+            {
+                "$unwind": {
+                    "path": "$carga_info",
+                    "preserveNullAndEmptyArrays": True,
+                }
+            },
+            # ETAPA 4: Proyección limpia para enviar directamente a Pandas
+            {
+                "$project": {
+                    "_id": 0,
+                    # Campos de la colección 'retenciones'
+                    "id_carga": 1,
+                    "ejercicio": 1,
+                    "codigo": 1,
+                    "importe": 1,
+                    # Campos extraídos del documento coincidente de 'carga'
+                    "mes": "$carga_info.mes",
+                    "fuente": "$carga_info.fuente",
+                    "cuit": "$carga_info.cuit",
+                    "nro_comprobante": "$carga_info.nro_comprobante",
+                    "importe_bruto": "$carga_info.importe",
+                    "cta_cte": "$carga_info.cta_cte",
+                    "desc_obra": "$carga_info.desc_obra",
+                    "actividad": "$carga_info.actividad",
+                    "partida": "$carga_info.partida",
+                    "tipo": "$carga_info.tipo",
+                }
+            },
+        ]
+
+        # 3. Ejecución Asíncrona con Motor sobre el repositorio de retenciones
+        cursor = self.repository.collection.aggregate(pipeline)
+        documentos = await cursor.to_list(length=None)
+
+        if not documentos:
+            return []
+
+        # 4. Carga a Pandas y sanitización para respuesta JSON limpia
+        df = pd.DataFrame(documentos)
+
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        # Prevenimos errores de serialización sustituyendo NaN por None (null en JSON)
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
 
 RetencionesServiceDependency = Annotated[RetencionesService, Depends()]
