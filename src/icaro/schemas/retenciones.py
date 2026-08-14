@@ -5,9 +5,10 @@ __all__ = [
     "RetencionesLiteFilter",
     "RetencionCreate",
     "RetencionesBatchCreate",
+    "RetencionesWithCarga",
 ]
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -23,6 +24,25 @@ class RetencionesReport(BaseModel):
     importe: float
     id_carga: str
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# -------------------------------------------------
+class RetencionesWithCarga(BaseModel):
+    ejercicio: int
+    mes: str
+    fecha: date
+    id_carga: str
+    nro_comprobante: str
+    tipo: str
+    fuente: str
+    actividad: str
+    partida: str
+    cta_cte: str
+    codigo: str
+    cuit: str
+    importe: float
+    importe_bruto: float
+    desc_obra: str
 
 
 # -------------------------------------------------

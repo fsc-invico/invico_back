@@ -192,15 +192,16 @@ class RetencionesService(
                     "importe": 1,
                     # Campos extraídos del documento coincidente de 'carga'
                     "mes": "$carga_info.mes",
-                    "fuente": "$carga_info.fuente",
-                    "cuit": "$carga_info.cuit",
+                    "fecha": "$carga_info.fecha",
                     "nro_comprobante": "$carga_info.nro_comprobante",
-                    "importe_bruto": "$carga_info.importe",
-                    "cta_cte": "$carga_info.cta_cte",
-                    "desc_obra": "$carga_info.desc_obra",
+                    "tipo": "$carga_info.tipo",
+                    "fuente": "$carga_info.fuente",
                     "actividad": "$carga_info.actividad",
                     "partida": "$carga_info.partida",
-                    "tipo": "$carga_info.tipo",
+                    "cta_cte": "$carga_info.cta_cte",
+                    "cuit": "$carga_info.cuit",
+                    "importe_bruto": "$carga_info.importe",
+                    "desc_obra": "$carga_info.desc_obra",
                 }
             },
         ]
@@ -219,6 +220,27 @@ class RetencionesService(
             df = df.head(params.limit)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
+
+        df = df.loc[
+            :,
+            [
+                "ejercicio",
+                "mes",
+                "fecha",
+                "id_carga",
+                "nro_comprobante",
+                "tipo",
+                "fuente",
+                "actividad",
+                "partida",
+                "cta_cte",
+                "cuit",
+                "codigo",
+                "importe",
+                "importe_bruto",
+                "desc_obra",
+            ],
+        ]
 
         # Prevenimos errores de serialización sustituyendo NaN por None (null en JSON)
         return df.replace({np.nan: None}).to_dict(orient="records")
