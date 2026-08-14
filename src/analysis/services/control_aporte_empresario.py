@@ -362,11 +362,11 @@ class ControlAporteEmpresarioService:
 
         return export_multiple_dataframes_to_excel(
             data_pairs=[
-                (df_recursos, "recursos_db"),
-                (df_retenciones_siif, "retenciones_db"),
+                (df_recursos, "recursos_siif_db"),
+                (df_retenciones_siif, "retenciones_siif_db"),
                 (df_retenciones_icaro, "retenciones_icaro_db"),
-                (df_control_siif, "recursos_vs_retenciones_db"),
-                (df_control_icaro, "crontrol_cruzado_icaro_db"),
+                (df_control_siif, "control_cruzado_siif_db"),
+                (df_control_icaro, "control_cruzado_icaro_db"),
             ],
             filename="Control Aporte Empresario.xlsx",
             upload_to_google_sheets=True,
