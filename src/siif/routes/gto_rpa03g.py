@@ -1,10 +1,15 @@
+from typing import Annotated
+
+from fastapi import Depends
+
+from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     Rpa03gDocument,
     Rpa03gFullFilter,
     Rpa03gLiteFilter,
 )
-from ..services import Rpa03gService  # La clase del servicio
+from ..services import Rpa03gService, Rpa03gServiceDependency  # La clase del servicio
 
 factory = GenericRouterFactory(
     service_dependency=Rpa03gService,
@@ -16,10 +21,13 @@ factory = GenericRouterFactory(
 
 rpa03g_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# rf602_router = factory.get_router()
 
-
-# @rf602_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@rpa03g_router.get("/joinedWithRcg01Uejp")
+async def get_joined_with_rcg01_uejp(
+    params: Annotated[Rpa03gFullFilter, Depends()],
+    service: Rpa03gServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_joined_with_rcg01_uejp(params=params)
