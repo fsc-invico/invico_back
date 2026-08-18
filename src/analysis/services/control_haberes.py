@@ -4,20 +4,15 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
-from datetime import date
-from typing import Annotated, List
+from typing import Annotated
 
-import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-from ...icaro.schemas import RetencionesFullFilter
-from ...icaro.services import RetencionesServiceDependency
-from ...siif.schemas import Rci02FullFilter, Rcocc31FullFilter
+from ...siif.schemas import Rpa03gFullFilter
 from ...siif.services import (
-    Rci02ServiceDependency,
-    Rcocc31ServiceDependency,
+    Rpa03gServiceDependency,
 )
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
@@ -25,35 +20,34 @@ from ...utils import (
     sanitize_dataframe_for_json_with_datetime,
 )
 from ..schemas import (
-    ControlAporteEmpresarioFilter,
-    ControlAporteEmpresarioLiteFilter,
-    ControlAporteEmpresarioReport,
+    ControlHaberesFilter,
+    ControlHaberesLiteFilter,
 )
 
 
 @dataclass
 # -------------------------------------------------
 class ControlHaberesService:
-    recursos_service: Rci02ServiceDependency
-    retenciones_service: Rcocc31ServiceDependency
-    icaro_service: RetencionesServiceDependency
+    gastos_service: Rpa03gServiceDependency
     cta_cte_service: CtasCtesServiceDependency
 
     # -------------------------------------------------
     async def get_siif_comprobantes_haberes_neto_rdeu(
         self,
-        params: ControlAporteEmpresarioFilter,
+        params: ControlHaberesFilter,
     ) -> list[dict]:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
-        recursos_params = Rci02FullFilter(
-            query_filter="es_invico=true, es_verificado=true",
+        gastos_params = Rpa03gFullFilter(
+            query_filter="partida~15[0-1]",
             ejercicio=str(params.ejercicio),
             limit=params.limit,
         )
 
-        data = await self.recursos_service.get_all(params=recursos_params)
+        data = await self.gastos_service.get_joined_with_rcg01_uejp(
+            params=gastos_params
+        )
         if not data:
             return []
 
@@ -71,7 +65,7 @@ class ControlHaberesService:
         )
 
         # 2. Unificación de Cuenta Corriente
-        df = await self.cta_cte_service.cta_cte_unifier(df, "siif_recursos_cta_cte")
+        df = await self.cta_cte_service.cta_cte_unifier(df, "siif_gastos_cta_cte")
 
         # 3. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
@@ -79,12 +73,10 @@ class ControlHaberesService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
-    async def export(
-        self, params: ControlAporteEmpresarioLiteFilter
-    ) -> StreamingResponse:
+    async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
-        params = ControlAporteEmpresarioFilter(
+        params = ControlHaberesFilter(
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
