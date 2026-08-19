@@ -10,10 +10,8 @@ import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-from ...siif.schemas import GtoRpa03gFullFilter
-from ...siif.services import (
-    GtoRpa03gServiceDependency,
-)
+from ...siif.schemas import GtoRpa03gFullFilter, Rdeu012FullFilter
+from ...siif.services import GtoRpa03gServiceDependency, Rdeu012ServiceDependency
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
@@ -29,6 +27,7 @@ from ..schemas import (
 # -------------------------------------------------
 class ControlHaberesService:
     gastos_service: GtoRpa03gServiceDependency
+    rdeu_service: Rdeu012ServiceDependency
     cta_cte_service: CtasCtesServiceDependency
 
     # -------------------------------------------------
@@ -62,6 +61,19 @@ class ControlHaberesService:
         df = df.loc[df["cta_cte"] == "130832004"]
 
         # 4. Traemos la deuda flotante filtrada
+        rdeu_params = Rdeu012FullFilter(
+            query_filter="cta_cte=130834-04",
+            ejercicio=params.ejercicio,
+            limit=params.limit,
+        )
+        # comprobantes_unicos = df["nro_comprobante"].unique().tolist()
+        # print(comprobantes_unicos)
+        # rdeu_params.set_extra_filter({"nro_comprobante": {"$in": comprobantes_unicos}})
+
+        data_rdeu = await self.rdeu_service.get_all(params=rdeu_params)
+        if data_rdeu:
+            rdeu = pd.DataFrame([d.model_dump(by_alias=True) for d in data_rdeu])
+            print(rdeu.info(), rdeu.head())
 
         # 2. Unificación de Cuenta Corriente
         df = await self.cta_cte_service.cta_cte_unifier(df, "siif_gastos_cta_cte")
