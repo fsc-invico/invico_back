@@ -10,9 +10,9 @@ import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-from ...siif.schemas import Rpa03gFullFilter
+from ...siif.schemas import GtoRpa03gFullFilter
 from ...siif.services import (
-    Rpa03gServiceDependency,
+    GtoRpa03gServiceDependency,
 )
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
@@ -28,7 +28,7 @@ from ..schemas import (
 @dataclass
 # -------------------------------------------------
 class ControlHaberesService:
-    gastos_service: Rpa03gServiceDependency
+    gastos_service: GtoRpa03gServiceDependency
     cta_cte_service: CtasCtesServiceDependency
 
     # -------------------------------------------------
@@ -39,7 +39,7 @@ class ControlHaberesService:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
-        gastos_params = Rpa03gFullFilter(
+        gastos_params = GtoRpa03gFullFilter(
             ejercicio=str(params.ejercicio),
             limit=params.limit,
         )

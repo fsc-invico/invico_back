@@ -1,4 +1,4 @@
-__all__ = ["Rpa03gService", "Rpa03gServiceDependency"]
+__all__ = ["GtoRpa03gService", "GtoRpa03gServiceDependency"]
 
 # import os
 from dataclasses import dataclass
@@ -22,17 +22,19 @@ from ...utils import (
 )
 from ..repositories import Rpa03gRepositoryDependency
 from ..schemas import (
+    GtoRpa03gDocument,
+    GtoRpa03gFullFilter,
+    GtoRpa03gLiteFilter,
     GtoRpa03gReport,
-    Rpa03gDocument,
-    Rpa03gFullFilter,
-    Rpa03gLiteFilter,
 )
 
 
 @dataclass
 # -------------------------------------------------
-class Rpa03gService(
-    BaseService[GtoRpa03gReport, Rpa03gDocument, Rpa03gFullFilter, Rpa03gLiteFilter]
+class GtoRpa03gService(
+    BaseService[
+        GtoRpa03gReport, GtoRpa03gDocument, GtoRpa03gFullFilter, GtoRpa03gLiteFilter
+    ]
 ):
     repository: Rpa03gRepositoryDependency
 
@@ -41,7 +43,7 @@ class Rpa03gService(
         # Usamos __post_init__ para pasarle los datos a la clase base.
         super().__init__(
             repository=self.repository,
-            filter_schema=Rpa03gFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+            filter_schema=GtoRpa03gFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
         )
 
     # -------------------------------------------------
@@ -80,9 +82,9 @@ class Rpa03gService(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
-    async def export(self, params: Rpa03gLiteFilter) -> StreamingResponse:
+    async def export(self, params: GtoRpa03gLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        search_params = Rpa03gFullFilter(
+        search_params = GtoRpa03gFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             grupo=params.grupo,
@@ -101,7 +103,7 @@ class Rpa03gService(
     # -------------------------------------------------
     async def get_joined_with_rcg01_uejp(
         self,
-        params: Rpa03gFullFilter,  # O el filtro que corresponda a retenciones
+        params: GtoRpa03gFullFilter,  # O el filtro que corresponda a retenciones
     ) -> List[dict]:
 
         # 1. Filtro generado a partir de los parámetros de retenciones
@@ -203,4 +205,4 @@ class Rpa03gService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
 
-Rpa03gServiceDependency = Annotated[Rpa03gService, Depends()]
+GtoRpa03gServiceDependency = Annotated[GtoRpa03gService, Depends()]

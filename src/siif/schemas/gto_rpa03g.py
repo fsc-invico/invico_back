@@ -1,8 +1,8 @@
 __all__ = [
     "GtoRpa03gReport",
-    "Rpa03gDocument",
-    "Rpa03gFullFilter",
-    "Rpa03gLiteFilter",
+    "GtoRpa03gDocument",
+    "GtoRpa03gFullFilter",
+    "GtoRpa03gLiteFilter",
 ]
 
 from datetime import datetime
@@ -33,13 +33,13 @@ class GtoRpa03gReport(BaseModel):
 
 
 # -------------------------------------------------
-class Rpa03gDocument(GtoRpa03gReport):
+class GtoRpa03gDocument(GtoRpa03gReport):
     id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # Este se usa para la tabla (UI)
 # -------------------------------------------------
-class Rpa03gFullFilter(BaseFilterParams):
+class GtoRpa03gFullFilter(BaseFilterParams):
     ejercicio: Optional[str] = None
     grupo: Optional[str] = Query(
         None,
@@ -53,7 +53,7 @@ class Rpa03gFullFilter(BaseFilterParams):
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
-class Rpa03gLiteFilter(CamelModel):
+class GtoRpa03gLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     grupo: Optional[str] = None
