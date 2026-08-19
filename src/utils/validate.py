@@ -139,6 +139,7 @@ async def sync_validated_to_repository(
     title: Optional[str] = None,
     logger: Optional[object] = None,
     label: str = "document",
+    max_log_errors: int = 2,  # 🔹 Parámetro configurable para no saturar la consola
 ) -> RouteReturnSchema:
     """
     Sincroniza datos validados con MongoDB: borra registros antiguos e inserta los nuevos.
@@ -173,6 +174,14 @@ async def sync_validated_to_repository(
                 f"Procesando {label}. Registros válidos: {len(validation.validated)}. "
                 f"Errores: {len(validation.errors)}"
             )
+            if len(validation.errors) > 0:
+                # Tomamos solo los primeros N errores usando slicing
+                sample_errors = [
+                    err.model_dump() for err in validation.errors[:max_log_errors]
+                ]
+                logger.warning(
+                    f"Detalle de los primeros {len(sample_errors)} error(es) en {label}: {sample_errors}"
+                )
 
         # docs = jsonable_encoder(validation.validated)
         # docs = [doc.dict() for doc in validation.validated]  # si son Pydantic models
