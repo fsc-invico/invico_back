@@ -62,10 +62,19 @@ class ControlHaberesService:
 
         # 4. Traemos la deuda flotante filtrada
         rdeu_params = Rdeu012FullFilter(
-            query_filter="cta_cte=130834-04",
-            ejercicio=params.ejercicio,
+            query_filter="cta_cte=130832-04",
             limit=params.limit,
         )
+        # Obtenemos los meses a descargar
+        meses = [f"12/{str(params.ejercicio - 1)}"]
+        for mes in range(1, 13):
+            periodo_str = f"{mes:02d}/{str(params.ejercicio)}"
+            meses.append(periodo_str)
+
+        print(meses)
+
+        rdeu_params.set_extra_filter({"mes_hasta": {"$in": meses}})
+
         # comprobantes_unicos = df["nro_comprobante"].unique().tolist()
         # print(comprobantes_unicos)
         # rdeu_params.set_extra_filter({"nro_comprobante": {"$in": comprobantes_unicos}})
