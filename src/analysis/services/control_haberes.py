@@ -58,7 +58,35 @@ class ControlHaberesService:
         )  # Eliminar la columna 'id' si existe
 
         # 3. Filtramos la cuenta 130830-04
-        df = df.loc[df["cta_cte"] == "130832004"]
+        df = df.loc[df["cta_cte"] == "130832-04"]
+        df = df.loc[
+            :,
+            [
+                "ejercicio",
+                "mes",
+                "fecha",
+                "nro_comprobante",
+                "importe",
+                "grupo",
+                "partida",
+                "nro_entrada",
+                "nro_origen",
+                "nro_expte",
+                "glosa",
+                "beneficiario",
+                "nro_fondo",
+                "fuente",
+                "cta_cte",
+                "cuit",
+                "clase_reg",
+                "clase_mod",
+                "clase_gto",
+                "es_comprometido",
+                "es_verificado",
+                "es_aprobado",
+                "es_pagado",
+            ],
+        ]
 
         # 4. Traemos la deuda flotante filtrada
         rdeu_params = Rdeu012FullFilter(
@@ -71,8 +99,6 @@ class ControlHaberesService:
             periodo_str = f"{mes:02d}/{str(params.ejercicio)}"
             meses.append(periodo_str)
 
-        print(meses)
-
         rdeu_params.set_extra_filter({"mes_hasta": {"$in": meses}})
 
         # comprobantes_unicos = df["nro_comprobante"].unique().tolist()
@@ -82,10 +108,11 @@ class ControlHaberesService:
         data_rdeu = await self.rdeu_service.get_all(params=rdeu_params)
         if data_rdeu:
             rdeu = pd.DataFrame([d.model_dump(by_alias=True) for d in data_rdeu])
-            print(rdeu.info(), rdeu.head())
-
-        # 2. Unificación de Cuenta Corriente
-        df = await self.cta_cte_service.cta_cte_unifier(df, "siif_gastos_cta_cte")
+            # Detectamos los comprobantes que quedaron impagos y le cambiamos el signo
+            registros_impagos = df.loc[
+                df["nro_comprobante"].isin(rdeu["nro_comprobante"].unique().tolist())
+            ].copy()
+            registros_impagos["importe"] = registros_impagos["importe"] * (-1)
 
         # 4. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
