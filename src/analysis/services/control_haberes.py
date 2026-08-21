@@ -113,6 +113,13 @@ class ControlHaberesService:
                 df["nro_comprobante"].isin(rdeu["nro_comprobante"].unique().tolist())
             ].copy()
             registros_impagos["importe"] = registros_impagos["importe"] * (-1)
+            # Ajustamos la Deuda Flotante Pagada
+            rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
+            rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
+                months=1
+            )
+            rdeu["mes_hasta"] = rdeu["fecha_hasta"].dt.strftime("%m/%Y")
+            rdeu["ejercicio"] = pd.to_numeric(rdeu["mes_hasta"].str[-4:])
 
         # 4. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
