@@ -117,7 +117,7 @@ class ControlHaberesService:
                 df["nro_comprobante"].isin(rdeu["nro_comprobante"].unique().tolist())
             ].copy()
             registros_impagos["importe"] = registros_impagos["importe"] * (-1)
-            df = pd.concat([df, registros_impagos], copy=False)
+            df = pd.concat([df, registros_impagos], ignore_index=True)
             # Ajustamos la Deuda Flotante Pagada
             rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
             rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
@@ -132,8 +132,6 @@ class ControlHaberesService:
                     :,
                     [
                         "nro_comprobante",
-                        "grupo",
-                        "partida",
                         "nro_fondo",
                         "clase_reg",
                         "clase_mod",
@@ -143,9 +141,8 @@ class ControlHaberesService:
                         "es_aprobado",
                         "es_pagado",
                     ],
-                ],
+                ].drop_duplicates(subset=["nro_comprobante"]),
                 on="nro_comprobante",
-                copy=False,
             )
             rdeu = rdeu.drop(
                 columns=[
@@ -160,11 +157,12 @@ class ControlHaberesService:
             rdeu = rdeu.rename(
                 columns={"fecha_hasta": "fecha", "mes_hasta": "mes", "saldo": "importe"}
             )
-            df = pd.concat([df, rdeu], copy=False)
+            df = pd.concat([df, rdeu], ignore_index=True)
+            df = df.fillna("")
+            print(df.info())
 
         # 4. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
-        print(df.head())
 
         return df.to_dict(orient="records")
 
