@@ -59,6 +59,7 @@ class ControlHaberesService:
 
         # 3. Filtramos la cuenta 130830-04
         df = df.loc[df["cta_cte"] == "130832-04"]
+        df["grupo"] = df["grupo"] + "00"
         df = df.loc[
             :,
             [
@@ -108,11 +109,15 @@ class ControlHaberesService:
         data_rdeu = await self.rdeu_service.get_all(params=rdeu_params)
         if data_rdeu:
             rdeu = pd.DataFrame([d.model_dump(by_alias=True) for d in data_rdeu])
+            rdeu = rdeu.drop(
+                columns=["id"], errors="ignore"
+            )  # Eliminar la columna 'id' si existe
             # Detectamos los comprobantes que quedaron impagos y le cambiamos el signo
             registros_impagos = df.loc[
                 df["nro_comprobante"].isin(rdeu["nro_comprobante"].unique().tolist())
             ].copy()
             registros_impagos["importe"] = registros_impagos["importe"] * (-1)
+            df = pd.concat([df, registros_impagos], copy=False)
             # Ajustamos la Deuda Flotante Pagada
             rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
             rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
@@ -120,9 +125,46 @@ class ControlHaberesService:
             )
             rdeu["mes_hasta"] = rdeu["fecha_hasta"].dt.strftime("%m/%Y")
             rdeu["ejercicio"] = pd.to_numeric(rdeu["mes_hasta"].str[-4:])
+            rdeu = rdeu.loc[rdeu["ejercicio"] == int(params.ejercicio)]
+            rdeu = pd.merge(
+                rdeu,
+                df.loc[
+                    :,
+                    [
+                        "nro_comprobante",
+                        "grupo",
+                        "partida",
+                        "nro_fondo",
+                        "clase_reg",
+                        "clase_mod",
+                        "clase_gto",
+                        "es_comprometido",
+                        "es_verificado",
+                        "es_aprobado",
+                        "es_pagado",
+                    ],
+                ],
+                on="nro_comprobante",
+                copy=False,
+            )
+            rdeu = rdeu.drop(
+                columns=[
+                    "fecha",
+                    "mes",
+                    "importe",
+                    "fecha_aprobado",
+                    "fecha_desde",
+                    "org_fin",
+                ]
+            )
+            rdeu = rdeu.rename(
+                columns={"fecha_hasta": "fecha", "mes_hasta": "mes", "saldo": "importe"}
+            )
+            df = pd.concat([df, rdeu], copy=False)
 
         # 4. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
+        print(df.head())
 
         return df.to_dict(orient="records")
 
