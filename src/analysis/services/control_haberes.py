@@ -6,12 +6,17 @@ __all__ = [
 from dataclasses import dataclass
 from typing import Annotated
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
-from ...siif.schemas import GtoRpa03gFullFilter, Rdeu012FullFilter
-from ...siif.services import GtoRpa03gServiceDependency, Rdeu012ServiceDependency
+from ...siif.schemas import GtoRpa03gFullFilter, Rcocc31FullFilter, Rdeu012FullFilter
+from ...siif.services import (
+    GtoRpa03gServiceDependency,
+    Rcocc31ServiceDependency,
+    Rdeu012ServiceDependency,
+)
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
@@ -28,6 +33,7 @@ from ..schemas import (
 class ControlHaberesService:
     gastos_service: GtoRpa03gServiceDependency
     rdeu_service: Rdeu012ServiceDependency
+    contabilidad_service: Rcocc31ServiceDependency
     cta_cte_service: CtasCtesServiceDependency
 
     # -------------------------------------------------
@@ -90,65 +96,73 @@ class ControlHaberesService:
         ]
 
         # 4. Neteamos código 310 y gcias
-        # filters = {"auxiliar_1__in": ["245", "310"], "tipo_comprobante": {"$ne": "APE"}}
-        # gcias_310 = await get_siif_rcocc31(ejercicio=ejercicio, filters=filters)
-        # gcias_310["nro_comprobante"] = (
-        #     gcias_310["nro_entrada"].str.zfill(5)
-        #     + "/"
-        #     + gcias_310["ejercicio"].astype(str).str[-2:]
-        #     + "A"
-        # )
-        # gcias_310["importe"] = gcias_310["creditos"] * (-1)
-        # gcias_310["grupo"] = "100"
-        # gcias_310["partida"] = gcias_310["auxiliar_1"]
-        # gcias_310["nro_origen"] = gcias_310["nro_entrada"]
-        # gcias_310["nro_expte"] = "90000000" + gcias_310["ejercicio"].astype(str)
-        # gcias_310["glosa"] = np.where(
-        #     gcias_310["auxiliar_1"] == "245",
-        #     "RET. GCIAS. 4TA CATEGORÍA",
-        #     "HABERES ERRONEOS COD 310",
-        # )
-        # gcias_310["beneficiario"] = "INSTITUTO DE VIVIENDA DE CORRIENTES"
-        # gcias_310["nro_fondo"] = None
-        # gcias_310["fuente"] = "11"
-        # gcias_310["cta_cte"] = "130832-04"
-        # gcias_310["cuit"] = "30632351514"
-        # gcias_310["clase_reg"] = "CYO"
-        # gcias_310["clase_mod"] = "NOR"
-        # gcias_310["clase_gto"] = "REM"
-        # gcias_310["es_comprometido"] = True
-        # gcias_310["es_verificado"] = True
-        # gcias_310["es_aprobado"] = True
-        # gcias_310["es_pagado"] = True
-        # gcias_310 = gcias_310.loc[
-        #     :,
-        #     [
-        #         "ejercicio",
-        #         "mes",
-        #         "fecha",
-        #         "nro_comprobante",
-        #         "importe",
-        #         "grupo",
-        #         "partida",
-        #         "nro_entrada",
-        #         "nro_origen",
-        #         "nro_expte",
-        #         "glosa",
-        #         "beneficiario",
-        #         "nro_fondo",
-        #         "fuente",
-        #         "cta_cte",
-        #         "cuit",
-        #         "clase_reg",
-        #         "clase_mod",
-        #         "clase_gto",
-        #         "es_comprometido",
-        #         "es_verificado",
-        #         "es_aprobado",
-        #         "es_pagado",
-        #     ],
-        # ]
-        # df = pd.concat([df, gcias_310])
+        contabilidad_params = Rcocc31FullFilter(
+            query_filter="tipo_comprobante!=APE",
+            ejercicio=str(params.ejercicio),
+            cta_contable="2122-1-2",
+            limit=params.limit,
+        )
+        contabilidad_params.set_extra_filter({"auxiliar_1": {"$in": ["245", "310"]}})
+        gcias_310 = await self.contabilidad_service.get_all(params=contabilidad_params)
+        if gcias_310:
+            gcias_310 = pd.DataFrame([d.model_dump(by_alias=True) for d in gcias_310])
+            gcias_310["nro_comprobante"] = (
+                gcias_310["nro_entrada"].str.zfill(5)
+                + "/"
+                + gcias_310["ejercicio"].astype(str).str[-2:]
+                + "A"
+            )
+            gcias_310["importe"] = gcias_310["creditos"] * (-1)
+            gcias_310["grupo"] = "100"
+            gcias_310["partida"] = gcias_310["auxiliar_1"]
+            gcias_310["nro_origen"] = gcias_310["nro_entrada"]
+            gcias_310["nro_expte"] = "90000000" + gcias_310["ejercicio"].astype(str)
+            gcias_310["glosa"] = np.where(
+                gcias_310["auxiliar_1"] == "245",
+                "RET. GCIAS. 4TA CATEGORÍA",
+                "HABERES ERRONEOS COD 310",
+            )
+            gcias_310["beneficiario"] = "INSTITUTO DE VIVIENDA DE CORRIENTES"
+            gcias_310["nro_fondo"] = None
+            gcias_310["fuente"] = "11"
+            gcias_310["cta_cte"] = "130832-04"
+            gcias_310["cuit"] = "30632351514"
+            gcias_310["clase_reg"] = "CYO"
+            gcias_310["clase_mod"] = "NOR"
+            gcias_310["clase_gto"] = "REM"
+            gcias_310["es_comprometido"] = True
+            gcias_310["es_verificado"] = True
+            gcias_310["es_aprobado"] = True
+            gcias_310["es_pagado"] = True
+            gcias_310 = gcias_310.loc[
+                :,
+                [
+                    "ejercicio",
+                    "mes",
+                    "fecha",
+                    "nro_comprobante",
+                    "importe",
+                    "grupo",
+                    "partida",
+                    "nro_entrada",
+                    "nro_origen",
+                    "nro_expte",
+                    "glosa",
+                    "beneficiario",
+                    "nro_fondo",
+                    "fuente",
+                    "cta_cte",
+                    "cuit",
+                    "clase_reg",
+                    "clase_mod",
+                    "clase_gto",
+                    "es_comprometido",
+                    "es_verificado",
+                    "es_aprobado",
+                    "es_pagado",
+                ],
+            ]
+            df = pd.concat([df, gcias_310])
 
         # 5. Traemos la deuda flotante filtrada
         rdeu_params = Rdeu012FullFilter(
