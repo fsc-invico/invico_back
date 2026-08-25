@@ -173,19 +173,25 @@ class ControlHaberesService:
             # Detectamos los comprobantes que quedaron impagos y le cambiamos el signo
             registros_impagos = pd.merge(
                 df.drop_duplicates(subset=["nro_comprobante"]),
-                rdeu.loc[:, ["nro_comprobante", "saldo"]],
+                rdeu.loc[:, ["nro_comprobante", "saldo", "fecha_hasta", "mes_hasta"]],
                 how="inner",
                 on="nro_comprobante",
             )
             registros_impagos["importe"] = registros_impagos["saldo"] * (-1)
+            registros_impagos["fecha"] = registros_impagos["fecha_hasta"]
+            registros_impagos["mes"] = registros_impagos["mes_hasta"]
+            registros_impagos["clase_gto"] = "RDEU"
             registros_impagos = registros_impagos.drop(
-                columns=["grupo", "partida", "saldo"]
+                columns=["grupo", "partida", "saldo", "mes_hasta", "fecha_hasta"],
+                errors="ignore",
             )
             df = pd.concat([df, registros_impagos], ignore_index=True)
 
             # Ajustamos la Deuda Flotante Pagada
             rdeu = rdeu.sort_values(by=["fecha_hasta"])
-            rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
+            rdeu = rdeu.drop_duplicates(
+                subset=["nro_comprobante", "saldo"], keep="last"
+            )
             rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
                 months=1
             )
