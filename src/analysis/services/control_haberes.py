@@ -89,9 +89,70 @@ class ControlHaberesService:
             ],
         ]
 
-        # 4. Traemos la deuda flotante filtrada
+        # 4. Neteamos código 310 y gcias
+        # filters = {"auxiliar_1__in": ["245", "310"], "tipo_comprobante": {"$ne": "APE"}}
+        # gcias_310 = await get_siif_rcocc31(ejercicio=ejercicio, filters=filters)
+        # gcias_310["nro_comprobante"] = (
+        #     gcias_310["nro_entrada"].str.zfill(5)
+        #     + "/"
+        #     + gcias_310["ejercicio"].astype(str).str[-2:]
+        #     + "A"
+        # )
+        # gcias_310["importe"] = gcias_310["creditos"] * (-1)
+        # gcias_310["grupo"] = "100"
+        # gcias_310["partida"] = gcias_310["auxiliar_1"]
+        # gcias_310["nro_origen"] = gcias_310["nro_entrada"]
+        # gcias_310["nro_expte"] = "90000000" + gcias_310["ejercicio"].astype(str)
+        # gcias_310["glosa"] = np.where(
+        #     gcias_310["auxiliar_1"] == "245",
+        #     "RET. GCIAS. 4TA CATEGORÍA",
+        #     "HABERES ERRONEOS COD 310",
+        # )
+        # gcias_310["beneficiario"] = "INSTITUTO DE VIVIENDA DE CORRIENTES"
+        # gcias_310["nro_fondo"] = None
+        # gcias_310["fuente"] = "11"
+        # gcias_310["cta_cte"] = "130832-04"
+        # gcias_310["cuit"] = "30632351514"
+        # gcias_310["clase_reg"] = "CYO"
+        # gcias_310["clase_mod"] = "NOR"
+        # gcias_310["clase_gto"] = "REM"
+        # gcias_310["es_comprometido"] = True
+        # gcias_310["es_verificado"] = True
+        # gcias_310["es_aprobado"] = True
+        # gcias_310["es_pagado"] = True
+        # gcias_310 = gcias_310.loc[
+        #     :,
+        #     [
+        #         "ejercicio",
+        #         "mes",
+        #         "fecha",
+        #         "nro_comprobante",
+        #         "importe",
+        #         "grupo",
+        #         "partida",
+        #         "nro_entrada",
+        #         "nro_origen",
+        #         "nro_expte",
+        #         "glosa",
+        #         "beneficiario",
+        #         "nro_fondo",
+        #         "fuente",
+        #         "cta_cte",
+        #         "cuit",
+        #         "clase_reg",
+        #         "clase_mod",
+        #         "clase_gto",
+        #         "es_comprometido",
+        #         "es_verificado",
+        #         "es_aprobado",
+        #         "es_pagado",
+        #     ],
+        # ]
+        # df = pd.concat([df, gcias_310])
+
+        # 5. Traemos la deuda flotante filtrada
         rdeu_params = Rdeu012FullFilter(
-            query_filter="cta_cte=130832-04",
+            query_filter="cta_cte=130832-04, glosa~^(?!.*ART)",
             limit=params.limit,
         )
         # Obtenemos los meses a descargar
@@ -102,23 +163,28 @@ class ControlHaberesService:
 
         rdeu_params.set_extra_filter({"mes_hasta": {"$in": meses}})
 
-        # comprobantes_unicos = df["nro_comprobante"].unique().tolist()
-        # print(comprobantes_unicos)
-        # rdeu_params.set_extra_filter({"nro_comprobante": {"$in": comprobantes_unicos}})
-
         data_rdeu = await self.rdeu_service.get_all(params=rdeu_params)
         if data_rdeu:
             rdeu = pd.DataFrame([d.model_dump(by_alias=True) for d in data_rdeu])
             rdeu = rdeu.drop(
                 columns=["id"], errors="ignore"
             )  # Eliminar la columna 'id' si existe
+
             # Detectamos los comprobantes que quedaron impagos y le cambiamos el signo
-            registros_impagos = df.loc[
-                df["nro_comprobante"].isin(rdeu["nro_comprobante"].unique().tolist())
-            ].copy()
-            registros_impagos["importe"] = registros_impagos["importe"] * (-1)
+            registros_impagos = pd.merge(
+                df.drop_duplicates(subset=["nro_comprobante"]),
+                rdeu.loc[:, ["nro_comprobante", "saldo"]],
+                how="inner",
+                on="nro_comprobante",
+            )
+            registros_impagos["importe"] = registros_impagos["saldo"] * (-1)
+            registros_impagos = registros_impagos.drop(
+                columns=["grupo", "partida", "saldo"]
+            )
             df = pd.concat([df, registros_impagos], ignore_index=True)
+
             # Ajustamos la Deuda Flotante Pagada
+            rdeu = rdeu.sort_values(by=["fecha_hasta"])
             rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
             rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
                 months=1
@@ -126,24 +192,13 @@ class ControlHaberesService:
             rdeu["mes_hasta"] = rdeu["fecha_hasta"].dt.strftime("%m/%Y")
             rdeu["ejercicio"] = pd.to_numeric(rdeu["mes_hasta"].str[-4:])
             rdeu = rdeu.loc[rdeu["ejercicio"] == int(params.ejercicio)]
-            rdeu = pd.merge(
-                rdeu,
-                df.loc[
-                    :,
-                    [
-                        "nro_comprobante",
-                        "nro_fondo",
-                        "clase_reg",
-                        "clase_mod",
-                        "clase_gto",
-                        "es_comprometido",
-                        "es_verificado",
-                        "es_aprobado",
-                        "es_pagado",
-                    ],
-                ].drop_duplicates(subset=["nro_comprobante"]),
-                on="nro_comprobante",
-            )
+            rdeu["clase_reg"] = "CYO"
+            rdeu["clase_mod"] = "NOR"
+            rdeu["clase_gto"] = "RDEU"
+            rdeu["es_comprometido"] = True
+            rdeu["es_verificado"] = True
+            rdeu["es_aprobado"] = True
+            rdeu["es_pagado"] = True
             rdeu = rdeu.drop(
                 columns=[
                     "fecha",
@@ -159,9 +214,8 @@ class ControlHaberesService:
             )
             df = pd.concat([df, rdeu], ignore_index=True)
             df = df.fillna("")
-            print(df.info())
 
-        # 4. Sanitización final
+        # 6. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
