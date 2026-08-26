@@ -46,7 +46,7 @@ class ControlHaberesService:
 
         gastos_params = GtoRpa03gFullFilter(
             ejercicio=str(params.ejercicio),
-            limit=params.limit,
+            limit=None,
         )
         gastos_params.set_extra_filter({"partida": {"$nin": ["150", "151"]}})
 
@@ -97,17 +97,21 @@ class ControlHaberesService:
 
         # 4. Neteamos código 310 y gcias
         contabilidad_params = Rcocc31FullFilter(
-            query_filter="tipo_comprobante!=APE",
             ejercicio=str(params.ejercicio),
             cta_contable="2122-1-2",
-            limit=params.limit,
+            limit=None,
         )
-        contabilidad_params.set_extra_filter({"auxiliar_1": {"$in": ["245", "310"]}})
+        contabilidad_params.set_extra_filter(
+            {
+                "auxiliar_1": {"$in": ["245", "310"]},
+                "tipo_comprobante": {"$nin": ["APE", "CIE"]},
+            }
+        )
         gcias_310 = await self.contabilidad_service.get_all(params=contabilidad_params)
         if gcias_310:
             gcias_310 = pd.DataFrame([d.model_dump(by_alias=True) for d in gcias_310])
             gcias_310["nro_comprobante"] = (
-                gcias_310["nro_entrada"].str.zfill(5)
+                gcias_310["nro_original"].str.zfill(5)
                 + "/"
                 + gcias_310["ejercicio"].astype(str).str[-2:]
                 + "A"
@@ -167,7 +171,7 @@ class ControlHaberesService:
         # 5. Traemos la deuda flotante filtrada
         rdeu_params = Rdeu012FullFilter(
             query_filter="cta_cte=130832-04, glosa~^(?!.*ART)",
-            limit=params.limit,
+            limit=None,
         )
         # Obtenemos los meses a descargar
         meses = [f"12/{str(params.ejercicio - 1)}"]
@@ -183,11 +187,14 @@ class ControlHaberesService:
             rdeu = rdeu.drop(
                 columns=["id"], errors="ignore"
             )  # Eliminar la columna 'id' si existe
+            rdeu = rdeu.sort_values(by=["fecha_hasta"])
 
             # Detectamos los comprobantes que quedaron impagos y le cambiamos el signo
             registros_impagos = pd.merge(
                 df.drop_duplicates(subset=["nro_comprobante"]),
-                rdeu.loc[:, ["nro_comprobante", "saldo", "fecha_hasta", "mes_hasta"]],
+                rdeu.loc[
+                    :, ["nro_comprobante", "saldo", "fecha_hasta", "mes_hasta"]
+                ].drop_duplicates(subset=["nro_comprobante"], keep="first"),
                 how="inner",
                 on="nro_comprobante",
             )
@@ -202,7 +209,6 @@ class ControlHaberesService:
             df = pd.concat([df, registros_impagos], ignore_index=True)
 
             # Ajustamos la Deuda Flotante Pagada
-            rdeu = rdeu.sort_values(by=["fecha_hasta"])
             rdeu = rdeu.drop_duplicates(
                 subset=["nro_comprobante", "saldo"], keep="last"
             )
@@ -235,7 +241,11 @@ class ControlHaberesService:
             df = pd.concat([df, rdeu], ignore_index=True)
             df = df.fillna("")
 
-        # 6. Sanitización final
+        # 6. Aplicamos el limite a la cantidad de registros, si existe
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+
+        # 7. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
