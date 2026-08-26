@@ -14,7 +14,7 @@ control_haberes_router = APIRouter(prefix="/controlHaberes")
 
 # -------------------------------------------------
 @control_haberes_router.get(
-    "/getHaberes",
+    "/getSIIFHaberes",
     description="Comprobantes Haberes SIIF neto de Rdeu",
     # response_model=List[ControlHaberesReport],
     response_model_exclude_none=True,
@@ -30,8 +30,24 @@ async def generate_siif(
 
 # -------------------------------------------------
 @control_haberes_router.get(
+    "/getBancoHaberes",
+    description="Registros de Haberes en Banco INVICO (SSCC)",
+    # response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def generate_banco(
+    params: Annotated[ControlHaberesFilter, Depends()],
+    service: ControlHaberesServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_banco_invico(params=params)
+
+
+# -------------------------------------------------
+@control_haberes_router.get(
     "/export",
-    name="Reportes exportables para Formulación Presupuestaria - Google Sheets and Excel",
+    name="Reportes exportables para Control Haberes - Google Sheets and Excel",
 )
 async def export(
     params: Annotated[ControlHaberesLiteFilter, Depends()],

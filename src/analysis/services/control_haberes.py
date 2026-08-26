@@ -17,7 +17,8 @@ from ...siif.services import (
     Rcocc31ServiceDependency,
     Rdeu012ServiceDependency,
 )
-from ...sscc.services import CtasCtesServiceDependency
+from ...sscc.schemas import BancoINVICOFullFilter
+from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
     sanitize_dataframe_for_json_with_datetime,
@@ -35,6 +36,7 @@ class ControlHaberesService:
     rdeu_service: Rdeu012ServiceDependency
     contabilidad_service: Rcocc31ServiceDependency
     cta_cte_service: CtasCtesServiceDependency
+    banco_service: BancoINVICOServiceDependency
 
     # -------------------------------------------------
     async def get_siif_comprobantes_haberes_neto_rdeu(
@@ -251,6 +253,51 @@ class ControlHaberesService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
+    async def get_banco_invico(
+        self,
+        params: ControlHaberesFilter,
+    ) -> list[dict]:
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        banco_params = BancoINVICOFullFilter(
+            query_filter="cta_cte=130832-04, movimiento!=DEPOSITO",
+            ejercicio=str(params.ejercicio),
+            limit=None,
+        )
+        dep_transf_int = ["034", "004"]
+        dep_otros = ["003", "055", "005", "013"]
+        banco_params.set_extra_filter(
+            {"cod_imputacion": {"$nin": dep_transf_int + dep_otros}}
+        )
+
+        data = await self.banco_service.get_all(params=banco_params)
+        if not data:
+            return []
+
+        # 1. Carga eficiente a DataFrame
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        df = df.drop(
+            columns=["id"], errors="ignore"
+        )  # Eliminar la columna 'id' si existe
+
+        # 2. Cambiamos el signo de importe
+        df["importe"] = df["importe"] * (-1)
+
+        # 3. Filtramos los registros de Impuestos a las Ganancias
+        keep = ["GCIAS", "GANANCIAS"]
+        df = df.loc[~df.concepto.str.contains("|".join(keep))]
+
+        # 4. Aplicamos el limite a la cantidad de registros, si existe
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+
+        # 5. Sanitización final
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
+
+    # -------------------------------------------------
     async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
@@ -260,14 +307,17 @@ class ControlHaberesService:
         )
 
         # 2. Traemos los datos sin paginar
-        data_haberes = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
+        data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
+        data_banco = await self.get_banco_invico(params=params)
+
         # data_retenciones_siif = await self.get_retenciones_from_siif(params=params)
         # data_retenciones_icaro = await self.get_retenciones_from_icaro(params=params)
         # data_control_siif = await self.generate_siif(params=params)
         # data_control_icaro = await self.generate_icaro(params=params)
 
         # 3. Transformamos los datos a DataFrames de Pandas
-        df_haberes = pd.DataFrame(data_haberes)
+        df_siif = pd.DataFrame(data_siif)
+        df_banco = pd.DataFrame(data_banco)
 
         # df_retenciones_siif = pd.DataFrame(data_retenciones_siif)
 
@@ -279,10 +329,8 @@ class ControlHaberesService:
 
         return export_multiple_dataframes_to_excel(
             data_pairs=[
-                (df_haberes, "siif_comprobantes_haberes_db"),
-                # (df_retenciones_siif, "retenciones_siif_db"),
-                # (df_retenciones_icaro, "retenciones_icaro_db"),
-                # (df_control_siif, "control_cruzado_siif_db"),
+                (df_siif, "siif_comprobantes_haberes_db"),
+                (df_banco, "sscc_haberes_db"),
                 # (df_control_icaro, "control_cruzado_icaro_db"),
             ],
             filename="Control Haberes.xlsx",
