@@ -4,12 +4,28 @@ from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
 from ..schemas import (
-    ControlHaberesFilter,
+    ControlHaberesFullFilter,
     ControlHaberesLiteFilter,
 )
 from ..services import ControlHaberesServiceDependency
 
 control_haberes_router = APIRouter(prefix="/controlHaberes")
+
+
+# -------------------------------------------------
+@control_haberes_router.get(
+    "/compute",
+    description="Control Cruzado Haberes SIIF vs Banco INVICO (SSCC)",
+    # response_model=List[ControlAporteEmpresarioReport],
+    response_model_exclude_none=True,
+)
+async def compute_control_haberes(
+    params: Annotated[ControlHaberesFullFilter, Depends()],
+    service: ControlHaberesServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.compute_control_haberes(params=params)
 
 
 # -------------------------------------------------
@@ -20,7 +36,7 @@ control_haberes_router = APIRouter(prefix="/controlHaberes")
     response_model_exclude_none=True,
 )
 async def generate_siif(
-    params: Annotated[ControlHaberesFilter, Depends()],
+    params: Annotated[ControlHaberesFullFilter, Depends()],
     service: ControlHaberesServiceDependency,
     security: AuthorizationDependency,
 ):
@@ -36,7 +52,7 @@ async def generate_siif(
     response_model_exclude_none=True,
 )
 async def generate_banco(
-    params: Annotated[ControlHaberesFilter, Depends()],
+    params: Annotated[ControlHaberesFullFilter, Depends()],
     service: ControlHaberesServiceDependency,
     security: AuthorizationDependency,
 ):

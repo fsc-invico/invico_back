@@ -1,7 +1,7 @@
 __all__ = [
     "ControlHaberesReport",
     "ControlHaberesDocument",
-    "ControlHaberesFilter",
+    "ControlHaberesFullFilter",
     "ControlHaberesLiteFilter",
 ]
 
@@ -29,7 +29,7 @@ class ControlHaberesDocument(ControlHaberesReport):
 
 
 # -------------------------------------------------
-class ControlHaberesFilter(BaseFilterParams):
+class ControlHaberesFullFilter(BaseFilterParams):
     ejercicio: Optional[int] = None
 
 

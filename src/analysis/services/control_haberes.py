@@ -24,7 +24,7 @@ from ...utils import (
     sanitize_dataframe_for_json_with_datetime,
 )
 from ..schemas import (
-    ControlHaberesFilter,
+    ControlHaberesFullFilter,
     ControlHaberesLiteFilter,
 )
 
@@ -41,7 +41,7 @@ class ControlHaberesService:
     # -------------------------------------------------
     async def get_siif_comprobantes_haberes_neto_rdeu(
         self,
-        params: ControlHaberesFilter,
+        params: ControlHaberesFullFilter,
     ) -> list[dict]:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
@@ -196,7 +196,7 @@ class ControlHaberesService:
                 df.drop_duplicates(subset=["nro_comprobante"]),
                 rdeu.loc[
                     :, ["nro_comprobante", "saldo", "fecha_hasta", "mes_hasta"]
-                ].drop_duplicates(subset=["nro_comprobante"], keep="first"),
+                ].drop_duplicates(subset=["nro_comprobante", "saldo"], keep="first"),
                 how="inner",
                 on="nro_comprobante",
             )
@@ -255,7 +255,7 @@ class ControlHaberesService:
     # -------------------------------------------------
     async def get_banco_invico(
         self,
-        params: ControlHaberesFilter,
+        params: ControlHaberesFullFilter,
     ) -> list[dict]:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
@@ -298,40 +298,75 @@ class ControlHaberesService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
+    async def compute_control_haberes(
+        self,
+        params: ControlHaberesFullFilter,
+        siif: list[dict] = None,
+        sscc: list[dict] = None,
+    ) -> list[dict]:
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        groupby_cols = ["ejercicio", "mes"]
+
+        if not siif:
+            siif = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
+        siif = pd.DataFrame(siif)
+        siif = siif.loc[:, groupby_cols + ["importe"]]
+        siif = siif.groupby(groupby_cols)["importe"].sum()
+        siif = siif.reset_index()
+        siif = siif.rename(columns={"importe": "ejecutado_siif"})
+        # print(f"siif.shape: {siif.shape} - siif.head: {siif.head()}")
+
+        if not sscc:
+            sscc = await self.get_banco_invico(params=params)
+        sscc = pd.DataFrame(sscc)
+        sscc = sscc.loc[:, groupby_cols + ["importe"]]
+        sscc = sscc.groupby(groupby_cols)["importe"].sum()
+        sscc = sscc.reset_index()
+        sscc = sscc.rename(columns={"importe": "pagado_sscc"})
+        # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
+
+        df = pd.merge(siif, sscc, how="outer", on=groupby_cols, copy=False)
+        df[["ejecutado_siif", "pagado_sscc"]] = df[
+            ["ejecutado_siif", "pagado_sscc"]
+        ].fillna(0)
+        df["diferencia"] = df.ejecutado_siif - df.pagado_sscc
+        df = df.sort_values(by=["ejercicio", "mes"])
+        df = pd.DataFrame(df)
+        df["dif_acum"] = df["diferencia"].cumsum()
+        df.reset_index(drop=True, inplace=True)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
+
+    # -------------------------------------------------
     async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
-        params = ControlHaberesFilter(
+        params = ControlHaberesFullFilter(
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
 
         # 2. Traemos los datos sin paginar
         data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
-        data_banco = await self.get_banco_invico(params=params)
-
-        # data_retenciones_siif = await self.get_retenciones_from_siif(params=params)
-        # data_retenciones_icaro = await self.get_retenciones_from_icaro(params=params)
-        # data_control_siif = await self.generate_siif(params=params)
-        # data_control_icaro = await self.generate_icaro(params=params)
+        data_sscc = await self.get_banco_invico(params=params)
+        data_control = await self.compute_control_haberes(
+            params=params, siif=data_siif, sscc=data_sscc
+        )
 
         # 3. Transformamos los datos a DataFrames de Pandas
         df_siif = pd.DataFrame(data_siif)
-        df_banco = pd.DataFrame(data_banco)
-
-        # df_retenciones_siif = pd.DataFrame(data_retenciones_siif)
-
-        # df_retenciones_icaro = pd.DataFrame(data_retenciones_icaro)
-
-        # df_control_siif = pd.DataFrame(data_control_siif)
-
-        # df_control_icaro = pd.DataFrame(data_control_icaro)
+        df_sscc = pd.DataFrame(data_sscc)
+        df_control = pd.DataFrame(data_control)
 
         return export_multiple_dataframes_to_excel(
             data_pairs=[
                 (df_siif, "siif_comprobantes_haberes_db"),
-                (df_banco, "sscc_haberes_db"),
-                # (df_control_icaro, "control_cruzado_icaro_db"),
+                (df_sscc, "sscc_haberes_db"),
+                (df_control, "control_mensual_db"),
             ],
             filename="Control Haberes.xlsx",
             upload_to_google_sheets=True,
