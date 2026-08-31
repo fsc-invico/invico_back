@@ -8,6 +8,7 @@ from .control_banco_cruzado import control_banco_cruzado_router
 from .control_banco_siif import control_banco_siif_router
 from .control_banco_sscc import control_banco_sscc_router
 from .control_haberes import control_haberes_router
+from .control_honorarios import control_honorarios_router
 from .control_icaro import control_icaro_router
 from .control_icaro_anual import control_icaro_anual_router
 from .control_icaro_comprobantes import control_icaro_comprobantes_router
@@ -28,6 +29,7 @@ control_router.include_router(control_icaro_pa6_router)
 control_router.include_router(control_icaro_router)
 control_router.include_router(control_obras_router)
 control_router.include_router(control_haberes_router)
+control_router.include_router(control_honorarios_router)
 control_router.include_router(control_banco_cruzado_router)
 control_router.include_router(control_banco_siif_router)
 control_router.include_router(control_banco_sscc_router)

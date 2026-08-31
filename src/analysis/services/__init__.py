@@ -4,6 +4,7 @@ from .control_banco_cruzado import *
 from .control_banco_siif import *
 from .control_banco_sscc import *
 from .control_haberes import *
+from .control_honorarios import *
 from .control_icaro import *
 from .control_icaro_anual import *
 from .control_icaro_comprobantes import *
