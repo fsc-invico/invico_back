@@ -227,22 +227,64 @@ class ResumenRendProvService(
     # -------------------------------------------------
     async def unique_obras(self, params: ResumenRendProvFullFilter):
 
-        data = await self.drop_duplicates(params=params)
+        # Antes usaba self.drop_duplicates, pero era muy lento
+        data = await self.drop_duplicates_optimizado(params=params)
 
         df = pd.DataFrame(data)
 
         df = df.loc[df["origen"] != "FUNCIONAMIENTO"]
 
         # Filtramos los registros de honorarios en EPAM
-        df_epam = df.copy()
-        keep = ["HONORARIOS"]
-        df_epam = df_epam.loc[df_epam["origen"] == "EPAM"]
-        df_epam = df_epam.loc[~df_epam.destino.str.contains("|".join(keep))]
-        df = df.loc[df["origen"] != "EPAM"]
-        df = pd.DataFrame(pd.concat([df, df_epam], ignore_index=True))
+        if "destino" in df.columns:
+            mask_epam_honorarios = (df["origen"] == "EPAM") & (
+                df["destino"].str.contains("HONORARIOS", na=False)
+            )
+            df = df.loc[~mask_epam_honorarios]
+        # df_epam = df.copy()
+        # keep = ["HONORARIOS"]
+        # df_epam = df_epam.loc[df_epam["origen"] == "EPAM"]
+        # df_epam = df_epam.loc[~df_epam.destino.str.contains("|".join(keep))]
+        # df = df.loc[df["origen"] != "EPAM"]
+        # df = pd.DataFrame(pd.concat([df, df_epam], ignore_index=True))
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
+        return df.to_dict(orient="records")
+
+    # -------------------------------------------------
+    async def drop_duplicates_optimizado(
+        self, params: ResumenRendProvFullFilter
+    ) -> list[dict]:
+
+        data = await self.repository.find_with_filter_params(params=params)
+
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de Resumen Rend Prov para el ejercicio o filtros seleccionados.",
+            )
+
+        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+
+        # 1. Definimos la clave única de negocio (sin incluir cta_cte para eliminar duplicados inter-cuentas)
+        subset_desduplicacion = [
+            "mes",
+            "fecha",
+            "beneficiario",
+            "libramiento",
+            "importe_bruto",
+        ]
+
+        # 2. Ordenamiento preventivo de calidad
+        # Ordenamos por libramiento y destino (descendente) para asegurar que se preserve el registro con más información
+        cols_sort = [c for c in ["libramiento", "destino"] if c in df.columns]
+        if cols_sort:
+            df.sort_values(by=cols_sort, ascending=False, inplace=True)
+
+        # 3. Desduplicación Global en una sola instrucción
+        df.drop_duplicates(subset=subset_desduplicacion, keep="first", inplace=True)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
         return df.to_dict(orient="records")
 
 
