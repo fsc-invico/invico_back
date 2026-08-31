@@ -49,7 +49,7 @@ class ControlHonorariosService:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
         gastos_params = GtoRpa03gFullFilter(
-            query_filter="partida=!str:384, grupo=str:3",
+            query_filter="partida!=str:384, grupo=str:3",
             ejercicio=str(params.ejercicio),
             limit=None,
         )
