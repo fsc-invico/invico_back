@@ -6,6 +6,7 @@ __all__ = [
 ]
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -42,7 +43,7 @@ class HonorariosDocument(HonorariosReport):
 
 # -------------------------------------------------
 class HonorariosFullFilter(BaseFilterParams):
-    pass
+    ejercicio: Optional[str] = None
 
 
 # Este se usa para el Excel y Borrar (Sin limit/offset)

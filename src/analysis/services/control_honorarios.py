@@ -19,7 +19,6 @@ from ...siif.services import (
 )
 from ...slave.schemas import HonorariosFullFilter
 from ...slave.services import HonorariosServiceDependency
-from ...sscc.schemas import BancoINVICOFullFilter
 from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
@@ -163,8 +162,27 @@ class ControlHonorariosService:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
         sgf_params = ResumenRendProvFullFilter(
+            query_filter="origen!=OBRAS",
             ejercicio=str(params.ejercicio),
             limit=None,
+        )
+
+        sgf_params.set_extra_filter(
+            {
+                "destino": {
+                    "$in": [
+                        "HONORARIOS - FUNCIONAMIENTO",
+                        "COMISIONES - FUNCIONAMIENTO",
+                        "HONORARIOS - EPAM",
+                    ]
+                },
+                "cta_cte": {
+                    "$in": [
+                        "130832-05",
+                        "130832-07",
+                    ]
+                },
+            }
         )
 
         data = await self.sgf_service.drop_duplicates_optimizado(params=sgf_params)
@@ -190,6 +208,7 @@ class ControlHonorariosService:
             banco["importe_neto"] = 0
             banco["otras"] = banco["importe_bruto"]
             banco["retenciones"] = banco["importe_bruto"]
+            banco["origen"] = "BANCO"
             banco["destino"] = "EMBARGO POR ALIMENTOS"
             banco["beneficiario"] = "EMBARGO POR ALIMENTOS"
             # banco.rename(
@@ -317,75 +336,78 @@ class ControlHonorariosService:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
-        # groupby_cols = ["ejercicio", "mes", "cta_cte", "beneficiario"]
+        groupby_cols = ["ejercicio", "mes", "cta_cte", "beneficiario"]
 
-        # if not sgf:
-        #     sgf = await self.get_siif_honorarios(params=params)
-        # sgf = pd.DataFrame(sgf)
-        # sgf = sgf.loc[:, groupby_cols + ["importe_bruto"]]
-        # sgf = sgf.groupby(groupby_cols)["importe_bruto"].sum()
-        # sgf = sgf.reset_index()
-        # sgf = sgf.rename(
-        #     columns={
-        #         "importe_bruto": "sgf_importe",
-        #         "nro_comprobante": "sgf_nro",
-        #         "mes": "sgf_mes",
-        #     }
-        # )
-        # # print(f"siif.shape: {siif.shape} - siif.head: {siif.head()}")
+        if not sgf:
+            sgf = await self.get_sgf_honorarios(params=params)
+        sgf = pd.DataFrame(sgf)
+        sgf = sgf.loc[:, groupby_cols + ["importe_bruto", "importe_neto"]]
+        sgf = sgf.groupby(groupby_cols)[["importe_bruto", "importe_neto"]].sum()
+        sgf = sgf.reset_index()
+        sgf = sgf.rename(
+            columns={
+                "importe_bruto": "sgf_importe_bruto",
+                "importe_neto": "sgf_importe_neto",
+            }
+        )
+        # print(f"sgf.shape: {sgf.shape} - sgf.head: {sgf.head()}")
 
-        # if not slave:
-        #     slave = await self.get_slave_honorarios(params=params)
-        # slave = pd.DataFrame(slave)
-        # slave = slave.loc[:, groupby_cols + ["importe_bruto"]]
-        # slave = slave.groupby(groupby_cols)["importe_bruto"].sum()
-        # slave = slave.reset_index()
-        # slave = slave.rename(
-        #     columns={
-        #         "importe_bruto": "slave_importe",
-        #         "nro_comprobante": "slave_nro",
-        #         "mes": "slave_mes",
-        #     }
-        # )
-        # # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
+        if not slave:
+            slave = await self.get_slave_honorarios(params=params)
+        slave = pd.DataFrame(slave)
+        slave["importe_neto"] = (
+            slave["importe_bruto"]
+            - slave["iibb"]
+            - slave["lp"]
+            - slave["sellos"]
+            - slave["seguro"]
+            - slave["otras_retenciones"]
+            - slave["anticipo"]
+            - slave["descuento"]
+            - slave["mutual"]
+            - slave["embargo"]
+        )
+        slave = slave.loc[:, groupby_cols + ["importe_bruto", "importe_neto"]]
+        slave = slave.groupby(groupby_cols)[["importe_bruto", "importe_neto"]].sum()
+        slave = slave.reset_index()
+        slave = slave.rename(
+            columns={
+                "importe_bruto": "slave_importe_bruto",
+                "importe_neto": "slave_importe_neto",
+            }
+        )
+        # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
 
-        # df = pd.merge(
-        #     sgf,
-        #     slave,
-        #     how="outer",
-        #     left_on=["ejercicio", "siif_nro"],
-        #     right_on=["ejercicio", "slave_nro"],
-        #     copy=False,
-        # )
-        # df = df.fillna(0)
-        # df["err_nro"] = df["siif_nro"] != df["slave_nro"]
-        # df["err_importe"] = np.where(
-        #     np.abs(df["siif_importe"] - df["slave_importe"]) > 0.01, True, False
-        # )
-        # df["err_mes"] = df["siif_mes"] != df["slave_mes"]
-        # df = df.loc[
-        #     :,
-        #     [
-        #         "ejercicio",
-        #         "siif_nro",
-        #         "slave_nro",
-        #         "err_nro",
-        #         "siif_importe",
-        #         "slave_importe",
-        #         "err_importe",
-        #         "siif_mes",
-        #         "slave_mes",
-        #         "err_mes",
-        #     ],
-        # ]
-        # # print(f"df.shape: {df.shape} - df.head: {df.head()}")
-        # df = df.query("err_nro | err_mes | err_importe")
-        # df = df.sort_values(by=["err_nro", "err_importe", "err_mes"], ascending=False)
-        # df = df.reset_index(drop=True)
+        df = pd.merge(
+            sgf,
+            slave,
+            how="outer",
+            on=groupby_cols,
+            copy=False,
+        )
+        df = df.fillna(0)
+        df["dif_importe_bruto"] = df["sgf_importe_bruto"] - df["slave_importe_bruto"]
+        df["dif_importe_neto"] = df["sgf_importe_neto"] - df["slave_importe_neto"]
+        df = df.loc[
+            :,
+            groupby_cols
+            + [
+                "sgf_importe_bruto",
+                "slave_importe_bruto",
+                "dif_importe_bruto",
+                "sgf_importe_neto",
+                "slave_importe_neto",
+                "dif_importe_neto",
+            ],
+        ]
+        # print(f"df.shape: {df.shape} - df.head: {df.head()}")
+        df = df.query("abs(dif_importe_bruto) > 0.01 | abs(dif_importe_neto) > 0.01")
+        df = df.sort_values(by=groupby_cols, ascending=True)
+        df = df.reset_index(drop=True)
 
-        # df = sanitize_dataframe_for_json_with_datetime(df)
+        df = sanitize_dataframe_for_json_with_datetime(df)
 
-        # return df.to_dict(orient="records")
+        return df.to_dict(orient="records")
 
     # -------------------------------------------------
     async def export(self, params: ControlHonorariosLiteFilter) -> StreamingResponse:
@@ -403,20 +425,24 @@ class ControlHonorariosService:
         data_siif_vs_slave = await self.compute_control_siif_vs_slave(
             params=params, siif=data_siif, slave=data_slave
         )
+        data_sgf_vs_slave = await self.compute_control_sgf_vs_slave(
+            params=params, sgf=data_sgf, slave=data_slave
+        )
 
         # 3. Transformamos los datos a DataFrames de Pandas
         df_siif = pd.DataFrame(data_siif)
         df_slave = pd.DataFrame(data_slave)
         df_sgf = pd.DataFrame(data_sgf)
         df_siif_vs_slave = pd.DataFrame(data_siif_vs_slave)
+        df_sgf_vs_slave = pd.DataFrame(data_sgf_vs_slave)
 
         return export_multiple_dataframes_to_excel(
             data_pairs=[
-                (df_siif_vs_slave, "siif_vs_slave_db_new"),
-                # (sgf_vs_slave, "sgf_vs_slave_db_new"),
-                (df_siif, "siif_db_new"),
-                (df_slave, "slave_db_new"),
-                (df_sgf, "sgf_db_new"),
+                (df_siif_vs_slave, "siif_vs_slave_db"),
+                (df_sgf_vs_slave, "sgf_vs_slave_db"),
+                (df_siif, "siif_db"),
+                (df_slave, "slave_db"),
+                (df_sgf, "sgf_db"),
             ],
             filename="Control Honorarios Factureros.xlsx",
             upload_to_google_sheets=True,

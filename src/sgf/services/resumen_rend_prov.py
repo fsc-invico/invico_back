@@ -253,7 +253,15 @@ class ResumenRendProvService(
 
     # -------------------------------------------------
     async def drop_duplicates_optimizado(
-        self, params: ResumenRendProvFullFilter
+        self,
+        params: ResumenRendProvFullFilter,
+        cuentas_objetivo: list[str] = [
+            "106",
+            "130832-07",
+            "130832-03",
+            "130832-13",
+            "2210178150",
+        ],
     ) -> list[dict]:
 
         data = await self.repository.find_with_filter_params(params=params)
@@ -266,6 +274,15 @@ class ResumenRendProvService(
 
         df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
 
+        # Si se especifican cuentas, dividimos el DataFrame; si no, procesamos todo el DataFrame
+        if cuentas_objetivo and "cta_cte" in df.columns:
+            condicion = df["cta_cte"].isin(cuentas_objetivo)
+            df_target = df[condicion].copy()  # Filas a desduplicar
+            df_resto = df[~condicion]  # Filas que quedan intactas
+        else:
+            df_target = df
+            df_resto = pd.DataFrame()
+
         # 1. Definimos la clave única de negocio (sin incluir cta_cte para eliminar duplicados inter-cuentas)
         subset_desduplicacion = [
             "mes",
@@ -273,19 +290,39 @@ class ResumenRendProvService(
             "beneficiario",
             "libramiento",
             "importe_bruto",
+            "gcias",
+            "sellos",
+            "iibb",
+            "suss",
+            "invico",
+            "seguro",
+            "salud",
+            "mutual",
+            "otras",
+            "retenciones",
+            "importe_neto",
         ]
 
         # 2. Ordenamiento preventivo de calidad
         # Ordenamos por libramiento y destino (descendente) para asegurar que se preserve el registro con más información
-        cols_sort = [c for c in ["libramiento", "destino"] if c in df.columns]
+        cols_sort = [c for c in ["libramiento", "destino"] if c in df_target.columns]
         if cols_sort:
-            df.sort_values(by=cols_sort, ascending=False, inplace=True)
+            df_target.sort_values(by=cols_sort, ascending=False, inplace=True)
 
-        # 3. Desduplicación Global en una sola instrucción
-        df.drop_duplicates(subset=subset_desduplicacion, keep="first", inplace=True)
+        # 3. Desduplicación solo de las cuentas seleccionadas
+        df_target.drop_duplicates(
+            subset=subset_desduplicacion, keep="first", inplace=True
+        )
 
-        df = sanitize_dataframe_for_json_with_datetime(df)
-        return df.to_dict(orient="records")
+        # 4. Volvemos a unir el bloque procesado con el resto de los datos
+        df_final = (
+            pd.concat([df_target, df_resto], ignore_index=True)
+            if not df_resto.empty
+            else df_target
+        )
+
+        df_final = sanitize_dataframe_for_json_with_datetime(df_final)
+        return df_final.to_dict(orient="records")
 
 
 ResumenRendProvServiceDependency = Annotated[ResumenRendProvService, Depends()]
