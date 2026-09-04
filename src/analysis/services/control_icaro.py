@@ -24,7 +24,6 @@ from ...siif.services import (
 # from pydantic import ValidationError
 from ...utils import (
     BaseService,
-    export_multiple_dataframes_to_excel,
     sanitize_dataframe_for_json_with_datetime,
 )
 from ..repositories import (
@@ -163,12 +162,12 @@ class ControlIcaroService:
             }
         )
 
-        data = await self.rf602_service.get_all(params=rf602_params)
+        data = await self.rf602_service.with_desc_estructuras(params=rf602_params)
         if not data:
             return []
 
         # 1. Carga eficiente a DataFrame
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        df = pd.DataFrame(data)
 
         df = df.drop(
             columns=["id"], errors="ignore"
@@ -206,7 +205,17 @@ class ControlIcaroService:
         if not siif:
             siif = await self.get_siif_obras(params=params)
         siif = pd.DataFrame(siif)
-        siif = siif.loc[:, groupby_cols + ["ordenado"]]
+        siif = siif.loc[
+            :,
+            groupby_cols
+            + [
+                "ordenado",
+                "desc_programa",
+                "desc_subprograma",
+                "desc_proyecto",
+                "desc_actividad",
+            ],
+        ]
         siif = siif.rename(columns={"ordenado": "ejecucion_siif"})
         # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
 
@@ -214,12 +223,6 @@ class ControlIcaroService:
         df = df.fillna(0)
         df["diferencia"] = df["ejecucion_siif"] - df["ejecucion_icaro"]
 
-        # df = df.merge(
-        #     get_siif_desc_pres(ejercicio_to=ejercicio),
-        #     how="left",
-        #     on="estructura",
-        #     copy=False,
-        # )
         df = df.loc[(df["diferencia"] < -0.2) | (df["diferencia"] > 0.2)]
         df = df.reset_index(drop=True)
         df["fuente"] = pd.to_numeric(df["fuente"], errors="coerce")

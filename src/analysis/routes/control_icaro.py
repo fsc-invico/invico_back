@@ -5,12 +5,28 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
-from ..schemas import ControlIcaroLiteFilter
+from ..schemas import ControlIcaroFullFilter, ControlIcaroLiteFilter
 from ..services import (
     ControlIcaroServiceDependency,
 )
 
 control_icaro_router = APIRouter(prefix="/controlIcaro")
+
+
+# -------------------------------------------------
+@control_icaro_router.get(
+    "/computeControlAnual",
+    description="Control Anual SIIF vs Icaro",
+    # response_model=List[ControlAporteEmpresarioReport],
+    response_model_exclude_none=True,
+)
+async def compute_control_anual(
+    params: Annotated[ControlIcaroFullFilter, Depends()],
+    service: ControlIcaroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.compute_control_anual(params=params)
 
 
 # -------------------------------------------------
