@@ -111,7 +111,7 @@ class ControlIcaroService:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
         icaro_params = CargaFullFilter(
-            query_filter="tipo!=PA6" if exclude_pa6 else None,
+            query_filter="tipo!=PA6" if exclude_pa6 else "",
             ejercicio=str(params.ejercicio),
             limit=None,
         )
@@ -474,8 +474,9 @@ class ControlIcaroService:
         # )
 
         if not icaro:
-            icaro = await self.get_icaro_comprobantes(params=params, exclude_pa6=True)
+            icaro = await self.get_icaro_comprobantes(params=params, exclude_pa6=False)
         icaro = pd.DataFrame(icaro)
+        icaro = icaro.loc[:, select + ["tipo"]]
         icaro = icaro.rename(
             columns={
                 "mes": "icaro_mes",
