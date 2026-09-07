@@ -10,9 +10,6 @@ from .control_banco_sscc import control_banco_sscc_router
 from .control_haberes import control_haberes_router
 from .control_honorarios import control_honorarios_router
 from .control_icaro import control_icaro_router
-from .control_icaro_anual import control_icaro_anual_router
-from .control_icaro_comprobantes import control_icaro_comprobantes_router
-from .control_icaro_pa6 import control_icaro_pa6_router
 from .control_obras import control_obras_router
 from .control_recursos import control_recursos_router
 from .reporte_formulacion import reporte_formulacion_router
@@ -23,9 +20,6 @@ control_router = APIRouter(prefix="/control", tags=["Controles"])
 
 control_router.include_router(control_recursos_router)
 control_router.include_router(control_aporte_empresario_router)
-control_router.include_router(control_icaro_anual_router)
-control_router.include_router(control_icaro_comprobantes_router)
-control_router.include_router(control_icaro_pa6_router)
 control_router.include_router(control_icaro_router)
 control_router.include_router(control_obras_router)
 control_router.include_router(control_haberes_router)

@@ -29,11 +29,6 @@ from ...utils import (
     BaseService,
     sanitize_dataframe_for_json_with_datetime,
 )
-from ..repositories import (
-    ControlIcaroAnualRepositoryDependency,
-    ControlIcaroComprobantesRepositoryDependency,
-    ControlIcaroPA6RepositoryDependency,
-)
 from ..schemas import (
     ControlIcaroFullFilter,
     ControlIcaroLiteFilter,
@@ -43,16 +38,13 @@ from ..schemas import (
 @dataclass
 # -------------------------------------------------
 class ControlIcaroService:
-    ctrl_anual: ControlIcaroAnualRepositoryDependency
-    ctrl_comprobantes: ControlIcaroComprobantesRepositoryDependency
-    ctrl_pa6: ControlIcaroPA6RepositoryDependency
     gastos_service: GtoRpa03gServiceDependency
     icaro_service: CargaServiceDependency
     rf602_service: Rf602ServiceDependency
     rfondo07tp_service: Rfondo07tpServiceDependency
 
     # -------------------------------------------------
-    async def get_siif_comprobantes(
+    async def get_siif_gastos(
         self,
         params: ControlIcaroFullFilter,
     ) -> list[dict]:
@@ -228,6 +220,7 @@ class ControlIcaroService:
         if not icaro:
             icaro = await self.get_icaro_comprobantes(params=params, exclude_pa6=True)
         icaro = pd.DataFrame(icaro)
+        icaro = icaro.loc[icaro["tipo"] != "PA6"]
         icaro = icaro.groupby(groupby_cols)["importe"].sum()
         icaro = icaro.reset_index()
         icaro = icaro.rename(columns={"importe": "ejecucion_icaro"})
@@ -301,7 +294,7 @@ class ControlIcaroService:
         ]
 
         if not siif:
-            siif = await self.get_siif_comprobantes(params=params)
+            siif = await self.get_siif_gastos(params=params)
         siif = pd.DataFrame(siif)
         siif.loc[(siif.clase_reg == "REG") & (siif.nro_fondo.isnull()), "clase_reg"] = (
             "CYO"
@@ -324,6 +317,7 @@ class ControlIcaroService:
         if not icaro:
             icaro = await self.get_icaro_comprobantes(params=params, exclude_pa6=True)
         icaro = pd.DataFrame(icaro)
+        icaro = icaro.loc[icaro["tipo"] != "PA6"]
         icaro = icaro.loc[:, select + ["tipo"]]
         icaro = icaro.rename(
             columns={
@@ -449,7 +443,7 @@ class ControlIcaroService:
         ]
 
         if not siif_gtos:
-            siif_gtos = await self.get_siif_comprobantes(params=params)
+            siif_gtos = await self.get_siif_gastos(params=params)
         siif_gtos = pd.DataFrame(siif_gtos)
         siif_gtos = siif_gtos.loc[siif_gtos["clase_reg"] == "REG"]
         siif_gtos = siif_gtos.loc[:, select + ["nro_fondo", "clase_reg"]]
@@ -653,22 +647,36 @@ class ControlIcaroService:
         )
 
         # 2. Traemos los datos sin paginar
-        data_ctrl_anual = await self.ctrl_anual.find_with_filter_params(
-            params=search_params
+        data_siif_comprobantes = await self.get_siif_gastos(params=search_params)
+        data_siif_obras = await self.get_siif_obras(params=search_params)
+        data_siif_pa6 = await self.get_siif_pa6(params=search_params)
+        data_icaro_comprobantes = await self.get_icaro_comprobantes(
+            params=search_params, exclude_pa6=False
         )
-        df_ctrl_anual = pd.DataFrame(
-            [d.model_dump(by_alias=True) for d in data_ctrl_anual]
+
+        data_ctrl_anual = await self.compute_control_anual(
+            params=search_params, icaro=data_icaro_comprobantes, siif=data_siif_obras
         )
-        data_ctrl_comprobantes = await self.ctrl_comprobantes.find_with_filter_params(
-            params=search_params
+        data_ctrl_comprobantes = await self.compute_control_comprobantes(
+            params=search_params,
+            icaro=data_icaro_comprobantes,
+            siif=data_siif_comprobantes,
         )
-        df_ctrl_comprobantes = pd.DataFrame(
-            [d.model_dump(by_alias=True) for d in data_ctrl_comprobantes]
+        data_ctrl_pa6 = await self.compute_control_pa6(
+            params=search_params,
+            icaro=data_icaro_comprobantes,
+            siif_fdos=data_siif_pa6,
+            siif_gtos=data_siif_comprobantes,
         )
-        data_ctrl_pa6 = await self.ctrl_pa6.find_with_filter_params(
-            params=search_params
-        )
-        df_ctrl_pa6 = pd.DataFrame([d.model_dump(by_alias=True) for d in data_ctrl_pa6])
+
+        # 3. Transformamos los datos a DataFrames de Pandas
+        df_siif_comprobantes = pd.DataFrame(data_siif_comprobantes)
+        df_siif_obras = pd.DataFrame(data_siif_obras)
+        df_siif_pa6 = pd.DataFrame(data_siif_pa6)
+        df_icaro_comprobantes = pd.DataFrame(data_icaro_comprobantes)
+        df_ctrl_anual = pd.DataFrame(data_ctrl_anual)
+        df_ctrl_comprobantes = pd.DataFrame(data_ctrl_comprobantes)
+        df_ctrl_pa6 = pd.DataFrame(data_ctrl_pa6)
 
         # 3. Usar el método de la clase base
         return BaseService.export_to_excel(
@@ -685,6 +693,22 @@ class ControlIcaroService:
                 (
                     df_ctrl_pa6,
                     "control_pa6_db",
+                ),
+                (
+                    df_siif_comprobantes,
+                    "siif_comprobantes_db",
+                ),
+                (
+                    df_siif_obras,
+                    "siif_obras_db",
+                ),
+                (
+                    df_siif_pa6,
+                    "siif_pa6_db",
+                ),
+                (
+                    df_icaro_comprobantes,
+                    "icaro_comprobantes_db",
                 ),
             ],
             filename="Control Icaro vs SIIF.xlsx",

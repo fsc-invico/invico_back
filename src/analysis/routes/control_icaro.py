@@ -15,6 +15,70 @@ control_icaro_router = APIRouter(prefix="/controlIcaro")
 
 # -------------------------------------------------
 @control_icaro_router.get(
+    "/SIIFGastos",
+    description="Comprobantes Gastos SIIF",
+    # response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def get_siif_gastos(
+    params: Annotated[ControlIcaroFullFilter, Depends()],
+    service: ControlIcaroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_siif_gastos(params=params)
+
+
+# -------------------------------------------------
+@control_icaro_router.get(
+    "/SIIFObras",
+    description="Ejecucion Obras SIIF",
+    # response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def get_siif_obras(
+    params: Annotated[ControlIcaroFullFilter, Depends()],
+    service: ControlIcaroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_siif_obras(params=params)
+
+
+# -------------------------------------------------
+@control_icaro_router.get(
+    "/SIIFPA6",
+    description="Comprobantes PA6 SIIF",
+    # response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def get_siif_pa6(
+    params: Annotated[ControlIcaroFullFilter, Depends()],
+    service: ControlIcaroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_siif_pa6(params=params)
+
+
+# -------------------------------------------------
+@control_icaro_router.get(
+    "/IcaroCarga",
+    description="Comprobantes Icaro",
+    # response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def get_icaro_comprobantes(
+    params: Annotated[ControlIcaroFullFilter, Depends()],
+    service: ControlIcaroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_icaro_comprobantes(params=params)
+
+
+# -------------------------------------------------
+@control_icaro_router.get(
     "/computeControlAnual",
     description="Control Anual SIIF vs Icaro",
     # response_model=List[ControlAporteEmpresarioReport],
