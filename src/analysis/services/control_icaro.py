@@ -434,6 +434,9 @@ class ControlIcaroService:
             }
         )
         siif_fdos.dropna(subset=["siif_nro_fondo"], inplace=True)
+        # print(
+        #     f"siif_fdos.info: {siif_fdos.info()} - siif_fdos.head: {siif_fdos.head()}"
+        # )
 
         select = [
             "ejercicio",
@@ -448,23 +451,27 @@ class ControlIcaroService:
         if not siif_gtos:
             siif_gtos = await self.get_siif_comprobantes(params=params)
         siif_gtos = pd.DataFrame(siif_gtos)
-        siif_gtos.loc[
-            (siif_gtos.clase_reg == "REG") & (siif_gtos.nro_fondo.isnull()), "clase_reg"
-        ] = "CYO"
-        siif_gtos = siif_gtos.loc[:, select + ["clase_reg"]]
+        siif_gtos = siif_gtos.loc[siif_gtos["clase_reg"] == "REG"]
+        siif_gtos = siif_gtos.loc[:, select + ["nro_fondo", "clase_reg"]]
+        siif_gtos["nro_fondo"] = (
+            siif_gtos["nro_fondo"].str.zfill(5) + "/" + siif_gtos.mes.str[-2:]
+        )
         siif_gtos = siif_gtos.rename(
             columns={
-                "nro_comprobante": "siif_nro",
-                "clase_reg": "siif_tipo",
-                "fuente": "siif_fuente",
-                "importe": "siif_importe",
-                "mes": "siif_mes",
+                "nro_fondo": "siif_nro_fondo",
                 "cta_cte": "siif_cta_cte",
                 "cuit": "siif_cuit",
-                "partida": "siif_partida",
+                "clase_reg": "siif_tipo",
+                "fuente": "siif_fuente",
+                "nro_comprobante": "siif_nro_reg",
+                "importe": "siif_importe_reg",
+                "mes": "siif_mes_reg",
             }
         )
-        # print(f"siif_gtos.shape: {siif_gtos.shape} - siif_gtos.head: {siif_gtos.head()}")
+        siif_gtos.dropna(subset=["siif_nro_fondo"], inplace=True)
+        # print(
+        #     f"siif_gtos.info: {siif_gtos.info()} - siif_gtos.head: {siif_gtos.head()}"
+        # )
 
         if not icaro:
             icaro = await self.get_icaro_comprobantes(params=params, exclude_pa6=True)
