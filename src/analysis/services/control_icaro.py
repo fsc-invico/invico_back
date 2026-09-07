@@ -64,28 +64,7 @@ class ControlIcaroService:
             limit=None,
         )
 
-        # gastos_params.set_extra_filter({"partida": {"$in": ["421", "422", "354"]}})
-        gastos_params.set_extra_filter(
-            {
-                "$or": [
-                    {"partida": {"$in": ["421", "422"]}},
-                    {
-                        "$and": [
-                            {"partida": "354"},
-                            {
-                                "cuit": {
-                                    "$nin": [
-                                        "30500049460",
-                                        "30632351514",
-                                        "20231243527",
-                                    ]
-                                }
-                            },
-                        ]
-                    },
-                ]
-            }
-        )
+        gastos_params.set_extra_filter({"partida": {"$in": ["421", "422", "354"]}})
 
         data = await self.gastos_service.get_joined_with_rcg01_uejp(
             params=gastos_params
@@ -100,11 +79,24 @@ class ControlIcaroService:
             columns=["id"], errors="ignore"
         )  # Eliminar la columna 'id' si existe
 
-        # 2. Aplicamos el limite a la cantidad de registros, si existe
+        # 3. Filtrado exacto equivalente al método de Pandas
+        df = df.loc[
+            (df["partida"].isin(["421", "422"]))
+            | (
+                (df["partida"] == "354")
+                & (
+                    ~df["cuit"]
+                    .astype(str)
+                    .isin(["30500049460", "30632351514", "20231243527"])
+                )
+            )
+        ]
+
+        # 4. Aplicamos el limite a la cantidad de registros, si existe
         if params.limit is not None and params.limit > 0:
             df = df.head(params.limit)
 
-        # 3. Sanitización final
+        # 5. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.to_dict(orient="records")
