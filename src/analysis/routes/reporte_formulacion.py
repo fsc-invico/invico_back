@@ -82,6 +82,22 @@ async def generate_carga(
 
 # -------------------------------------------------
 @reporte_formulacion_router.get(
+    "/groupedProjection",
+    description="Proyección Agrupada por Grupo de Partida y Programa del año seleccionado",
+    # response_model=List[ReporteFormulacionGastosReport],
+    response_model_exclude_none=True,
+)
+async def generate_grouped_projection(
+    params: Annotated[ReporteFormulacionFilter, Depends()],
+    service: ReporteFormulacionServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.generate_grouped_projection(params=params)
+
+
+# -------------------------------------------------
+@reporte_formulacion_router.get(
     "/export",
     name="Reportes exportables para Formulación Presupuestaria - Google Sheets and Excel",
 )

@@ -86,8 +86,7 @@ class ReporteFormulacionService:
 
         return df.to_dict(orient="records")
 
-        # -------------------------------------------------
-
+    # -------------------------------------------------
     async def generate_gastos(
         self,
         params: ReporteFormulacionFilter,
@@ -101,7 +100,7 @@ class ReporteFormulacionService:
         )
 
         df = pd.DataFrame(
-            await self.gastos_service.with_desc_estructuras(params=gastos_params)
+            await self.gastos_service.group_projection(params=gastos_params)
         )
         df["fuente"] = pd.to_numeric(
             df["fuente"], errors="coerce"
@@ -156,6 +155,50 @@ class ReporteFormulacionService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
+    async def generate_grouped_projection(
+        self,
+        params: ReporteFormulacionFilter,
+    ) -> List[ReporteFormulacionGastosReport]:
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        gastos_params = Rf602FullFilter(
+            ejercicio=",".join(
+                str(y) for y in range(params.ejercicio - 4, params.ejercicio + 1)
+            ),  # Rango de ejercicios
+            limit=params.limit,
+        )
+
+        df = pd.DataFrame(
+            await self.gastos_service.group_projection(params=gastos_params)
+        )
+
+        df = df.drop(
+            columns=["id"], errors="ignore"
+        )  # Eliminar la columna 'id' si existe
+
+        df = df.loc[
+            :,
+            [
+                "ejercicio",
+                "programa",
+                "grupo",
+                "ordenado",
+            ],
+        ]
+
+        df = df.sort_values(
+            by=["ejercicio", "programa", "grupo"], ascending=[False, True, True]
+        )
+
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+
+        df = sanitize_dataframe_for_json_with_datetime(df)
+
+        return df.to_dict(orient="records")
+
+    # -------------------------------------------------
     async def export(self, params: ReporteFormulacionLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
@@ -168,6 +211,7 @@ class ReporteFormulacionService:
         data_planillometro = await self.generate_planillometro(params=params)
         data_recursos = await self.generate_recursos(params=params)
         data_gastos = await self.generate_gastos(params=params)
+        data_proyeccion = await self.generate_grouped_projection(params=params)
         params.ejercicio = str(
             int(params.ejercicio + 1)
         )  # Incrementamos el ejercicio para la formulación
@@ -182,6 +226,7 @@ class ReporteFormulacionService:
         df_recursos = pd.DataFrame(data_recursos)
 
         df_gastos = pd.DataFrame(data_gastos)
+        df_proyeccion = pd.DataFrame(data_proyeccion)
         df_formulacion = pd.DataFrame(data_formulacion)
 
         return export_multiple_dataframes_to_excel(
@@ -190,6 +235,7 @@ class ReporteFormulacionService:
                 (df_recursos, "siif_recursos_cod"),
                 (df_gastos, "siif_ejec_gastos"),
                 (df_formulacion, "siif_carga_form_gastos"),
+                (df_proyeccion, "siif_proyeccion_agrupada"),
             ],
             filename="Reporte Formulación.xlsx",
             upload_to_google_sheets=True,
