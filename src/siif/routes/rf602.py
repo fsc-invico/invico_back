@@ -36,3 +36,18 @@ async def desc_estructuras(
 ):
     security.is_admin_or_user_or_raise()
     return await service.with_desc_estructuras(params=params)
+
+
+# -------------------------------------------------
+@rf602_router.get(
+    "/grouped",
+    description="Get rf602 grouped by specified fields",
+    # response_model=list[Rf602WithDescEstructuras],
+)
+async def group_projection(
+    params: Annotated[Rf602FullFilter, Depends()],
+    service: Rf602ServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.group_projection(params=params)

@@ -151,5 +151,84 @@ class Rf602Service(
         json_data = df.to_dict(orient="records")
         return json_data
 
+    # -------------------------------------------------
+    async def group_projection(
+        self,
+        params: Rf602FullFilter,
+        group_by: list = ["ejercicio", "programa"],  # Grupo se incluye por defecto,
+    ) -> List[dict]:
+
+        # 1. Generamos el dict de filtro de MongoDB usando tu método existente
+        mongo_query = params.get_full_filter()
+
+        # 2. Armamos el _id del $group y las proyecciones para el $project
+        # Construimos el _id combinando los campos pasados + grupo_calculado
+        id_group = {col: f"${col}" for col in group_by}
+        id_group["grupo"] = "$grupo_calculado"
+
+        # 3. Armamos la proyección dinámica mapeando desde $_id
+        projection = {col: f"$_id.{col}" for col in group_by}
+        projection["grupo"] = "$_id.grupo"
+        projection["_id"] = 0
+        projection["ordenado"] = 1
+
+        # 4. Pipeline de Agregación
+        pipeline = [
+            # ETAPA 1: Filtra la colección ANTES de agrupar (Cero desperdicio de CPU)
+            {"$match": mongo_query},
+            # ETAPA 2: Normalización/Clasificación de la partida únicamente para el grupo 400
+            {
+                "$addFields": {
+                    "grupo_calculado": {
+                        "$cond": {
+                            "if": {"$eq": ["$grupo", "400"]},
+                            "then": {
+                                "$switch": {
+                                    "branches": [
+                                        {
+                                            "case": {"$eq": ["$partida", "411"]},
+                                            "then": "411",
+                                        },
+                                        {
+                                            "case": {"$eq": ["$partida", "421"]},
+                                            "then": "421",
+                                        },
+                                        {
+                                            "case": {"$eq": ["$partida", "422"]},
+                                            "then": "422",
+                                        },
+                                    ],
+                                    "default": "resto_400",
+                                }
+                            },
+                            "else": "$grupo",
+                        }
+                    }
+                }
+            },
+            # ETAPA 3: Agrupa únicamente sobre el resultado del $match
+            {
+                "$group": {
+                    "_id": id_group,
+                    "ordenado": {"$sum": "$ordenado"},
+                }
+            },
+            # ETAPA 4: Proyección limpia para Pandas
+            {"$project": projection},
+        ]
+
+        # 5. Ejecución Asíncrona con Motor
+        # .aggregate(pipeline) devuelve un cursor asíncrono
+        cursor = self.repository.collection.aggregate(pipeline)
+
+        # Traemos los documentos a una lista de Python de forma asíncrona
+        # length=None trae todos los registros agregados (que ahora son solo ~3.200)
+        documentos = await cursor.to_list(length=None)
+
+        if not documentos:
+            return []
+
+        return documentos
+
 
 Rf602ServiceDependency = Annotated[Rf602Service, Depends()]
