@@ -421,5 +421,56 @@ class CargaService(
         json_data = df.to_dict(orient="records")
         return json_data
 
+    # -------------------------------------------------
+    async def group_projection(
+        self,
+        params: CargaFullFilter,
+        group_by: list = ["ejercicio"],  # Actividad y partida se incluye por defecto,
+    ) -> List[dict]:
+
+        # 1. Generamos el dict de filtro de MongoDB usando tu método existente
+        mongo_query = params.get_full_filter()
+
+        # 2. Armamos el _id del $group y las proyecciones para el $project
+        # Construimos el _id combinando los campos pasados + grupo_calculado
+        id_group = {col: f"${col}" for col in group_by}
+        id_group["actividad"] = "$actividad"
+        id_group["partida"] = "$partida"
+
+        # 3. Armamos la proyección dinámica mapeando desde $_id
+        projection = {col: f"$_id.{col}" for col in group_by}
+        projection["actividad"] = "$_id.actividad"
+        projection["partida"] = "$_id.partida"
+        projection["_id"] = 0
+        projection["importe"] = 1
+
+        # 4. Pipeline de Agregación
+        pipeline = [
+            # ETAPA 1: Filtra la colección ANTES de agrupar (Cero desperdicio de CPU)
+            {"$match": mongo_query},
+            # ETAPA 2: Agrupa únicamente sobre el resultado del $match
+            {
+                "$group": {
+                    "_id": id_group,
+                    "importe": {"$sum": "$importe"},
+                }
+            },
+            # ETAPA 3: Proyección limpia para Pandas
+            {"$project": projection},
+        ]
+
+        # 5. Ejecución Asíncrona con Motor
+        # .aggregate(pipeline) devuelve un cursor asíncrono
+        cursor = self.repository.collection.aggregate(pipeline)
+
+        # Traemos los documentos a una lista de Python de forma asíncrona
+        # length=None trae todos los registros agregados (que ahora son solo ~3.200)
+        documentos = await cursor.to_list(length=None)
+
+        if not documentos:
+            return []
+
+        return documentos
+
 
 CargaServiceDependency = Annotated[CargaService, Depends()]

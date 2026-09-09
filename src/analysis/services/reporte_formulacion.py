@@ -4,12 +4,15 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated, List
 
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
+from ...icaro.schemas import CargaFullFilter
+from ...icaro.services import CargaServiceDependency
 from ...siif.schemas import Rf602FullFilter, RfpP605bFullFilter, Ri102FullFilter
 from ...siif.services import (
     Rf602ServiceDependency,
@@ -39,6 +42,7 @@ class ReporteFormulacionService:
     recursos_service: Ri102ServiceDependency
     gastos_service: Rf602ServiceDependency
     formulacion_service: RfpP605bServiceDependency
+    icaro_service: CargaServiceDependency
 
     # -------------------------------------------------
     async def generate_planillometro(
@@ -100,7 +104,7 @@ class ReporteFormulacionService:
         )
 
         df = pd.DataFrame(
-            await self.gastos_service.group_projection(params=gastos_params)
+            await self.gastos_service.with_desc_estructuras(params=gastos_params)
         )
         df["fuente"] = pd.to_numeric(
             df["fuente"], errors="coerce"
@@ -164,9 +168,9 @@ class ReporteFormulacionService:
 
         gastos_params = Rf602FullFilter(
             ejercicio=",".join(
-                str(y) for y in range(params.ejercicio - 4, params.ejercicio + 1)
+                str(y) for y in range(params.ejercicio - 2, params.ejercicio + 1)
             ),  # Rango de ejercicios
-            limit=params.limit,
+            limit=None,
         )
 
         df = pd.DataFrame(
@@ -176,6 +180,41 @@ class ReporteFormulacionService:
         df = df.drop(
             columns=["id"], errors="ignore"
         )  # Eliminar la columna 'id' si existe
+
+        if params.ejercicio == date.today().year:
+            icaro_params = CargaFullFilter(
+                query_filter="tipo!=REG",
+                ejercicio=",".join(
+                    str(y) for y in range(params.ejercicio - 2, params.ejercicio + 1)
+                ),  # Rango de ejercicios
+                limit=None,
+            )
+            icaro_params.set_extra_filter({"partida": {"$in": ["421", "422"]}})
+            icaro = await self.icaro_service.group_projection(params=icaro_params)
+            if icaro:
+                icaro_df = pd.DataFrame(icaro)
+                icaro_df = icaro_df.rename(
+                    columns={"partida": "grupo", "importe": "ordenado"}
+                )  # Renombrar la columna 'partida' a 'grupo'
+                icaro_df["programa"] = (
+                    icaro_df["actividad"].str.strip().str[:2]
+                )  # Extraer los primeros 2 caracteres de actividad
+
+                # Re-agrupamos en Pandas
+                icaro_df = (
+                    icaro_df.groupby(["ejercicio", "programa", "grupo"])["ordenado"]
+                    .sum()
+                    .reset_index()
+                )
+
+                # Filtrado seguro en Pandas (con paréntesis obligatorios)
+                mask_excluir = (df["ejercicio"] == params.ejercicio) & (
+                    df["grupo"].isin(["421", "422"])
+                )
+                df = df.loc[~mask_excluir]
+
+                # Concatenación final
+                df = pd.concat([df, icaro_df], ignore_index=True)
 
         df = df.loc[
             :,
