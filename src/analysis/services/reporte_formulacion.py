@@ -167,6 +167,7 @@ class ReporteFormulacionService:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
         gastos_params = Rf602FullFilter(
+            query_filter="fuente=str:11",
             ejercicio=",".join(
                 str(y) for y in range(params.ejercicio - 2, params.ejercicio + 1)
             ),  # Rango de ejercicios
@@ -183,7 +184,7 @@ class ReporteFormulacionService:
 
         if params.ejercicio == date.today().year:
             icaro_params = CargaFullFilter(
-                query_filter="tipo!=REG",
+                query_filter="tipo!=REG, fuente=str:11",
                 ejercicio=",".join(
                     str(y) for y in range(params.ejercicio - 2, params.ejercicio + 1)
                 ),  # Rango de ejercicios
