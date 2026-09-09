@@ -422,7 +422,7 @@ class CargaService(
         return json_data
 
     # -------------------------------------------------
-    async def group_projection(
+    async def grouped_for_projection(
         self,
         params: CargaFullFilter,
         group_by: list = ["ejercicio"],  # Actividad y partida se incluye por defecto,

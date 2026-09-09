@@ -118,14 +118,14 @@ async def group_desc_siif(
 
 # -------------------------------------------------
 @carga_router.get(
-    "/groupProjection",
+    "/groupedForProjection",
     description="Get grouped Carga data for proyection",
     # response_model=list[CargaFullDescSIIF],
 )
-async def group_projection(
+async def grouped_for_projection(
     params: Annotated[CargaFullFilter, Depends()],
     service: CargaServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.group_projection(params=params)
+    return await service.grouped_for_projection(params=params)

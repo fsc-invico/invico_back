@@ -152,7 +152,7 @@ class Rf602Service(
         return json_data
 
     # -------------------------------------------------
-    async def group_projection(
+    async def grouped_for_projection(
         self,
         params: Rf602FullFilter,
         group_by: list = ["ejercicio", "programa"],  # Grupo se incluye por defecto,

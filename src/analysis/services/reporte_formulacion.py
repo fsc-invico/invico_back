@@ -159,7 +159,7 @@ class ReporteFormulacionService:
         return df.to_dict(orient="records")
 
     # -------------------------------------------------
-    async def generate_grouped_projection(
+    async def generate_grouped_for_projection(
         self,
         params: ReporteFormulacionFilter,
     ) -> List[ReporteFormulacionGastosReport]:
@@ -174,7 +174,7 @@ class ReporteFormulacionService:
         )
 
         df = pd.DataFrame(
-            await self.gastos_service.group_projection(params=gastos_params)
+            await self.gastos_service.grouped_for_projection(params=gastos_params)
         )
 
         df = df.drop(
@@ -190,7 +190,7 @@ class ReporteFormulacionService:
                 limit=None,
             )
             icaro_params.set_extra_filter({"partida": {"$in": ["421", "422"]}})
-            icaro = await self.icaro_service.group_projection(params=icaro_params)
+            icaro = await self.icaro_service.grouped_for_projection(params=icaro_params)
             if icaro:
                 icaro_df = pd.DataFrame(icaro)
                 icaro_df = icaro_df.rename(
@@ -250,7 +250,7 @@ class ReporteFormulacionService:
         data_planillometro = await self.generate_planillometro(params=params)
         data_recursos = await self.generate_recursos(params=params)
         data_gastos = await self.generate_gastos(params=params)
-        data_proyeccion = await self.generate_grouped_projection(params=params)
+        data_proyeccion = await self.generate_grouped_for_projection(params=params)
         params.ejercicio = str(
             int(params.ejercicio + 1)
         )  # Incrementamos el ejercicio para la formulación

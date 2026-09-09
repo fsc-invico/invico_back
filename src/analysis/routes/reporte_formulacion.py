@@ -82,18 +82,18 @@ async def generate_carga(
 
 # -------------------------------------------------
 @reporte_formulacion_router.get(
-    "/groupedProjection",
+    "/groupedForProjection",
     description="Proyección Agrupada por Grupo de Partida y Programa del año seleccionado y 2 ejercicios anteriores. En caso de que el año seleccionado coincida con el actual, la información de la 421 y 422 se obtiene de ICARO por el impacto de los PA6",
     # response_model=List[ReporteFormulacionGastosReport],
     response_model_exclude_none=True,
 )
-async def generate_grouped_projection(
+async def generate_grouped_for_projection(
     params: Annotated[ReporteFormulacionFilter, Depends()],
     service: ReporteFormulacionServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.generate_grouped_projection(params=params)
+    return await service.generate_grouped_for_projection(params=params)
 
 
 # -------------------------------------------------
