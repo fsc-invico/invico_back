@@ -250,7 +250,7 @@ class ControlHaberesService:
         # 7. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def get_banco_invico(
@@ -295,7 +295,7 @@ class ControlHaberesService:
         # 5. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def compute_control_haberes(
@@ -339,7 +339,7 @@ class ControlHaberesService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:

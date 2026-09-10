@@ -267,7 +267,7 @@ class ControlAporteEmpresarioService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def generate_icaro(
@@ -329,7 +329,7 @@ class ControlAporteEmpresarioService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def export(

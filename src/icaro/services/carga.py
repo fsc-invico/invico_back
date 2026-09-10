@@ -3,10 +3,9 @@ __all__ = ["CargaService", "CargaServiceDependency"]
 # import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-
-# from io import BytesIO
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from bson import ObjectId
 from fastapi import Depends, HTTPException, status
@@ -289,7 +288,7 @@ class CargaService(
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def with_desc_proveedores(
@@ -322,8 +321,7 @@ class CargaService(
             df = df.merge(prov, how="left", on="cuit", copy=False)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
-        json_data = df.to_dict(orient="records")
-        return json_data
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def full_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
@@ -350,8 +348,7 @@ class CargaService(
         df.drop(labels=["estructura"], axis="columns", inplace=True)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
-        json_data = df.to_dict(orient="records")
-        return json_data
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def group_desc_siif(
@@ -418,8 +415,7 @@ class CargaService(
         df.drop(labels=["estructura"], axis="columns", inplace=True)
 
         df = sanitize_dataframe_for_json_with_datetime(df)
-        json_data = df.to_dict(orient="records")
-        return json_data
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def grouped_for_projection(

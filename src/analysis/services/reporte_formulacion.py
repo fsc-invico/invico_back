@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
@@ -88,7 +89,7 @@ class ReporteFormulacionService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def generate_gastos(
@@ -131,7 +132,7 @@ class ReporteFormulacionService:
             ],
         ]
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def generate_carga(
@@ -156,7 +157,7 @@ class ReporteFormulacionService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def generate_grouped_for_projection(
@@ -236,7 +237,7 @@ class ReporteFormulacionService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def export(self, params: ReporteFormulacionLiteFilter) -> StreamingResponse:

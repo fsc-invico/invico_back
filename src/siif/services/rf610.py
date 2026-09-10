@@ -6,6 +6,7 @@ from dataclasses import dataclass
 # from io import BytesIO
 from typing import Annotated, List
 
+import numpy as np
 import pandas as pd
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -163,8 +164,7 @@ class Rf610Service(
             inplace=True,
         )
         df = sanitize_dataframe_for_json_with_datetime(df)
-        json_data = df.to_dict(orient="records")
-        return json_data
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
 
 Rf610ServiceDependency = Annotated[Rf610Service, Depends()]

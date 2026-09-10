@@ -91,7 +91,7 @@ class ControlIcaroService:
         # 5. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def get_icaro_comprobantes(
@@ -127,7 +127,7 @@ class ControlIcaroService:
         # 3. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def get_siif_obras(
@@ -169,7 +169,7 @@ class ControlIcaroService:
         # 3. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def get_siif_pa6(
@@ -203,7 +203,7 @@ class ControlIcaroService:
         # 3. Sanitización final
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def compute_control_anual(
@@ -270,7 +270,7 @@ class ControlIcaroService:
 
         df = sanitize_dataframe_for_json_with_datetime(df)
 
-        return df.to_dict(orient="records")
+        return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
     async def compute_control_comprobantes(
