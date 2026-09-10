@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 # from pydantic import ValidationError
 from ...config import logger
 from ...siif.repositories import Rdeu012RepositoryDependency
-from ...siif.schemas import Rf602FullFilter
+from ...siif.schemas import Rf610FullFilter
 from ...siif.services import Rf610ServiceDependency
 from ...utils import (
     BaseService,
@@ -330,7 +330,7 @@ class CargaService(
 
         df = pd.DataFrame(await self.with_desc_proveedores(params=params))
 
-        search_params = Rf602FullFilter(
+        search_params = Rf610FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
             ejercicio=None,
             limit=None,  # Para traer todo
@@ -398,7 +398,7 @@ class CargaService(
         # 6. Convertimos a DataFrame de Pandas
         df = pd.DataFrame(documentos)
 
-        search_params = Rf602FullFilter(
+        search_params = Rf610FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
             ejercicio=None,
             limit=None,  # Para traer todo
