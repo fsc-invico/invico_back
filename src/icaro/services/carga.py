@@ -184,7 +184,7 @@ class CargaService(
         )
 
     # -------------------------------------------------
-    async def neto_rdeu(self, params: CargaFullFilter) -> List[dict]:
+    async def carga_neto_rdeu(self, params: CargaFullFilter) -> List[dict]:
 
         icaro_docs = await self.repository.find_with_filter_params(params=params)
 
@@ -291,7 +291,7 @@ class CargaService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def with_desc_proveedores(
+    async def carga_with_desc_proveedores(
         self, params: CargaFullFilter
     ) -> List[CargaWithDescProveedor]:
         # if params.agrupar is True:
@@ -324,9 +324,11 @@ class CargaService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def full_desc_siif(self, params: CargaFullFilter) -> List[CargaFullDescSIIF]:
+    async def carga_with_desc_siif_and_prov(
+        self, params: CargaFullFilter
+    ) -> List[CargaFullDescSIIF]:
 
-        df = pd.DataFrame(await self.with_desc_proveedores(params=params))
+        df = pd.DataFrame(await self.carga_with_desc_proveedores(params=params))
 
         search_params = Rf610FullFilter(
             query_filter=f"ejercicio<={int(df['ejercicio'].max())}",
@@ -351,7 +353,7 @@ class CargaService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def group_desc_siif(
+    async def acum_with_desc_siif(
         self,
         params: CargaFullFilter,
         groub_by: list = ["ejercicio", "fuente", "actividad", "partida", "desc_obra"],
@@ -418,7 +420,28 @@ class CargaService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def grouped_for_projection(
+    async def export_acum_with_desc_siif(
+        self, params: CargaLiteFilter
+    ) -> StreamingResponse:
+        # 1. Creamos el objeto de filtros normal
+        search_params = CargaFullFilter(
+            query_filter=params.query_filter,
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+
+        # 2. Traemos los datos sin paginar
+        data = await self.acum_with_desc_siif(params=search_params)
+
+        # 3. Usar el método de la clase base
+        df = pd.DataFrame(data)
+        return self.export_to_excel(
+            data_pairs=[(df, "Carga Acum Desc SIIF")],
+            filename="reporte_icaro_carga.xlsx",
+        )
+
+    # -------------------------------------------------
+    async def acum_estructura(
         self,
         params: CargaFullFilter,
         group_by: list = ["ejercicio"],  # Actividad y partida se incluye por defecto,

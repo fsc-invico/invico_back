@@ -56,7 +56,7 @@ class ReportePlanillometroService:
             campos_agrupacion.insert(1, "fuente")
             print(campos_agrupacion)
         df = pd.DataFrame(
-            await self.icaro_service.group_desc_siif(
+            await self.icaro_service.acum_with_desc_siif(
                 params=icaro_params, groub_by=campos_agrupacion
             )
         )
@@ -86,7 +86,7 @@ class ReportePlanillometroService:
                 limit=None,
             )
             df_last = pd.DataFrame(
-                await self.icaro_service.group_desc_siif(
+                await self.icaro_service.acum_with_desc_siif(
                     params=icaro_params, groub_by=campos_agrupacion
                 )
             )

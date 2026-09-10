@@ -36,7 +36,7 @@ async def neto_rdeu(
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.neto_rdeu(params=params)
+    return await service.carga_neto_rdeu(params=params)
 
 
 # -------------------------------------------------
@@ -83,7 +83,7 @@ async def with_desc_proveedores(
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.with_desc_proveedores(params=params)
+    return await service.carga_with_desc_proveedores(params=params)
 
 
 # -------------------------------------------------
@@ -98,34 +98,34 @@ async def full_desc_siif(
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.full_desc_siif(params=params)
+    return await service.carga_with_desc_siif_and_prov(params=params)
 
 
 # -------------------------------------------------
 @carga_router.get(
-    "/groupDescSIIF",
-    description="Get grouped Carga data with SIIF Estructruas's Descriptions",
+    "/acumDescSIIF",
+    description="Get grouped Carga data with SIIF Estructuras's Descriptions",
     # response_model=list[CargaFullDescSIIF],
 )
-async def group_desc_siif(
+async def acum_with_desc_siif(
     params: Annotated[CargaFullFilter, Depends()],
     service: CargaServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.group_desc_siif(params=params)
+    return await service.acum_with_desc_siif(params=params)
 
 
 # -------------------------------------------------
 @carga_router.get(
-    "/groupedForProjection",
+    "/acumEstructura",
     description="Get grouped Carga data for proyection",
     # response_model=list[CargaFullDescSIIF],
 )
-async def grouped_for_projection(
+async def acum_estructura(
     params: Annotated[CargaFullFilter, Depends()],
     service: CargaServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.grouped_for_projection(params=params)
+    return await service.acum_estructura(params=params)

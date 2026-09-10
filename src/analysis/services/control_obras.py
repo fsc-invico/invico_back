@@ -116,7 +116,7 @@ class ControlObrasService(
         data_sgf = await self.resumen_rend_service.unique_obras(
             params=resumen_rend_params
         )
-        data_icaro = await self.icaro_service.neto_rdeu(params=icaro_params)
+        data_icaro = await self.icaro_service.carga_neto_rdeu(params=icaro_params)
 
         # 3. Usar el método de la clase base
         df_ctrl_obras = pd.DataFrame(
@@ -160,7 +160,7 @@ class ControlObrasService(
             )
 
             # Llamadas asincrónicas nativas cruzando lógica
-            data_icaro = await self.icaro_service.neto_rdeu(params=icaro_params)
+            data_icaro = await self.icaro_service.carga_neto_rdeu(params=icaro_params)
             data_sgf = await self.resumen_rend_service.unique_obras(
                 params=resumen_rend_params
             )  # O unique_obras según tu lógica

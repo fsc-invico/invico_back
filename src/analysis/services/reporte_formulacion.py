@@ -192,7 +192,7 @@ class ReporteFormulacionService:
                 limit=None,
             )
             icaro_params.set_extra_filter({"partida": {"$in": ["421", "422"]}})
-            icaro = await self.icaro_service.grouped_for_projection(params=icaro_params)
+            icaro = await self.icaro_service.acum_estructura(params=icaro_params)
             if icaro:
                 icaro_df = pd.DataFrame(icaro)
                 icaro_df = icaro_df.rename(
