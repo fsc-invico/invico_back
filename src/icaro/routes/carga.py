@@ -118,6 +118,20 @@ async def acum_with_desc_siif(
 
 # -------------------------------------------------
 @carga_router.get(
+    "/acumDescSIIF/export",
+    name="Export grouped Carga data with SIIF Estructuras's Descriptions to Excel",
+)
+async def export(
+    params: Annotated[CargaLiteFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.export_acum_with_desc_siif(params)
+
+
+# -------------------------------------------------
+@carga_router.get(
     "/acumEstructura",
     description="Get grouped Carga data for proyection",
     # response_model=list[CargaFullDescSIIF],

@@ -437,7 +437,7 @@ class CargaService(
         df = pd.DataFrame(data)
         return self.export_to_excel(
             data_pairs=[(df, "Carga Acum Desc SIIF")],
-            filename="reporte_icaro_carga.xlsx",
+            filename="reporte_icaro_carga_acum.xlsx",
         )
 
     # -------------------------------------------------
