@@ -55,9 +55,9 @@ class ControlObrasService:
         df_icaro = pd.DataFrame(data_icaro)
         return export_multiple_dataframes_to_excel(
             data_pairs=[
-                (df_ctrl_obras, "control_mes_cta_cte_cuit_db_new"),
-                (df_sgf, "resumen_rend_cuit_new"),
-                (df_icaro, "icaro_carga_neto_rdeu_new"),
+                (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
+                (df_sgf, "resumen_rend_cuit"),
+                (df_icaro, "icaro_carga_neto_rdeu"),
             ],
             filename="Control Obras.xlsx",
             upload_to_google_sheets=True,
