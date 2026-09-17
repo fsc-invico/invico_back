@@ -71,11 +71,10 @@ class ControlObrasDocument(ControlObrasReport):
 
 # -------------------------------------------------
 class ControlObrasFullFilter(BaseFilterParams):
-    ejercicio: Optional[str] = None
+    ejercicio: int
 
 
 # -------------------------------------------------
 class ControlObrasLiteFilter(CamelModel):
-    query_filter: str = ""
-    ejercicio: Optional[str] = None
+    ejercicio: int
     # Aquí podrías añadir: incluir_detalles: bool = False
