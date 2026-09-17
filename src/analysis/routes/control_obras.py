@@ -55,7 +55,7 @@ async def get_sgf_resumen_rend(
 
 
 # -------------------------------------------------
-@control_obras_router.post(
+@control_obras_router.get(
     "/compute",
     description="Computar control obras",
     # response_model=List[RouteReturnSchema],
