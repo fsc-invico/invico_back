@@ -13,9 +13,8 @@ from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
 from ...config import logger
-from ...siif.repositories import Rdeu012RepositoryDependency
-from ...siif.schemas import Rf610FullFilter
-from ...siif.services import Rf610ServiceDependency
+from ...siif.schemas import Rdeu012FullFilter, Rf610FullFilter
+from ...siif.services import Rdeu012ServiceDependency, Rf610ServiceDependency
 from ...utils import (
     BaseService,
     RouteReturnSchema,
@@ -40,7 +39,7 @@ class CargaService(
     BaseService[CargaReport, CargaDocument, CargaFullFilter, CargaLiteFilter]
 ):
     repository: CargaRepositoryDependency
-    rdeu_repo: Rdeu012RepositoryDependency
+    rdeu_service: Rdeu012ServiceDependency
     proveedores_repo: ProveedoresRepositoryDependency
     rf610_service: Rf610ServiceDependency
 
@@ -200,19 +199,34 @@ class CargaService(
             [d.model_dump(by_alias=True, mode="json") for d in icaro_docs]
         )
 
-        rdeu_docs = await self.rdeu_repo.get_all()
+        # Traemos la deuda flotante filtrada
+        # Obtenemos los meses a descargar
+        mes_previo = (
+            pd.to_datetime(icaro["fecha"].min())
+            - pd.tseries.offsets.DateOffset(months=1)
+        ).strftime("%m/%Y")
+        meses = [mes_previo] + icaro["mes"].unique().tolist()
 
-        # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, simplementete devolvemos ICARO
-        if not rdeu_docs:
+        rdeu_params = Rdeu012FullFilter(
+            limit=None,
+        )
+        rdeu_params.set_extra_filter({"mes_hasta": {"$in": meses}})
+
+        data_rdeu = await self.rdeu_service.get_all(params=rdeu_params)
+        if not data_rdeu:
+            # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, simplementete devolvemos ICARO
             df = icaro
-
         else:
             # Si hay datos, el flujo continúa normalmente...
-            rdeu = pd.DataFrame(rdeu_docs)
+            rdeu = pd.DataFrame([d.model_dump(by_alias=True) for d in data_rdeu])
+            rdeu = rdeu.drop(
+                columns=["id"], errors="ignore"
+            )  # Eliminar la columna 'id' si existe
+            rdeu = rdeu.sort_values(by=["fecha_hasta"])
 
             # Incorporamos, con signo negativo, los registros de CARGA Icaro que hayan quedado en la deuda flotante (RDEU)
             icaro_cyo = icaro.loc[~icaro["tipo"].isin(["PA6", "REG"])]
-            rdeu_deuda = rdeu.loc[:, ["nro_comprobante", "saldo", "mes"]]
+            rdeu_deuda = rdeu.loc[:, ["nro_comprobante", "saldo", "mes"]].copy()
             rdeu_deuda = rdeu_deuda.drop_duplicates(subset=["nro_comprobante", "mes"])
             rdeu_deuda = pd.merge(rdeu_deuda, icaro_cyo, how="inner", copy=False)
             rdeu_deuda["importe"] = rdeu_deuda.saldo * (-1)
@@ -224,22 +238,35 @@ class CargaService(
             icaro_carga_neto_rdeu = rdeu_deuda
 
             # Ajustamos la Deuda Flotante Pagada
-            rdeu = pd.DataFrame(rdeu_docs)
-            rdeu = rdeu.drop_duplicates(subset=["nro_comprobante"], keep="last")
+            rdeu = rdeu.drop_duplicates(
+                subset=["nro_comprobante", "saldo"], keep="last"
+            )
             rdeu["fecha_hasta"] = rdeu["fecha_hasta"] + pd.tseries.offsets.DateOffset(
                 months=1
             )
             rdeu["mes_hasta"] = rdeu["fecha_hasta"].dt.strftime("%m/%Y")
             rdeu["ejercicio"] = pd.to_numeric(rdeu["mes_hasta"].str[-4:])
 
-            # Incorporamos los comprobantes de gastos pagados
-            # en periodos posteriores (Deuda Flotante)
-            # if ejercicio is not None:
-            #     if isinstance(ejercicio, list):
-            #         rdeu = rdeu.loc[rdeu["ejercicio"].isin(ejercicio)]
-            #     else:
-            #         rdeu = rdeu.loc[rdeu["ejercicio"].isin([ejercicio])]
-            rdeu = rdeu.loc[rdeu["ejercicio"] == int(params.ejercicio)]
+            rdeu = rdeu.loc[
+                rdeu["ejercicio"].isin(icaro["ejercicio"].unique().tolist())
+            ]
+
+            icaro_prev_params = CargaFullFilter(
+                ejercicio=str(icaro["ejercicio"].min() - 1),
+                limit=None,
+            )
+
+            icaro_prev_docs = await self.repository.find_with_filter_params(
+                params=icaro_prev_params
+            )
+
+            # 🔥 LA VALIDACIÓN: Si no viene nada de la base de datos, cortamos acá
+            if icaro_prev_docs:
+                # Si hay datos, el flujo continúa normalmente...
+                icaro_prev = pd.DataFrame(
+                    [d.model_dump(by_alias=True, mode="json") for d in icaro_prev_docs]
+                )
+                icaro = pd.concat([icaro, icaro_prev])
 
             icaro = icaro.loc[~icaro["tipo"].isin(["PA6", "REG"])]
             icaro = icaro.loc[
@@ -255,7 +282,9 @@ class CargaService(
                     "desc_obra",
                 ],
             ]
-            rdeu = pd.merge(rdeu, icaro, on="nro_comprobante", copy=False)
+            rdeu = pd.merge(
+                rdeu, icaro, on="nro_comprobante", copy=False
+            )  # ERROR!!! No se incluyen los comprobantes de RDEU del ejercicio anterior
             rdeu["importe"] = rdeu.saldo
             rdeu["tipo"] = "RDEU"
             rdeu["id_carga"] = rdeu["nro_comprobante"] + "C"
