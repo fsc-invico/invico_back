@@ -233,7 +233,7 @@ class CargaService(
             rdeu_deuda["tipo"] = "RDEU"
             rdeu_deuda = rdeu_deuda.drop(columns=["saldo"])
             rdeu_deuda = pd.concat([rdeu_deuda, icaro_cyo], copy=False)
-            icaro_pa6 = icaro = icaro.loc[icaro["tipo"].isin(["PA6"])]
+            icaro_pa6 = icaro.loc[icaro["tipo"].isin(["PA6"])]
             rdeu_deuda = pd.concat([rdeu_deuda, icaro_pa6], copy=False)
             icaro_carga_neto_rdeu = rdeu_deuda
 
@@ -282,9 +282,8 @@ class CargaService(
                     "desc_obra",
                 ],
             ]
-            rdeu = pd.merge(
-                rdeu, icaro, on="nro_comprobante", copy=False
-            )  # ERROR!!! No se incluyen los comprobantes de RDEU del ejercicio anterior
+
+            rdeu = pd.merge(rdeu, icaro, on="nro_comprobante")
             rdeu["importe"] = rdeu.saldo
             rdeu["tipo"] = "RDEU"
             rdeu["id_carga"] = rdeu["nro_comprobante"] + "C"
