@@ -52,7 +52,7 @@ class FacturerosService(
                 data_list=data,
                 model=FacturerosReport,
                 field_id=[
-                    "beneficiario",
+                    "nombre_completo",
                     "actividad",
                     "partida",
                 ],  # O el campo que identifique la fila en caso de error

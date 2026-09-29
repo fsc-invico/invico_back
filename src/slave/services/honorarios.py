@@ -54,7 +54,7 @@ class HonorariosService(
                 field_id=[
                     "mes",
                     "nro_comprobante",
-                    "beneficiario",
+                    "nombre_completo",
                 ],  # O el campo que identifique la fila en caso de error
             )
 

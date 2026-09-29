@@ -21,7 +21,8 @@ class HonorariosReport(BaseModel):
     fecha: datetime
     nro_comprobante: str
     tipo: str
-    beneficiario: str
+    cuit: Optional[str] = None
+    nombre_completo: str
     actividad: str
     partida: str
     importe_bruto: float

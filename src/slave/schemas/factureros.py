@@ -6,6 +6,8 @@ __all__ = [
 ]
 
 
+from typing import Optional
+
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
@@ -14,7 +16,8 @@ from ...utils import BaseFilterParams, CamelModel
 
 # -------------------------------------------------
 class FacturerosReport(BaseModel):
-    beneficiario: str
+    cuit: Optional[str] = None
+    nombre_completo: str
     actividad: str
     partida: str
 
