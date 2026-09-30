@@ -6,6 +6,7 @@ __all__ = [
 ]
 
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -20,6 +21,7 @@ class FacturerosReport(BaseModel):
     nombre_completo: str
     actividad: str
     partida: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------

@@ -1,16 +1,14 @@
 __all__ = ["FacturerosService", "FacturerosServiceDependency"]
 
-# import os
 from dataclasses import dataclass
-
-# from io import BytesIO
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends, HTTPException
+from bson import ObjectId
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
@@ -102,6 +100,82 @@ class FacturerosService(
         return self.export_to_excel(
             data_pairs=[(df, "SLAVE_FACTUREROS")], filename="slave_factureros.xlsx"
         )
+
+    # -------------------------------------------------
+    async def add_one(self, facturero: FacturerosReport):
+        try:
+            # Invocamos save_one que ya maneja la conversión a dict y unicidad
+            nuevo_facturero = await self.repository.save_one(facturero)
+            return nuevo_facturero
+
+        except ValueError as e:
+            self._handle_error("Error de validación", e, status_code=400)
+        except Exception as e:
+            self._handle_error("Error inesperado en el servidor", e)
+
+    # -------------------------------------------------
+    async def update_one_safely(
+        self, id: str, data: FacturerosReport
+    ) -> FacturerosDocument:
+        try:
+            mongo_id = ObjectId(id)
+
+            # 1. VERIFICACIÓN DE ID_OBRA DUPLICADO
+            # Buscamos si existe otro documento con esa estructura que NO sea el nuestro
+            duplicate = await self.repository.get_one_by_fields(
+                {"nombre_completo": data.nombre_completo, "_id": {"$ne": mongo_id}}
+            )
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede actualizar: El facturero '{data.nombre_completo}' ya existe.",
+                )
+
+            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            new_data = data.model_dump(by_alias=True)
+            new_data["updated_at"] = datetime.now(timezone.utc)
+
+            updated_doc = await self.repository.find_one_and_update(
+                filter={
+                    "_id": mongo_id,
+                    "updated_at": data.updated_at,  # El cerrojo
+                },
+                update_data=new_data,
+                return_document=True,
+            )
+
+            if not updated_doc:
+                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
+                )
+
+            return updated_doc
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en update_one_safely: {str(e)}")
+            self._handle_error("Error durante el proceso de update_one_safely", e)
+
+    # -------------------------------------------------
+    async def delete_one(self, id: str) -> FacturerosDocument:
+        try:
+            mongo_id = ObjectId(id)
+            document = await self.repository.delete_by_id(mongo_id)
+
+            if not document:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="El Agente no existe o ya fue eliminado.",
+                )
+            return document
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_one_hard: {str(e)}")
+            self._handle_error("Error durante el proceso de delete_one_hard", e)
 
 
 FacturerosServiceDependency = Annotated[FacturerosService, Depends()]
