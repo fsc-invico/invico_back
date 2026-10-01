@@ -1,10 +1,14 @@
+from typing import List
+
+from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
     HonorariosDocument,
     HonorariosFullFilter,
     HonorariosLiteFilter,
+    HonorariosReport,
 )
-from ..services import HonorariosService  # La clase del servicio
+from ..services import HonorariosService, HonorariosServiceDependency
 
 factory = GenericRouterFactory(
     service_dependency=HonorariosService,
@@ -15,3 +19,28 @@ factory = GenericRouterFactory(
 )
 
 honorarios_router = factory.get_router()
+
+
+# -------------------------------------------------
+@honorarios_router.delete("/delete_many/{nro_comprobante:path}")
+async def delete_many_by_nro_comprobante(
+    nro_comprobante: str,
+    service: HonorariosServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.delete_many_by_nro_comprobante(nro_comprobante=nro_comprobante)
+
+
+# -------------------------------------------------
+@honorarios_router.post("/add_many/{nro_comprobante:path}")
+async def add_many_with_specific_nro_comprobante(
+    nro_comprobante: str,
+    payload: List[HonorariosReport],
+    service: HonorariosServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.add_many(
+        data=payload, delete_filter={"nro_comprobante": nro_comprobante}
+    )

@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -53,3 +53,8 @@ class HonorariosLiteFilter(CamelModel):
     query_filter: str = ""
     # ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# -------------------------------------------------
+class HonorariosBatchCreate(BaseModel):
+    honorarios: List[HonorariosReport]

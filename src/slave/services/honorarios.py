@@ -45,7 +45,9 @@ class HonorariosService(
         )
 
     # -------------------------------------------------
-    async def add_many(self, data: List[HonorariosReport]) -> RouteReturnSchema:
+    async def add_many(
+        self, data: List[HonorariosReport], delete_filter: dict = None
+    ) -> RouteReturnSchema:
         try:
             # 1. Validar usando tu función genérica
             validation_result = validate_and_extract_data_from_list(
@@ -72,7 +74,8 @@ class HonorariosService(
             # 2. Determinar filtro de borrado (Idempotencia)
             # A esta altura ya es 100% seguro que al menos hay un registro válido en el índice [0]
             ejercicio_detectado = validation_result.validated[0].ejercicio
-            delete_filter = {"ejercicio": ejercicio_detectado}
+            if delete_filter is None:
+                delete_filter = {"ejercicio": ejercicio_detectado}
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
@@ -103,6 +106,23 @@ class HonorariosService(
         return self.export_to_excel(
             data_pairs=[(df, "SLAVE_HONORARIOS")], filename="slave_honorarios.xlsx"
         )
+
+    # -------------------------------------------------
+    async def delete_many_by_nro_comprobante(self, nro_comprobante: str) -> dict:
+        try:
+            count = await self.repository.delete_by_fields(
+                {"nro_comprobante": nro_comprobante}
+            )
+
+            return {
+                "status": "success",
+                "deleted_count": count,
+                "message": f"Se eliminaron {count} honorarios asociados.",
+            }
+
+        except Exception as e:
+            logger.error(f"Error en delete_many_by_nro_comprobante: {str(e)}")
+            self._handle_error("Error eliminando honorarios", e)
 
 
 HonorariosServiceDependency = Annotated[HonorariosService, Depends()]
