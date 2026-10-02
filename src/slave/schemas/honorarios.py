@@ -21,6 +21,7 @@ class HonorariosReport(BaseModel):
     fecha: datetime
     nro_comprobante: str
     tipo: str
+    cta_cte: Optional[str] = None
     cuit: Optional[str] = None
     nombre_completo: str
     actividad: str
