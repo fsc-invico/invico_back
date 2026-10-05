@@ -3,9 +3,10 @@ __all__ = [
     "HonorariosDocument",
     "HonorariosFullFilter",
     "HonorariosLiteFilter",
+    "HonorariosUpdate",
 ]
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -36,6 +37,7 @@ class HonorariosReport(BaseModel):
     descuento: float
     mutual: float
     embargo: float
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
@@ -59,3 +61,19 @@ class HonorariosLiteFilter(CamelModel):
 # -------------------------------------------------
 class HonorariosBatchCreate(BaseModel):
     honorarios: List[HonorariosReport]
+
+
+# -------------------------------------------------
+class HonorariosUpdate(BaseModel):
+    """Payload para actualizar en bloque todos los registros de un comprobante.
+
+    El identificador (nro_comprobante) viene en la path de la ruta y el
+    updated_at lo asigna el servidor, por eso no forman parte de este schema.
+    """
+
+    ejercicio: Optional[int] = None
+    mes: Optional[str] = None
+    fecha: Optional[datetime] = None
+    tipo: str
+    cta_cte: Optional[str] = None
+    partida: Optional[str] = None

@@ -1,16 +1,14 @@
 __all__ = ["HonorariosService", "HonorariosServiceDependency"]
 
-# import os
-from dataclasses import dataclass
 
-# from io import BytesIO
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
 from fastapi import Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-# from pydantic import ValidationError
 from ...config import logger
 from ...utils import (
     BaseService,
@@ -24,6 +22,7 @@ from ..schemas import (
     HonorariosFullFilter,
     HonorariosLiteFilter,
     HonorariosReport,
+    HonorariosUpdate,
 )
 
 
@@ -123,6 +122,40 @@ class HonorariosService(
         except Exception as e:
             logger.error(f"Error en delete_many_by_nro_comprobante: {str(e)}")
             self._handle_error("Error eliminando honorarios", e)
+
+    # -------------------------------------------------
+    async def update_many_by_nro_comprobante(
+        self, nro_comprobante: str, update_data: HonorariosUpdate
+    ) -> dict:
+        try:
+            # Solo enviamos al $set los campos que el cliente realmente envió,
+            # así los campos omitidos no pisan los valores existentes en Mongo.
+            payload = update_data.model_dump(exclude_unset=True)
+
+            # Regla de negocio: los comprobantes que no son Honorarios van al 399.
+            if update_data.tipo != "Honorarios":
+                payload["partida"] = "399"
+            # Si es Honorarios y no vino partida (o vino null), no pisamos la
+            # guardada: un null rompería la validación de HonorariosReport al leer.
+            elif payload.get("partida") is None:
+                payload.pop("partida", None)
+
+            # El timestamp lo asigna siempre el servidor, nunca el cliente.
+            payload["updated_at"] = datetime.now(timezone.utc)
+
+            # update_many aplica el mismo $set a todos los documentos que
+            # coincidan con el nro_comprobante.
+            modificados = await self.repository.update_many(
+                {"nro_comprobante": nro_comprobante}, payload
+            )
+            if modificados > 0:
+                logger.info(f"Se actualizaron {modificados} registros.")
+
+            return {"status": "updated", "modified_count": modificados}
+        except Exception as e:
+            self._handle_error(
+                f"Error al modificar el nro_comprobante {nro_comprobante}", e
+            )
 
 
 HonorariosServiceDependency = Annotated[HonorariosService, Depends()]
