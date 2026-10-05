@@ -50,6 +50,8 @@ async def add_many_by_nro_comprobante(
 # -------------------------------------------------
 @honorarios_router.put("/update_many/{nro_comprobante:path}")
 async def update_many_by_nro_comprobante(
+    # nro_comprobante de la path = valor ACTUAL (filtro); el payload puede
+    # traer el nuevo nro_comprobante con el que se reemplazarán los documentos.
     nro_comprobante: str,
     payload: HonorariosUpdate,
     service: HonorariosServiceDependency,

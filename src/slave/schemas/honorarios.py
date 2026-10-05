@@ -67,10 +67,14 @@ class HonorariosBatchCreate(BaseModel):
 class HonorariosUpdate(BaseModel):
     """Payload para actualizar en bloque todos los registros de un comprobante.
 
-    El identificador (nro_comprobante) viene en la path de la ruta y el
-    updated_at lo asigna el servidor, por eso no forman parte de este schema.
+    El nro_comprobante de la path es el valor ACTUAL (se usa como filtro);
+    si el payload incluye nro_comprobante, se interpreta como el NUEVO valor
+    con el que se reemplazarán todos los documentos coincidentes. Si se omite
+    (o viene null), se conserva el actual. updated_at lo asigna el servidor.
+    Campos omitidos no se tocan en los documentos (actualización parcial).
     """
 
+    nro_comprobante: Optional[str] = Field(default=None, min_length=1)
     ejercicio: Optional[int] = None
     mes: Optional[str] = None
     fecha: Optional[datetime] = None

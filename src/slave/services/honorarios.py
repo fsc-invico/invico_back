@@ -132,6 +132,13 @@ class HonorariosService(
             # así los campos omitidos no pisan los valores existentes en Mongo.
             payload = update_data.model_dump(exclude_unset=True)
 
+            # nro_comprobante: la path es el valor ACTUAL (filtro) y el del
+            # payload, si viene, es el NUEVO valor con el que se renombrarán
+            # todos los documentos. Un null explícito se descarta para no
+            # romper la identidad de los documentos.
+            if payload.get("nro_comprobante") is None:
+                payload.pop("nro_comprobante", None)
+
             # Regla de negocio: los comprobantes que no son Honorarios van al 399.
             if update_data.tipo != "Honorarios":
                 payload["partida"] = "399"
@@ -143,8 +150,26 @@ class HonorariosService(
             # El timestamp lo asigna siempre el servidor, nunca el cliente.
             payload["updated_at"] = datetime.now(timezone.utc)
 
-            # update_many aplica el mismo $set a todos los documentos que
-            # coincidan con el nro_comprobante.
+            # Detección de conflicto: si se pide renombrar a un nro_comprobante
+            # que ya corresponde a OTROS documentos (distintos de los del
+            # filtro), el update_many los fusionaría en un mismo comprobante.
+            nuevo_nro = payload.get("nro_comprobante")
+            if nuevo_nro is not None and nuevo_nro != nro_comprobante:
+                existentes = await self.repository.count_by_fields(
+                    {"nro_comprobante": nuevo_nro}
+                )
+                if existentes > 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Ya existen {existentes} registro(s) con el "
+                            f"nro_comprobante '{nuevo_nro}'. Use otro número."
+                        ),
+                    )
+
+            # update_many: el filtro usa el nro_comprobante VIEJO (path) y el
+            # $set aplica el mismo payload (incluido el nuevo nro_comprobante,
+            # si vino) a todos los documentos coincidentes.
             modificados = await self.repository.update_many(
                 {"nro_comprobante": nro_comprobante}, payload
             )
@@ -152,6 +177,8 @@ class HonorariosService(
                 logger.info(f"Se actualizaron {modificados} registros.")
 
             return {"status": "updated", "modified_count": modificados}
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
         except Exception as e:
             self._handle_error(
                 f"Error al modificar el nro_comprobante {nro_comprobante}", e
