@@ -157,5 +157,24 @@ class HonorariosService(
                 f"Error al modificar el nro_comprobante {nro_comprobante}", e
             )
 
+    # -------------------------------------------------
+    async def add_many_by_nro_comprobante(
+        self, data: List[HonorariosReport], delete_filter: dict = None
+    ) -> None:
+        # Regla de negocio: si el tipo no es "Honorarios", la partida de
+        # todos los documentos debe guardarse como "399". Se aplica sobre
+        # el payload crudo (antes de validar) para poder completar la
+        # partida aunque no venga en el request. Normalizamos a dict porque
+        # la ruta genérica del factory envía dicts y
+        # add_many/{nro_comprobante} envía modelos Pydantic.
+        records = [
+            item if isinstance(item, dict) else item.model_dump() for item in data
+        ]
+        for record in records:
+            if record.get("tipo") != "Honorarios":
+                record["partida"] = "399"
+
+        await self.add_many(data=records, delete_filter=delete_filter)
+
 
 HonorariosServiceDependency = Annotated[HonorariosService, Depends()]

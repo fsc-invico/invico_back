@@ -42,7 +42,7 @@ async def add_many_by_nro_comprobante(
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.add_many(
+    return await service.add_many_by_nro_comprobante(
         data=payload, delete_filter={"nro_comprobante": nro_comprobante}
     )
 
