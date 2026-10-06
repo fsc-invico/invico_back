@@ -36,6 +36,8 @@ async def delete_many_by_nro_comprobante(
 # -------------------------------------------------
 @honorarios_router.post("/add_many/{nro_comprobante:path}")
 async def add_many_by_nro_comprobante(
+    # Si el nro_comprobante del delete_filter (path) ya existe en la BD,
+    # el servicio responde 409 para evitar duplicar el comprobante.
     nro_comprobante: str,
     payload: List[HonorariosReport],
     service: HonorariosServiceDependency,

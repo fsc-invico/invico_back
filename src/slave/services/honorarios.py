@@ -86,6 +86,8 @@ class HonorariosService(
                 logger=logger,  # Asegúrate de tener el logger importado
             )
 
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
         except Exception as e:
             self._handle_error("Error durante el proceso de add_many", e)
 
@@ -187,21 +189,50 @@ class HonorariosService(
     # -------------------------------------------------
     async def add_many_by_nro_comprobante(
         self, data: List[HonorariosReport], delete_filter: dict = None
-    ) -> None:
-        # Regla de negocio: si el tipo no es "Honorarios", la partida de
-        # todos los documentos debe guardarse como "399". Se aplica sobre
-        # el payload crudo (antes de validar) para poder completar la
-        # partida aunque no venga en el request. Normalizamos a dict porque
-        # la ruta genérica del factory envía dicts y
-        # add_many/{nro_comprobante} envía modelos Pydantic.
-        records = [
-            item if isinstance(item, dict) else item.model_dump() for item in data
-        ]
-        for record in records:
-            if record.get("tipo") != "Honorarios":
-                record["partida"] = "399"
+    ) -> RouteReturnSchema:
+        try:
+            # Regla de negocio: si el tipo no es "Honorarios", la partida de
+            # todos los documentos debe guardarse como "399". Se aplica sobre
+            # el payload crudo (antes de validar) para poder completar la
+            # partida aunque no venga en el request. Normalizamos a dict porque
+            # la ruta genérica del factory envía dicts y
+            # add_many/{nro_comprobante} envía modelos Pydantic.
+            records = [
+                item if isinstance(item, dict) else item.model_dump()
+                for item in data
+            ]
+            for record in records:
+                if record.get("tipo") != "Honorarios":
+                    record["partida"] = "399"
 
-        await self.add_many(data=records, delete_filter=delete_filter)
+            # Detección de conflicto (misma filosofía que en
+            # update_many_by_nro_comprobante): no se permite agregar un
+            # comprobante cuyo nro_comprobante ya exista en la BD. Verificamos
+            # solo el nro del delete_filter (path), que coincide con el de
+            # todos los registros del payload.
+            nro_path = (delete_filter or {}).get("nro_comprobante")
+            if nro_path:
+                existentes = await self.repository.count_by_fields(
+                    {"nro_comprobante": nro_path}
+                )
+                if existentes > 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Ya existen {existentes} registro(s) con el "
+                            f"nro_comprobante '{nro_path}'. Use otro número o "
+                            f"actualice el comprobante existente."
+                        ),
+                    )
+
+            # add_many valida, borra los previos (delete_filter) e inserta.
+            return await self.add_many(data=records, delete_filter=delete_filter)
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            self._handle_error(
+                "Error durante el proceso de add_many_by_nro_comprobante", e
+            )
 
 
 HonorariosServiceDependency = Annotated[HonorariosService, Depends()]
