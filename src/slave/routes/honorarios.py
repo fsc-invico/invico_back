@@ -69,9 +69,7 @@ async def update_many_by_nro_comprobante(
 @honorarios_router.get("/tiposComprobantes")
 async def get_tipos_comprobantes(
     service: HonorariosServiceDependency,
-    security: AuthorizationDependency,
 ):
-    security.is_admin_or_user_or_raise()
     return await service.get_tipos_comprobantes()
 
 
@@ -79,7 +77,5 @@ async def get_tipos_comprobantes(
 @honorarios_router.get("/ctasCtes")
 async def get_ctas_ctes(
     service: HonorariosServiceDependency,
-    security: AuthorizationDependency,
 ):
-    security.is_admin_or_user_or_raise()
     return await service.get_ctas_ctes()
