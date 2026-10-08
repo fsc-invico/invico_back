@@ -66,7 +66,7 @@ async def update_many_by_nro_comprobante(
 
 
 # -------------------------------------------------
-@honorarios_router.get("/tiposComprobantes")
+@honorarios_router.get("/tiposComprobantes", response_model=List[str])
 async def get_tipos_comprobantes(
     service: HonorariosServiceDependency,
 ):
@@ -74,7 +74,7 @@ async def get_tipos_comprobantes(
 
 
 # -------------------------------------------------
-@honorarios_router.get("/ctasCtes")
+@honorarios_router.get("/ctasCtes", response_model=List[str])
 async def get_ctas_ctes(
     service: HonorariosServiceDependency,
 ):

@@ -52,7 +52,7 @@ async def delete_one(
 
 
 # -------------------------------------------------
-@factureros_router.get("/actividades")
+@factureros_router.get("/actividades", response_model=list[str])
 async def get_actividades(
     service: FacturerosServiceDependency,
 ):
@@ -60,7 +60,7 @@ async def get_actividades(
 
 
 # -------------------------------------------------
-@factureros_router.get("/partidas")
+@factureros_router.get("/partidas", response_model=list[str])
 async def get_partidas(
     service: FacturerosServiceDependency,
 ):
