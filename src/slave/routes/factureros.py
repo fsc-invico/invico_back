@@ -49,3 +49,13 @@ async def delete_one(
 ):
     security.is_admin_or_user_or_raise()
     return await service.delete_one(id=id)
+
+
+# -------------------------------------------------
+@factureros_router.get("/actividades")
+async def get_actividades(
+    service: FacturerosServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_actividades()

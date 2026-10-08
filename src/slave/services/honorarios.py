@@ -126,8 +126,7 @@ class HonorariosService(
         except Exception as e:
             self._handle_error("Error obteniendo los tipos de comprobantes", e)
 
-        # -------------------------------------------------
-
+    # -------------------------------------------------
     async def get_ctas_ctes(self) -> List[str]:
         """Devuelve los valores únicos del campo 'cta_cte' en slave_honorarios.
 

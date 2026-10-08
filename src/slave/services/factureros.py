@@ -177,5 +177,23 @@ class FacturerosService(
             logger.error(f"Error en delete_one_hard: {str(e)}")
             self._handle_error("Error durante el proceso de delete_one_hard", e)
 
+    # -------------------------------------------------
+    async def get_actividades(self) -> List[str]:
+        """Devuelve los valores únicos del campo 'actividad' en slave_honorarios.
+
+        Usa el comando `distinct` de MongoDB para obtener las actividades
+        sin traer toda la colección a la memoria.
+        """
+        try:
+            # collection es el AsyncIOMotorCollection expuesto por BaseRepository.
+            valores = await self.repository.collection.distinct("actividad")
+
+            # Filtramos valores vacíos/nulos y forzamos la unicidad (por si el
+            # backend no la garantiza), luego ordenamos alfabéticamente para
+            # devolver una lista estable y predecible al frontend.
+            return sorted({valor for valor in valores if valor})
+        except Exception as e:
+            self._handle_error("Error obteniendo las actividades", e)
+
 
 FacturerosServiceDependency = Annotated[FacturerosService, Depends()]
