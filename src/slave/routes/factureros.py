@@ -59,3 +59,13 @@ async def get_actividades(
 ):
     security.is_admin_or_user_or_raise()
     return await service.get_actividades()
+
+
+# -------------------------------------------------
+@factureros_router.get("/partidas")
+async def get_partidas(
+    service: FacturerosServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_partidas()

@@ -195,5 +195,23 @@ class FacturerosService(
         except Exception as e:
             self._handle_error("Error obteniendo las actividades", e)
 
+    # -------------------------------------------------
+    async def get_partidas(self) -> List[str]:
+        """Devuelve los valores únicos del campo 'partida' en slave_honorarios.
+
+        Usa el comando `distinct` de MongoDB para obtener las partidas
+        sin traer toda la colección a la memoria.
+        """
+        try:
+            # collection es el AsyncIOMotorCollection expuesto por BaseRepository.
+            valores = await self.repository.collection.distinct("partida")
+
+            # Filtramos valores vacíos/nulos y forzamos la unicidad (por si el
+            # backend no la garantiza), luego ordenamos alfabéticamente para
+            # devolver una lista estable y predecible al frontend.
+            return sorted({valor for valor in valores if valor})
+        except Exception as e:
+            self._handle_error("Error obteniendo las partidas", e)
+
 
 FacturerosServiceDependency = Annotated[FacturerosService, Depends()]
