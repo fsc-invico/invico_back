@@ -109,6 +109,24 @@ class HonorariosService(
         )
 
     # -------------------------------------------------
+    async def get_tipos_comprobantes(self) -> List[str]:
+        """Devuelve los valores únicos del campo 'tipo' en slave_honorarios.
+
+        Usa el comando `distinct` de MongoDB para obtener los tipos de
+        comprobante sin traer toda la colección a la memoria.
+        """
+        try:
+            # collection es el AsyncIOMotorCollection expuesto por BaseRepository.
+            valores = await self.repository.collection.distinct("tipo")
+
+            # Filtramos valores vacíos/nulos y forzamos la unicidad (por si el
+            # backend no la garantiza), luego ordenamos alfabéticamente para
+            # devolver una lista estable y predecible al frontend.
+            return sorted({valor for valor in valores if valor})
+        except Exception as e:
+            self._handle_error("Error obteniendo los tipos de comprobantes", e)
+
+    # -------------------------------------------------
     async def delete_many_by_nro_comprobante(self, nro_comprobante: str) -> dict:
         try:
             count = await self.repository.delete_by_fields(
