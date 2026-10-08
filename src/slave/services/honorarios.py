@@ -126,6 +126,25 @@ class HonorariosService(
         except Exception as e:
             self._handle_error("Error obteniendo los tipos de comprobantes", e)
 
+        # -------------------------------------------------
+
+    async def get_ctas_ctes(self) -> List[str]:
+        """Devuelve los valores únicos del campo 'cta_cte' en slave_honorarios.
+
+        Usa el comando `distinct` de MongoDB para obtener las cuentas corrientes
+        sin traer toda la colección a la memoria.
+        """
+        try:
+            # collection es el AsyncIOMotorCollection expuesto por BaseRepository.
+            valores = await self.repository.collection.distinct("cta_cte")
+
+            # Filtramos valores vacíos/nulos y forzamos la unicidad (por si el
+            # backend no la garantiza), luego ordenamos alfabéticamente para
+            # devolver una lista estable y predecible al frontend.
+            return sorted({valor for valor in valores if valor})
+        except Exception as e:
+            self._handle_error("Error obteniendo las cuentas corrientes", e)
+
     # -------------------------------------------------
     async def delete_many_by_nro_comprobante(self, nro_comprobante: str) -> dict:
         try:
@@ -216,8 +235,7 @@ class HonorariosService(
             # la ruta genérica del factory envía dicts y
             # add_many/{nro_comprobante} envía modelos Pydantic.
             records = [
-                item if isinstance(item, dict) else item.model_dump()
-                for item in data
+                item if isinstance(item, dict) else item.model_dump() for item in data
             ]
             for record in records:
                 if record.get("tipo") != "Honorarios":

@@ -73,3 +73,13 @@ async def get_tipos_comprobantes(
 ):
     security.is_admin_or_user_or_raise()
     return await service.get_tipos_comprobantes()
+
+
+# -------------------------------------------------
+@honorarios_router.get("/ctasCtes")
+async def get_ctas_ctes(
+    service: HonorariosServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_ctas_ctes()
