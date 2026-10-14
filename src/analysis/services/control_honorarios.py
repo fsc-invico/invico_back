@@ -19,6 +19,7 @@ from ...siif.services import (
 )
 from ...slave.schemas import HonorariosFullFilter
 from ...slave.services import HonorariosServiceDependency
+from ...sscc.schemas import BancoINVICOFullFilter
 from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
     export_multiple_dataframes_to_excel,
@@ -60,17 +61,13 @@ class ControlHonorariosService:
             return []
 
         # 1. Carga eficiente a DataFrame
-        df = pd.DataFrame(data)
-
-        df = df.drop(
-            columns=["id"], errors="ignore"
-        )  # Eliminar la columna 'id' si existe
+        df = self._to_df(data=data)
 
         # 2. Filtramos el DataFrame
         df = df.loc[df["cuit"] == "30632351514"]
         df = df.loc[df["cta_cte"].isin(["130832-05", "130832-07"])]
         keep = ["HONOR", "RECON", "LOC"]
-        df = df.loc[df.glosa.str.contains("|".join(keep))]
+        df = df.loc[df.glosa.str.contains("|".join(keep), na=False, case=False)]
 
         df["grupo"] = df["grupo"] + "00"
         df = df.loc[
@@ -102,14 +99,7 @@ class ControlHonorariosService:
             ],
         ]
 
-        # 4. Aplicamos el limite a la cantidad de registros, si existe
-        if params.limit is not None and params.limit > 0:
-            df = df.head(params.limit)
-
-        # 5. Sanitización final
-        df = sanitize_dataframe_for_json_with_datetime(df)
-
-        return df.replace({np.nan: None}).to_dict(orient="records")
+        return self._finalize(df=df, params=params)
 
     # -------------------------------------------------
     async def get_slave_honorarios(
@@ -130,28 +120,34 @@ class ControlHonorariosService:
             return []
 
         # 1. Carga eficiente a DataFrame
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
-        df = df.drop(
-            columns=["id"], errors="ignore"
-        )  # Eliminar la columna 'id' si existe
+        df = self._to_df(data=[d.model_dump(by_alias=True) for d in data])
 
-        # 2. Agregamos el campo cta_cte del SIIF
-        if not siif:
-            siif = await self.get_siif_honorarios(params=params)
-        siif = pd.DataFrame(siif)
-        siif = siif.loc[:, ["nro_comprobante", "cta_cte"]]
-        siif = siif.drop_duplicates()
-        df = df.merge(siif, on="nro_comprobante", how="left")
-        df = df.fillna(0)
+        # 2. Renombramos columnas
+        df = df.rename(
+            columns={
+                "nombre_completo": "beneficiario",
+            }
+        )
 
-        # 3. Aplicamos el limite a la cantidad de registros, si existe
-        if params.limit is not None and params.limit > 0:
-            df = df.head(params.limit)
+        # 3. Convertimos las columnas numéricas a tipo numérico y rellenamos NaN con 0
+        num_cols = [
+            "importe_bruto",
+            "iibb",
+            "lp",
+            "sellos",
+            "seguro",
+            "otras_retenciones",
+            "anticipo",
+            "descuento",
+            "mutual",
+            "embargo",
+        ]
+        df[num_cols] = df[num_cols].fillna(0).apply(pd.to_numeric, errors="coerce")
 
-        # 4. Sanitización final
-        df = sanitize_dataframe_for_json_with_datetime(df)
+        # 4. Unificamos campo cta_cte
+        df = await self.cta_cte_service.cta_cte_unifier(df, "icaro_cta_cte")
 
-        return df.replace({np.nan: None}).to_dict(orient="records")
+        return self._finalize(df=df, params=params)
 
     # -------------------------------------------------
     async def get_sgf_honorarios(
@@ -190,13 +186,10 @@ class ControlHonorariosService:
             return []
 
         # 1. Carga eficiente a DataFrame
-        df = pd.DataFrame(data)
-        df = df.drop(
-            columns=["id"], errors="ignore"
-        )  # Eliminar la columna 'id' si existe
+        df = self._to_df(data=data)
 
         # 2. Depuramos embargos en la cta_cte 130832-05
-        banco_params = ResumenRendProvFullFilter(
+        banco_params = BancoINVICOFullFilter(
             query_filter="cta_cte=130832-05, cod_imputacion=str:049",
             ejercicio=str(params.ejercicio),
             limit=None,
@@ -235,16 +228,15 @@ class ControlHonorariosService:
                 ],
             ]
             df = pd.concat([df, banco])
-            df = df.fillna(0)
+            num_cols = [
+                "importe_bruto",
+                "otras",
+                "retenciones",
+                "importe_neto",
+            ]
+            df[num_cols] = df[num_cols].fillna(0).apply(pd.to_numeric, errors="coerce")
 
-        # 3. Aplicamos el limite a la cantidad de registros, si existe
-        if params.limit is not None and params.limit > 0:
-            df = df.head(params.limit)
-
-        # 4. Sanitización final
-        df = sanitize_dataframe_for_json_with_datetime(df)
-
-        return df.replace({np.nan: None}).to_dict(orient="records")
+        return self._finalize(df=df, params=params)
 
     # -------------------------------------------------
     async def compute_control_siif_vs_slave(
@@ -258,7 +250,7 @@ class ControlHonorariosService:
 
         groupby_cols = ["ejercicio", "mes", "nro_comprobante"]
 
-        if not siif:
+        if siif is None:
             siif = await self.get_siif_honorarios(params=params)
         siif = pd.DataFrame(siif)
         siif = siif.loc[:, groupby_cols + ["importe"]]
@@ -273,7 +265,7 @@ class ControlHonorariosService:
         )
         # print(f"siif.shape: {siif.shape} - siif.head: {siif.head()}")
 
-        if not slave:
+        if slave is None:
             slave = await self.get_slave_honorarios(params=params)
         slave = pd.DataFrame(slave)
         slave = slave.loc[:, groupby_cols + ["importe_bruto"]]
@@ -296,7 +288,8 @@ class ControlHonorariosService:
             right_on=["ejercicio", "slave_nro"],
             copy=False,
         )
-        df = df.fillna(0)
+        num_cols = ["siif_importe", "slave_importe"]
+        df[num_cols] = df[num_cols].fillna(0).apply(pd.to_numeric, errors="coerce")
         df["err_nro"] = df["siif_nro"] != df["slave_nro"]
         df["err_importe"] = np.where(
             np.abs(df["siif_importe"] - df["slave_importe"]) > 0.01, True, False
@@ -338,7 +331,7 @@ class ControlHonorariosService:
 
         groupby_cols = ["ejercicio", "mes", "cta_cte", "beneficiario"]
 
-        if not sgf:
+        if sgf is None:
             sgf = await self.get_sgf_honorarios(params=params)
         sgf = pd.DataFrame(sgf)
         sgf = sgf.loc[:, groupby_cols + ["importe_bruto", "importe_neto"]]
@@ -352,7 +345,7 @@ class ControlHonorariosService:
         )
         # print(f"sgf.shape: {sgf.shape} - sgf.head: {sgf.head()}")
 
-        if not slave:
+        if slave is None:
             slave = await self.get_slave_honorarios(params=params)
         slave = pd.DataFrame(slave)
         slave["importe_neto"] = (
@@ -385,7 +378,13 @@ class ControlHonorariosService:
             on=groupby_cols,
             copy=False,
         )
-        df = df.fillna(0)
+        num_cols = [
+            "sgf_importe_bruto",
+            "sgf_importe_neto",
+            "slave_importe_bruto",
+            "slave_importe_neto",
+        ]
+        df[num_cols] = df[num_cols].fillna(0).apply(pd.to_numeric, errors="coerce")
         df["dif_importe_bruto"] = df["sgf_importe_bruto"] - df["slave_importe_bruto"]
         df["dif_importe_neto"] = df["sgf_importe_neto"] - df["slave_importe_neto"]
         df = df.loc[
@@ -448,6 +447,23 @@ class ControlHonorariosService:
             upload_to_google_sheets=True,
             spreadsheet_key="1fQhp1CdESnvqzrp3QMV5bFSHmGdi7SNoaBRWtmw-JgA",
         )
+
+    # -------------------------------------------------
+    def _finalize(self, df: pd.DataFrame, params) -> list[dict]:
+        if params.limit is not None and params.limit > 0:
+            df = df.head(params.limit)
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        return df.replace({np.nan: None}).to_dict(orient="records")
+
+    # -------------------------------------------------
+    @staticmethod
+    def _to_df(data: list, columns: list[str] | None = None) -> pd.DataFrame:
+        df = (
+            pd.DataFrame(data, columns=columns)
+            if data
+            else pd.DataFrame(columns=columns)
+        )
+        return df.drop(columns=["id"], errors="ignore")
 
 
 ControlHonorariosServiceDependency = Annotated[ControlHonorariosService, Depends()]
