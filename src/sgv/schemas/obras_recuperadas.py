@@ -6,6 +6,7 @@ __all__ = [
 ]
 
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -21,6 +22,7 @@ class ObrasRecuperadasReport(BaseModel):
     estructura: str
     importe: float
     notas: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # -------------------------------------------------
