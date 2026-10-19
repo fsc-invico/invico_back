@@ -129,19 +129,19 @@ class ObrasRecuperadasService(
         try:
             mongo_id = ObjectId(id)
 
-            # 1. VERIFICACIÓN DE ID_OBRA DUPLICADO
-            # Buscamos si existe otro documento con el mismo código recuperos de barrio que NO sea el nuestro
-            duplicate = await self.repository.get_one_by_fields(
-                {"cod_barrio": data.cod_barrio, "_id": {"$ne": mongo_id}}
-            )
+            # # 1. VERIFICACIÓN DE ID_OBRA DUPLICADO
+            # # Buscamos si existe otro documento con el mismo código recuperos de barrio que NO sea el nuestro
+            # duplicate = await self.repository.get_one_by_fields(
+            #     {"cod_barrio": data.cod_barrio, "_id": {"$ne": mongo_id}}
+            # )
 
-            if duplicate:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"No se puede actualizar: El Cod Barrio '{data.cod_barrio}' ya existe.",
-                )
+            # if duplicate:
+            #     raise HTTPException(
+            #         status_code=status.HTTP_400_BAD_REQUEST,
+            #         detail=f"No se puede actualizar: El Cod Barrio '{data.cod_barrio}' ya existe.",
+            #     )
 
-            # 2. INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            # INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
             new_data = data.model_dump(by_alias=True)
             new_data["updated_at"] = datetime.now(timezone.utc)
 
