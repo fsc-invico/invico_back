@@ -52,6 +52,8 @@ COLLECTIONS = [
     "sscc_banco_invico",
     "sscc_ctas_ctes",
     "sgv_saldos_barrios_evolucion",
+    "sgv_obras_recuperadas",
+    "sgv_obras_desactivadas",
     "control_recursos",
     "control_aporte_empresario",
     "control_obras",
