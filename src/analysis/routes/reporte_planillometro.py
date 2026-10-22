@@ -3,14 +3,27 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
+from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (
-    ReportePlanillometroFilter,
+    ReportePlanillometroDocument,
+    ReportePlanillometroFullFilter,
     ReportePlanillometroLiteFilter,
     ReportePlanillometroReport,
 )
-from ..services import ReportePlanillometroServiceDependency
+from ..services import (
+    ReportePlanillometroService,
+    ReportePlanillometroServiceDependency,
+)
 
-reporte_planillometro_router = APIRouter(prefix="/reportePlanillometro")
+factory = GenericRouterFactory(
+    service_dependency=ReportePlanillometroService,
+    report_schema=ReportePlanillometroDocument,
+    full_filter_schema=ReportePlanillometroFullFilter,  # Usa limit/offset
+    lite_filter_schema=ReportePlanillometroLiteFilter,  # No usa limit/offset
+    prefix="/reportePlanillometro",
+)
+
+reporte_planillometro_router = factory.get_router()
 
 
 # -------------------------------------------------
@@ -21,7 +34,7 @@ reporte_planillometro_router = APIRouter(prefix="/reportePlanillometro")
     response_model_exclude_none=True,
 )
 async def generate(
-    params: Annotated[ReportePlanillometroFilter, Depends()],
+    params: Annotated[ReportePlanillometroFullFilter, Depends()],
     service: ReportePlanillometroServiceDependency,
     security: AuthorizationDependency,
 ):

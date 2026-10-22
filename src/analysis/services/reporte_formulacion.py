@@ -31,7 +31,7 @@ from ..schemas import (
     ReporteFormulacionLiteFilter,
     ReporteFormulacionPlanillometroReport,
     ReporteFormulacionRecursosReport,
-    ReportePlanillometroFilter,
+    ReportePlanillometroFullFilter,
 )
 from .reporte_planillometro import ReportePlanillometroServiceDependency
 
@@ -53,7 +53,7 @@ class ReporteFormulacionService:
         if params.ejercicio is None:
             raise ValueError("El parámetro 'ejercicio' es obligatorio.")
 
-        planillometro_params = ReportePlanillometroFilter(
+        planillometro_params = ReportePlanillometroFullFilter(
             ejercicio=params.ejercicio,
             limit=params.limit,
             desagregar_desc_subprog=True,

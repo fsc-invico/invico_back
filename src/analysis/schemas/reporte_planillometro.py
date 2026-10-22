@@ -1,12 +1,11 @@
 __all__ = [
-    "ReportePlanillometroFilter",
+    "ReportePlanillometroFullFilter",
     "ReportePlanillometroReport",
     "ReportePlanillometroDocument",
     "ReportePlanillometroLiteFilter",
 ]
 
 
-import datetime as dt
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -40,7 +39,7 @@ class ReportePlanillometroDocument(ReportePlanillometroReport):
 
 
 # -------------------------------------------------
-class ReportePlanillometroFilter(CamelModel):
+class ReportePlanillometroFullFilter(CamelModel):
     limit: Optional[int] = Field(100, ge=0)
     ejercicio: int
     desagregar_desc_subprog: bool = True

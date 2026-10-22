@@ -71,6 +71,7 @@ COLLECTIONS = [
     "control_banco_siif",
     "control_banco_sscc",
     "reporte_modulos_basicos_icaro",
+    "reporte_planillometro",
 ]
 
 
