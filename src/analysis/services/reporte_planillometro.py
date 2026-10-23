@@ -27,6 +27,7 @@ from ..repositories import ReportePlanillometroRepositoryDependency
 from ..schemas import (
     ReportePlanillometroDocument,
     ReportePlanillometroFullFilter,
+    ReportePlanillometroGenerateFilter,
     ReportePlanillometroLiteFilter,
     ReportePlanillometroReport,
 )
@@ -57,7 +58,7 @@ class ReportePlanillometroService(
     # -------------------------------------------------
     async def generate(
         self,
-        params: ReportePlanillometroFullFilter,
+        params: ReportePlanillometroGenerateFilter,
     ) -> List[ReportePlanillometroReport]:
 
         if params.ejercicio is None:
@@ -350,7 +351,7 @@ class ReportePlanillometroService(
         self, params: ReportePlanillometroLiteFilter
     ) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        icaro_params = ReportePlanillometroFullFilter(
+        icaro_params = ReportePlanillometroGenerateFilter(
             ejercicio=str(params.ejercicio),
             # ultimos_ejercicios=5,
             include_pa6=False,

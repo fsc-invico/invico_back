@@ -3,6 +3,7 @@ __all__ = [
     "ReportePlanillometroReport",
     "ReportePlanillometroDocument",
     "ReportePlanillometroLiteFilter",
+    "ReportePlanillometroGenerateFilter",
 ]
 
 
@@ -11,7 +12,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
-from ...utils import CamelModel
+from ...utils import BaseFilterParams, CamelModel
 
 
 # -------------------------------------------------
@@ -39,7 +40,7 @@ class ReportePlanillometroDocument(ReportePlanillometroReport):
 
 
 # -------------------------------------------------
-class ReportePlanillometroFullFilter(CamelModel):
+class ReportePlanillometroGenerateFilter(CamelModel):
     limit: Optional[int] = Field(100, ge=0)
     ejercicio: int
     desagregar_desc_subprog: bool = True
@@ -50,6 +51,11 @@ class ReportePlanillometroFullFilter(CamelModel):
     # ultimos_ejercicios: Optional[int] = None
     # date_up_to: Optional[dt.date] = None
     include_pa6: bool = False
+
+
+# -------------------------------------------------
+class ReportePlanillometroFullFilter(BaseFilterParams):
+    ejercicio: Optional[str] = None
 
 
 # -------------------------------------------------

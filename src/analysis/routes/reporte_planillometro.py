@@ -7,6 +7,7 @@ from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (
     ReportePlanillometroDocument,
     ReportePlanillometroFullFilter,
+    ReportePlanillometroGenerateFilter,
     ReportePlanillometroLiteFilter,
     ReportePlanillometroReport,
 )
@@ -28,13 +29,13 @@ reporte_planillometro_router = factory.get_router()
 
 # -------------------------------------------------
 @reporte_planillometro_router.get(
-    "",
+    "/generate",
     description="Reporte Planillometro",
     response_model=List[ReportePlanillometroReport],
     response_model_exclude_none=True,
 )
 async def generate(
-    params: Annotated[ReportePlanillometroFullFilter, Depends()],
+    params: Annotated[ReportePlanillometroGenerateFilter, Depends()],
     service: ReportePlanillometroServiceDependency,
     security: AuthorizationDependency,
 ):
