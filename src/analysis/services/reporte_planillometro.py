@@ -395,7 +395,10 @@ class ReportePlanillometroService(
             validation_result = validate_and_extract_data_from_list(
                 data_list=data,
                 model=ReportePlanillometroReport,
-                field_id="cod_recurso",  # O el campo que identifique la fila en caso de error
+                field_id=[
+                    "ejercicio",
+                    "estructura",
+                ],  # O el campo que identifique la fila en caso de error
             )
 
             # 🔥 CONTROL CRÍTICO: Si no hay registros válidos, lanzamos un 400 Bad Request.
@@ -409,12 +412,19 @@ class ReportePlanillometroService(
 
                 raise HTTPException(status_code=400, detail=detail_msg)
 
-            # 2. Determinar filtro de borrado (Idempotencia)
+            # 2. Excluimos los campos None para que no se persistan como null en MongoDB
+            # (las claves con valor None no se guardarán en los documentos)
+            validation_result.validated = [
+                record.model_dump(exclude_none=True)
+                for record in validation_result.validated
+            ]
+
+            # 3. Determinar filtro de borrado (Idempotencia)
             # A esta altura ya es 100% seguro que al menos hay un registro válido en el índice [0]
-            ejercicio_detectado = validation_result.validated[0].ejercicio
+            ejercicio_detectado = validation_result.validated[0]["ejercicio"]
             delete_filter = {"ejercicio": ejercicio_detectado}
 
-            # 3. Sincronizar con el repositorio usando tu función genérica
+            # 4. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
                 repository=self.repository,
                 validation=validation_result,
