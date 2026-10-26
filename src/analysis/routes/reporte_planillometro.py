@@ -22,6 +22,10 @@ factory = GenericRouterFactory(
     full_filter_schema=ReportePlanillometroFullFilter,  # Usa limit/offset
     lite_filter_schema=ReportePlanillometroLiteFilter,  # No usa limit/offset
     prefix="/reportePlanillometro",
+    # El GET Get All omite los campos None: Mongo ya no persiste claves
+    # con null y el esquema las rellena con None al leer; no hace falta
+    # devolverlas al front.
+    response_model_exclude_none=True,
 )
 
 reporte_planillometro_router = factory.get_router()

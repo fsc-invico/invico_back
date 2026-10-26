@@ -17,6 +17,7 @@ class GenericRouterFactory:
         lite_filter_schema: Type,  # Nuevo esquema para exportar
         prefix: str,
         tags: Optional[List[str]] = None,
+        response_model_exclude_none: bool = False,
     ):
         # Si tags es None, no pasamos nada al APIRouter,
         # así no genera el tag automático del prefix.
@@ -29,6 +30,10 @@ class GenericRouterFactory:
         self.report_schema = report_schema
         self.full_filter_schema = full_filter_schema
         self.lite_filter_schema = lite_filter_schema
+        # Permite que cada modulo decida si el GET Get All omite los campos
+        # con valor None en la respuesta (por defecto False: sin cambios
+        # para el resto de los modulos).
+        self.response_model_exclude_none = response_model_exclude_none
         self._setup_routes()
 
     # -------------------------------------------------
@@ -36,7 +41,12 @@ class GenericRouterFactory:
         """Define las rutas estándar para todos los servicios"""
 
         # -------------------------------------------------
-        @self.router.get("", name="Get All", response_model=List[self.report_schema])
+        @self.router.get(
+            "",
+            name="Get All",
+            response_model=List[self.report_schema],
+            response_model_exclude_none=self.response_model_exclude_none,
+        )
         async def get_all(
             params: Annotated[Any, Depends(self.full_filter_schema)],
             service: Annotated[BaseService, Depends(self.service_dep)],
