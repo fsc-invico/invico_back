@@ -427,6 +427,45 @@ class ReportePlanillometroService(
         except Exception as e:
             self._handle_error("Error durante el proceso de add_many", e)
 
+    # -------------------------------------------------
+    async def export(self, params: ReportePlanillometroLiteFilter) -> StreamingResponse:
+        # 1. Creamos el objeto de filtros normal
+        search_params = ReportePlanillometroFullFilter(
+            query_filter=params.query_filter,
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+
+        # 2. Traemos los datos sin paginar
+        data = await self.repository.find_with_filter_params(params=search_params)
+
+        # 3. Usar el método de la clase base
+        df_planillometro = pd.DataFrame(
+            [d.model_dump(by_alias=True, mode="json") for d in data]
+        )
+        df_planillometro = df_planillometro.rename(
+            columns={
+                "desc_programa": "desc_prog",
+                "desc_proyecto": "desc_proy",
+                "desc_actividad": "desc_act",
+            }
+        )
+
+        # sgv = await get_sgv_saldos_barrios_evolucion()
+        # sgv["ejercicio"] = sgv["ejercicio"].astype(str)
+        # sgv["cod_barrio"] = sgv["cod_barrio"].astype(int)
+        # sgv = sgv.sort_values(by=["ejercicio", "cod_barrio"], ascending=[True, True])
+
+        return self.export_to_excel(
+            data_pairs=[
+                (df_planillometro, "bd_planillometro"),
+                # (sgv, "bd_recuperos"),
+            ],
+            filename="Reporte Planillometro.xlsx",
+            upload_to_google_sheets=True,
+            spreadsheet_key="1Hmb7xmzhZBoicnL5_tN7mr1kOj-r3gw8lCkPErR8Xd4",
+        )
+
 
 ReportePlanillometroServiceDependency = Annotated[
     ReportePlanillometroService, Depends()
