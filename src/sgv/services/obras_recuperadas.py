@@ -29,6 +29,20 @@ from ..schemas import (
 )
 
 
+# --------------------------------------------------
+def _normalize_lock_timestamp(value: datetime) -> datetime:
+    """Normaliza un timestamp cerrojo a UTC aware con precisión de milisegundos.
+
+    MongoDB almacena fechas en UTC con precisión de milisegundos y Motor las
+    devuelve naive (sin tz). Para comparar el valor enviado por el front con el
+    guardado en BD, ambos se convierten a UTC y se truncan los microsegundos.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    value = value.astimezone(timezone.utc)
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
+
+
 @dataclass
 # -------------------------------------------------
 class ObrasRecuperadasService(
@@ -73,6 +87,12 @@ class ObrasRecuperadasService(
 
                 raise HTTPException(status_code=400, detail=detail_msg)
 
+            # El cerrojo de edición se asigna en el servidor al crear
+            created_at = datetime.now(timezone.utc)
+            for record in validation_result.validated:
+                if record.updated_at is None:
+                    record.updated_at = created_at
+
             # 2. Determinar filtro de borrado (Idempotencia)
             # A esta altura ya es 100% seguro que al menos hay un registro válido en el índice [0]
             ejercicio_detectado = validation_result.validated[0].ejercicio
@@ -113,6 +133,9 @@ class ObrasRecuperadasService(
     # -------------------------------------------------
     async def add_one(self, obra_recuperada: ObrasRecuperadasReport):
         try:
+            # El cerrojo de edición se asigna en el servidor al crear
+            if obra_recuperada.updated_at is None:
+                obra_recuperada.updated_at = datetime.now(timezone.utc)
             # Invocamos save_one que ya maneja la conversión a dict y unicidad
             nuevo_obra_recuperada = await self.repository.save_one(obra_recuperada)
             return nuevo_obra_recuperada
@@ -141,21 +164,76 @@ class ObrasRecuperadasService(
             #         detail=f"No se puede actualizar: El Cod Barrio '{data.cod_barrio}' ya existe.",
             #     )
 
-            # INTENTO DE ACTUALIZACIÓN (Control de Concurrencia)
+            # 1. EXISTENCIA DEL REGISTRO (distingue 404 de 409)
+            current_doc = await self.repository.get_by_id(mongo_id)
+            if not current_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        "La Obra Recuperada ya no existe "
+                        "(fue eliminada o re-sincronizada). "
+                        "Recargue la página."
+                    ),
+                )
+
+            db_lock = current_doc.get("updated_at")
+
+            # 2. CERROJO AUSENTE EN LA BD (registro antiguo sin timestamp):
+            #    no hay con qué comparar, se procede sin cerrojo.
+            if db_lock is None:
+                logger.warning(
+                    f"update_one_safely: registro {id} sin updated_at en BD; "
+                    "se omite el control de concurrencia."
+                )
+            else:
+                # 3. CERROJO AUSENTE EN EL PAYLOAD (estricto):
+                #    el front debe reenviar el updated_at original del registro.
+                if data.updated_at is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "No se recibió 'updated_at': el front debe enviar "
+                            "el valor original del registro para evitar "
+                            "conflictos de edición."
+                        ),
+                    )
+
+                # 4. COMPARACIÓN NORMALIZADA (UTC + precisión de milisegundos)
+                received_lock = _normalize_lock_timestamp(data.updated_at)
+                stored_lock = _normalize_lock_timestamp(db_lock)
+                if received_lock != stored_lock:
+                    logger.warning(
+                        f"update_one_safely: conflicto de cerrojo en registro "
+                        f"{id}. Recibido={data.updated_at!r} | BD={db_lock!r}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
+                    )
+
+            # 5. INTENTO DE ACTUALIZACIÓN (re-chequeo atómico del cerrojo)
             new_data = data.model_dump(by_alias=True)
             new_data["updated_at"] = datetime.now(timezone.utc)
 
+            update_filter: dict = {"_id": mongo_id}
+            if db_lock is not None:
+                # Valor crudo de la BD: coincidencia exacta en Mongo
+                update_filter["updated_at"] = db_lock
+
             updated_doc = await self.repository.find_one_and_update(
-                filter={
-                    "_id": mongo_id,
-                    "updated_at": data.updated_at,  # El cerrojo
-                },
+                filter=update_filter,
                 update_data=new_data,
                 return_document=True,
             )
 
             if not updated_doc:
-                # Si llegamos acá es porque el ID no existe o el updated_at cambió (Conflicto)
+                # Carrera entre la verificación y esta actualización:
+                # otro usuario modificó el registro en el ínterim.
+                logger.warning(
+                    f"update_one_safely: carrera detectada en registro {id}; "
+                    "el cerrojo cambió entre la verificación y la "
+                    "actualización."
+                )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",

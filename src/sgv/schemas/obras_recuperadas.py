@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -22,7 +22,10 @@ class ObrasRecuperadasReport(BaseModel):
     estructura: str
     importe: float
     notas: str
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Cerrojo de edición (concurrencia optimista). Sin default_factory a
+    # propósito: si el front no lo envía, llega None y el servicio puede
+    # detectarlo. Al crear, el servicio asigna el timestamp en el servidor.
+    updated_at: Optional[datetime] = None
 
 
 # -------------------------------------------------
