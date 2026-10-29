@@ -65,11 +65,11 @@ class ControlBancoCruzadoService(
 
             # 2. Determinar filtro de borrado (Idempotencia)
             # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
-            delete_filter = {}
-            if validation_result.validated:
-                # Tomamos el ejercicio del primer registro válido
-                ejercicio_detectado = validation_result.validated[0].ejercicio
-                delete_filter = {"ejercicio": ejercicio_detectado}
+            delete_filter = None
+            # if validation_result.validated:
+            #     # Tomamos el ejercicio del primer registro válido
+            #     ejercicio_detectado = validation_result.validated[0].ejercicio
+            #     delete_filter = {"ejercicio": ejercicio_detectado}
 
             # 3. Sincronizar con el repositorio usando tu función genérica
             return await sync_validated_to_repository(
