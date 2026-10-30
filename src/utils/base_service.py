@@ -118,10 +118,10 @@ class BaseService(ABC, Generic[R, D, F, L]):
             # 2. Lógica de Google Sheets (opcional)
             if upload_to_google_sheets and spreadsheet_key:
                 from .google_sheets import (
-                    GoogleSheets,
+                    get_google_sheets,
                 )  # Import local para evitar ciclos
 
-                gs = GoogleSheets()
+                gs = get_google_sheets()
 
                 for df, sheet_name in sanitized_pairs:
                     # 🔥 LA MAGIA: Convertimos a registros nativos puros dict de Python.

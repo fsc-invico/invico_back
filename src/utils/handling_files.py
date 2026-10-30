@@ -122,15 +122,15 @@ def export_dataframe_as_excel_response(
     try:
         # 1️⃣ Sanitizar
         df = sanitize_dataframe_for_json(df)
-        df = df.drop(columns=["_id"], errors="ignore")
+        df = df.drop(columns=["_id", "id"], errors="ignore")
 
         # 2️⃣ Upload a Google Sheets
         if upload_to_google_sheets and google_sheet_key:
             from .google_sheets import (
-                GoogleSheets,
+                get_google_sheets,
             )  # Import local para evitar ciclos
 
-            gs_service = GoogleSheets()
+            gs_service = get_google_sheets()
             gs_service.to_google_sheets(
                 df=df,
                 spreadsheet_key=google_sheet_key,
@@ -188,10 +188,10 @@ def export_multiple_dataframes_to_excel(
         # 2️⃣ Subir a Google Sheets
         if upload_to_google_sheets and spreadsheet_key:
             from .google_sheets import (
-                GoogleSheets,
+                get_google_sheets,
             )  # Import local para evitar ciclos
 
-            gs = GoogleSheets()
+            gs = get_google_sheets()
             for df, sheet_name in sanitized_pairs:
                 # 🔥 LA MAGIA: Convertimos a registros nativos puros dict de Python.
                 # Esto elimina CUALQUIER rastro de pd.NA, int64, bool o float64 de Pandas.
@@ -289,15 +289,15 @@ def upload_multiple_dataframes_to_google_sheets(
         for df, sheet_name in df_sheet_pairs:
             if not df.empty:
                 df = sanitize_dataframe_for_json_with_datetime(df)
-                df = df.drop(columns=["_id"], errors="ignore")
+                df = df.drop(columns=["_id", "id"], errors="ignore")
             sanitized_pairs.append((df, sheet_name))
 
         # 2️⃣ Subir a Google Sheets
         from .google_sheets import (
-            GoogleSheets,
+            get_google_sheets,
         )  # Import local para evitar ciclos
 
-        gs = GoogleSheets()
+        gs = get_google_sheets()
         for df, sheet_name in sanitized_pairs:
             gs.to_google_sheets(
                 df=df,
