@@ -22,12 +22,12 @@ saldos_barrios_evolucion_router = factory.get_router()
 
 # -------------------------------------------------
 @saldos_barrios_evolucion_router.get(
-    "/uniqueCodBarrios",
-    description="Get All Cod. Barrios",
+    "/uniqueCodBarrio",
+    description="Get All Cod. Barrio",
     response_model=list[str],
 )
-async def desc_estructuras(
+async def unique_cod_barrio(
     # params: Annotated[Rf610FullFilter, Depends()],
     service: SaldosBarriosEvolucionServiceDependency,
 ):
-    return await service.unique_cod_barrios()
+    return await service.unique_cod_barrio()

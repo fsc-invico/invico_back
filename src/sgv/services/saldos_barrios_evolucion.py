@@ -113,7 +113,7 @@ class SaldosBarriosEvolucionService(
         )
 
     # -------------------------------------------------
-    async def unique_cod_barrios(self) -> List[str]:
+    async def unique_cod_barrio(self) -> List[str]:
         """Devuelve los códigos de barrio únicos de la colección.
 
         Usa el comando `distinct` de MongoDB para obtener los códigos
