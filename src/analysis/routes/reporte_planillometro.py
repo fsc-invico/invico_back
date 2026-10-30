@@ -59,3 +59,17 @@ async def export(
 ):
     security.is_admin_or_user_or_raise()
     return await service.export_eecc(params)
+
+
+# -------------------------------------------------
+@reporte_planillometro_router.get(
+    "/uniqueEstructura",
+    description="Get All Estructuras",
+    response_model=list[str],
+)
+async def unique_estructura(
+    service: ReportePlanillometroServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.unique_estructura()
