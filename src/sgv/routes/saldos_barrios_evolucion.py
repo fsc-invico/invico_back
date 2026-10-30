@@ -4,7 +4,10 @@ from ..schemas import (  # El esquema de parámetros para el filtro
     SaldosBarriosEvolucionFullFilter,
     SaldosBarriosEvolucionLiteFilter,
 )
-from ..services import SaldosBarriosEvolucionService  # La clase del servicio
+from ..services import (
+    SaldosBarriosEvolucionService,
+    SaldosBarriosEvolucionServiceDependency,
+)  # La clase del servicio
 
 factory = GenericRouterFactory(
     service_dependency=SaldosBarriosEvolucionService,
@@ -16,10 +19,15 @@ factory = GenericRouterFactory(
 
 saldos_barrios_evolucion_router = factory.get_router()
 
-# # Si necesitas agregar una ruta personalizada que NO esté en la base:
-# resumen_rend_prov_router = factory.get_router()
 
-
-# @resumen_rend_prov_router.get("/custom-stats")
-# async def get_stats():
-#     return {"stats": "data"}
+# -------------------------------------------------
+@saldos_barrios_evolucion_router.get(
+    "/uniqueCodBarrios",
+    description="Get All Cod. Barrios",
+    response_model=list[str],
+)
+async def desc_estructuras(
+    # params: Annotated[Rf610FullFilter, Depends()],
+    service: SaldosBarriosEvolucionServiceDependency,
+):
+    return await service.unique_cod_barrios()
