@@ -55,3 +55,15 @@ async def delete_one(
 ) -> ObrasDesactivadasDocument:
     security.is_admin_or_user_or_raise()
     return await service.delete_one(id=id)
+
+
+# -------------------------------------------------
+@obras_desactivadas_router.get(
+    "/uniqueCtaContable",
+    description="Get All Cta. Contable",
+    response_model=list[str],
+)
+async def unique_cta_contable(
+    service: ObrasDesactivadasServiceDependency,
+) -> list[str]:
+    return await service.unique_cta_contable()

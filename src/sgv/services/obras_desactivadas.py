@@ -132,6 +132,26 @@ class ObrasDesactivadasService(
         )
 
     # -------------------------------------------------
+    async def unique_cta_contable(self) -> List[str]:
+        """Devuelve las cuentas contables únicas de la colección.
+
+        Usa el comando `distinct` de MongoDB para obtener las cuentas
+        sin traer toda la colección a la memoria. Devuelve una lista plana
+        de strings, lista para usar directamente como `options` de un
+        `st.selectbox` en el frontend.
+        """
+        try:
+            # collection es el AsyncIOMotorCollection expuesto por BaseRepository.
+            valores = await self.repository.collection.distinct("cta_contable")
+
+            # Filtramos valores vacíos/nulos y forzamos la unicidad (por si el
+            # backend no la garantiza), luego ordenamos para devolver una lista
+            # estable y predecible al frontend.
+            return sorted({str(valor) for valor in valores if valor})
+        except Exception as e:
+            self._handle_error("Error obteniendo las cuentas contables únicas", e)
+
+    # -------------------------------------------------
     async def add_one(
         self, obra_desactivada: ObrasDesactivadasReport
     ) -> ObrasDesactivadasDocument:
