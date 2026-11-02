@@ -155,12 +155,25 @@ async def list_roles():
 #     return await users.update_one(id=id, user=user, is_admin=security.is_admin)
 
 
-# # -------------------------------------------------
-# @users_router.delete("/delete_hard/{id}")
-# async def delete_user_hard(
-#     id: ObjectId,
-#     users: UsersServiceDependency,
-#     security: AuthorizationDependency,
-# ):
-#     security.is_admin_or_raise()
-#     return await users.delete_one_hard(id)
+# -------------------------------------------------
+@users_router.delete("/delete_hard/{id}")
+async def delete_user_hard(
+    id: str,
+    users: UsersServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_raise()  # Solo los admins pueden eliminar usuarios
+
+    # Convertimos el string de la URL a ObjectId
+    from bson import ObjectId
+
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="ID de usuario inválido")
+
+    # Un admin no puede eliminarse a sí mismo
+    if id == str(security.user_id):
+        raise HTTPException(
+            status_code=400, detail="No puedes eliminar tu propia cuenta"
+        )
+
+    return await users.delete_one_hard(user_id=ObjectId(id))

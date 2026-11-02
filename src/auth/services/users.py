@@ -244,6 +244,26 @@ class UsersService:
 
         return {"message": f"Credencial para {system_name} eliminada con éxito."}
 
+    # -------------------------------------------------
+    async def delete_one_hard(self, user_id: PyObjectId) -> dict:
+        """Elimina un usuario de forma permanente (hard delete).
+
+        Borra el documento de la colección 'users' y, en cascada,
+        las credenciales externas vinculadas en 'external_credentials'.
+        """
+        # 1. Borramos el documento de la colección 'users'
+        deleted_user = await self.users.delete_by_id(user_id)
+        if not deleted_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+            )
+
+        # 2. Borrado en cascada de las credenciales externas vinculadas
+        await self.external_creds.delete_by_fields({"user_id": str(user_id)})
+
+        logger.debug("User hard deleted: %s", user_id)
+        return {"message": f"Usuario {user_id} eliminado permanentemente."}
+
     # @classmethod
     # def get_all_deleted(cls, query: FilterParamsUser) -> dict[str, list]:
     #     """Get all deleted users"""
