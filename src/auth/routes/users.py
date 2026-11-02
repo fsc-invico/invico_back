@@ -59,7 +59,9 @@ async def change_user_role(
     if not ObjectId.is_valid(userId):
         raise HTTPException(status_code=400, detail="ID de usuario inválido")
 
-    return await users_service.update_role(user_id=ObjectId(userId), new_role=data.role)
+    return await users_service.update_role(
+        user_id=ObjectId(userId), new_roles=[role.value for role in data.roles]
+    )
 
 
 # -------------------------------------------------

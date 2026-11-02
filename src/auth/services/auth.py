@@ -83,39 +83,74 @@ class Authorization:
         # def __init__(self, credentials: JwtAuthorizationCredentials):
         # Aquí credentials nunca será None por el auto_error=True
         payload = credentials.subject
-        self.user_id = payload.get("id")
-        self.username = payload.get("username")
-        self.role = payload.get("role")
+        self.user_id: str | None = payload.get("id")
+        self.username: str | None = payload.get("username")
+        # Lista de roles del usuario (soporta el payload legacy con "role")
+        self.roles: list[str] = self._extract_roles(payload)
+
+    # -------------------------------------------------
+    @staticmethod
+    def _extract_roles(payload: dict) -> list[str]:
+        """Normaliza los roles del payload JWT al nuevo formato lista.
+
+        Los tokens emitidos antes del cambio traen `role: "admin"` (string);
+        los nuevos traen `roles: ["admin", ...]`. Soportamos ambos durante
+        la vigencia de los tokens (1 día).
+        """
+        roles = payload.get("roles")
+        if isinstance(roles, list) and roles:
+            return [str(role) for role in roles]
+        legacy_role = payload.get("role")
+        if isinstance(legacy_role, str) and legacy_role:
+            return [legacy_role]
+        return []
 
     # -------------------------------------------------
     @property
     def is_admin(self) -> bool:
-        return self.role == "admin"
+        return "admin" in self.roles
 
     # -------------------------------------------------
     @property
     def is_user(self) -> bool:
-        return self.role == "user"
+        return "user" in self.roles
 
     # -------------------------------------------------
-    def is_admin_or_raise(self):
-        if self.role != "admin":
+    def has_any_role(self, *roles: str) -> bool:
+        return any(role in self.roles for role in roles)
+
+    # -------------------------------------------------
+    def is_admin_or_raise(self) -> None:
+        if not self.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Se requieren permisos de administrador",
             )
 
     # -------------------------------------------------
-    def is_admin_or_user_or_raise(self):
+    def is_admin_or_user_or_raise(self) -> None:
         # 1. Si es admin o usuario validado, puede entrar
-        if self.role in ["admin", "user"]:
+        if self.has_any_role("admin", "user"):
             return
 
-        # 2. Si es 'pending', bloqueamos el acceso
+        # 2. Si es 'pending' (u otro rol sin permisos), bloqueamos el acceso
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado. Su cuenta requiere aprobación para visualizar reportes financieros.",
         )
+
+    # -------------------------------------------------
+    def require_any_role(self, *roles: str, detail: str | None = None) -> None:
+        """Autorización genérica para roles específicos (eecc, icaro, etc.)."""
+        if not self.has_any_role(*roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=detail
+                or (
+                    "Acceso denegado. Se requiere uno de los siguientes roles: "
+                    f"{', '.join(roles)}."
+                ),
+            )
 
 
 # --- DEPENDENCIAS PARA TUS RUTAS ---
@@ -147,7 +182,7 @@ def get_authorization(
         mock_credentials.subject = {
             "id": "dev_id",
             "username": "dev_admin",
-            "role": "admin",
+            "roles": ["admin"],
         }
         return Authorization(mock_credentials)
 

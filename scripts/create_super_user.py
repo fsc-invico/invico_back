@@ -53,7 +53,7 @@ async def main():
         print("Error: No se encontró contraseña en la configuración.")
         return
 
-    data["role"] = "admin"
+    data["roles"] = ["admin"]
     # Aseguramos el límite de bcrypt
     if len(data["password"]) > 72:
         data["password"] = data["password"][:72]

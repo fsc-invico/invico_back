@@ -90,40 +90,48 @@ class UsersService:
         )
 
     # -------------------------------------------------
-    async def update_role(self, user_id: PyObjectId, new_role: str):
-        # 1. Intentamos actualizar en la base de datos
-        result = await self.users.update_one({"_id": user_id}, {"role": new_role})
+    @staticmethod
+    def _extract_roles(user: dict) -> list[str]:
+        """Extrae los roles de un documento soportando el formato legacy `role`."""
+        roles = user.get("roles")
+        if isinstance(roles, list) and roles:
+            return [str(role) for role in roles]
+        legacy_role = user.get("role")
+        if isinstance(legacy_role, str) and legacy_role:
+            return [legacy_role]
+        return []
 
-        if not result:
-            # Verificamos si es que no existe o si ya tenía ese rol
-            user = await self.users.get_by_id(user_id)
-            if not user:
-                raise HTTPException(status_code=404, detail="Usuario no encontrado")
-            return {"message": f"El usuario ya tenía el rol {new_role}"}
+    # -------------------------------------------------
+    async def update_role(self, user_id: PyObjectId, new_roles: list[str]):
+        """Reemplaza la lista completa de roles de un usuario."""
+        user = await self.users.get_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        return {"message": f"Rol actualizado exitosamente a {new_role}"}
+        current_roles = self._extract_roles(user)
+        if current_roles == list(new_roles):
+            return {"message": f"El usuario ya tenía los roles {new_roles}"}
+
+        # Guardamos la lista completa de roles (formato nuevo)
+        await self.users.update_one({"_id": user_id}, {"roles": list(new_roles)})
+        return {"message": f"Roles actualizados exitosamente a {new_roles}"}
 
     # -------------------------------------------------
     async def approve_user(self, user_id: PyObjectId):
+        user = await self.users.get_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        # 1. Intentamos actualizar SOLO si el rol actual es 'pending'
-        # Esto evita que 'aprove' cambie el rol de un admin o un usuario ya activo
-        result = await self.users.update_one(
-            filter={"_id": user_id, "role": "pending"}, update_data={"role": "user"}
-        )
+        current_roles = self._extract_roles(user)
 
-        if not result:
-            # 2. Si no hubo cambios, investigamos por qué
-            user = await self.users.get_by_id(user_id)
+        # Solo aprobamos usuarios que están en 'pending'
+        # (evita aprobar de nuevo un admin o un usuario ya activo)
+        if "pending" not in current_roles:
+            return {
+                "message": f"El usuario ya está activo con los roles '{current_roles}'"
+            }
 
-            if not user:
-                raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-            if user.get("role") != "pending":
-                return {
-                    "message": f"El usuario ya está activo con el rol '{user.get('role')}'"
-                }
-
+        await self.users.update_one({"_id": user_id}, {"roles": ["user"]})
         return {"message": f"Usuario {user_id} aprobado exitosamente."}
 
     # -------------------------------------------------
