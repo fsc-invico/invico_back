@@ -112,7 +112,15 @@ class ObrasRecuperadasService(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
-    async def export(self, params: ObrasRecuperadasLiteFilter) -> StreamingResponse:
+    async def build_export_dataframe(
+        self, params: ObrasRecuperadasLiteFilter
+    ) -> pd.DataFrame:
+        """Construye el DataFrame de exportación sin paginar.
+
+        Es la misma lógica que usa `export()`, expuesta como método público
+        para que otros servicios (ej. ReportePlanillometroService.export_eecc)
+        puedan reutilizarla y combinarla en una única exportación.
+        """
         # 1. Creamos el objeto de filtros normal
         search_params = ObrasRecuperadasFullFilter(
             query_filter=params.query_filter,
@@ -123,11 +131,17 @@ class ObrasRecuperadasService(
         # 2. Traemos los datos sin paginar
         data = await self.repository.find_with_filter_params(params=search_params)
 
-        # 3. Usar el método de la clase base
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+        # 3. Convertimos a DataFrame
+        return pd.DataFrame([d.model_dump(by_alias=True) for d in data])
+
+    # -------------------------------------------------
+    async def export(self, params: ObrasRecuperadasLiteFilter) -> StreamingResponse:
+        df = await self.build_export_dataframe(params=params)
         return self.export_to_excel(
-            data_pairs=[(df, "SGV_Obras_Recuperadas")],
-            filename="reporte_obras_recuperadas.xlsx",
+            data_pairs=[(df, "bd_obras_recuperadas")],
+            filename="reporte_sgv_obras_recuperadas.xlsx",
+            upload_to_google_sheets=True,
+            spreadsheet_key="1MbsMGM-eVIU-ssMbMkZwRPjbQfsbv3nyoL7cHHUNXxQ",
         )
 
     # -------------------------------------------------

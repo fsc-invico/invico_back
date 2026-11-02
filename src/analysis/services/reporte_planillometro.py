@@ -14,6 +14,14 @@ from fastapi.responses import StreamingResponse
 from ...config import logger
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
+from ...sgv.schemas import (
+    ObrasDesactivadasLiteFilter,
+    ObrasRecuperadasLiteFilter,
+)
+from ...sgv.services import (
+    ObrasDesactivadasServiceDependency,
+    ObrasRecuperadasServiceDependency,
+)
 from ...siif.repositories import PlanillometroHistRepositoryDependency
 from ...utils import (
     BaseService,
@@ -46,6 +54,8 @@ class ReportePlanillometroService(
     icaro_service: CargaServiceDependency
     planillometro_hist_repo: PlanillometroHistRepositoryDependency
     repository: ReportePlanillometroRepositoryDependency
+    obras_recuperadas_service: ObrasRecuperadasServiceDependency
+    obras_desactivadas_service: ObrasDesactivadasServiceDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -376,14 +386,31 @@ class ReportePlanillometroService(
         # sgv["cod_barrio"] = sgv["cod_barrio"].astype(int)
         # sgv = sgv.sort_values(by=["ejercicio", "cod_barrio"], ascending=[True, True])
 
+        # 4. Hojas SGV: obras recuperadas y desactivadas hasta el ejercicio
+        #    seleccionado (incluido). El filtro se expresa en query_filter
+        #    porque el campo 'ejercicio' del FullFilter aplica $eq exacto.
+        sgv_query_filter = f"ejercicio<={int(params.ejercicio)}"
+
+        df_obras_recuperadas = (
+            await self.obras_recuperadas_service.build_export_dataframe(
+                params=ObrasRecuperadasLiteFilter(query_filter=sgv_query_filter)
+            )
+        )
+        df_obras_desactivadas = (
+            await self.obras_desactivadas_service.build_export_dataframe(
+                params=ObrasDesactivadasLiteFilter(query_filter=sgv_query_filter)
+            )
+        )
+
         return export_multiple_dataframes_to_excel(
             data_pairs=[
                 (df_planillometro, "bd_planillometro"),
-                # (sgv, "bd_recuperos"),
+                (df_obras_recuperadas, "svg_obras_recuperadas"),
+                (df_obras_desactivadas, "svg_obras_desactivadas"),
             ],
             filename="Reporte Planillometro.xlsx",
             upload_to_google_sheets=True,
-            spreadsheet_key="1Hmb7xmzhZBoicnL5_tN7mr1kOj-r3gw8lCkPErR8Xd4",
+            spreadsheet_key="1MbsMGM-eVIU-ssMbMkZwRPjbQfsbv3nyoL7cHHUNXxQ",
         )
 
     # -------------------------------------------------
@@ -473,7 +500,7 @@ class ReportePlanillometroService(
             ],
             filename="Reporte Planillometro.xlsx",
             upload_to_google_sheets=True,
-            spreadsheet_key="1Hmb7xmzhZBoicnL5_tN7mr1kOj-r3gw8lCkPErR8Xd4",
+            spreadsheet_key="1MbsMGM-eVIU-ssMbMkZwRPjbQfsbv3nyoL7cHHUNXxQ",
         )
 
     # -------------------------------------------------
