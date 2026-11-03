@@ -405,8 +405,8 @@ class ReportePlanillometroService(
         return export_multiple_dataframes_to_excel(
             data_pairs=[
                 (df_planillometro, "bd_planillometro"),
-                (df_obras_recuperadas, "svg_obras_recuperadas"),
-                (df_obras_desactivadas, "svg_obras_desactivadas"),
+                (df_obras_recuperadas, "bd_obras_recuperadas"),
+                (df_obras_desactivadas, "bd_obras_desactivadas"),
             ],
             filename="Reporte Planillometro.xlsx",
             upload_to_google_sheets=True,
