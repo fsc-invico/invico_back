@@ -3,6 +3,7 @@ __all__ = [
     "ControlRecursosDocument",
     "ControlRecursosFullFilter",
     "ControlRecursosLiteFilter",
+    "ControlRecursosGenerateFilter",
 ]
 
 
@@ -41,3 +42,9 @@ class ControlRecursosLiteFilter(CamelModel):
     query_filter: str = ""
     ejercicio: Optional[str] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# Filtro del endpoint /generate: el backend arma el cruce on-demand
+# -------------------------------------------------
+class ControlRecursosGenerateFilter(CamelModel):
+    ejercicio: int
