@@ -8,14 +8,16 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_aporte_empresario import (
-    ControlAporteEmpresarioReport,
+    ControlAporteEmpresarioDocument,
 )
 
 
 # -------------------------------------------------
-class ControlAporteEmpresarioRepository(BaseRepository[ControlAporteEmpresarioReport]):
+class ControlAporteEmpresarioRepository(
+    BaseRepository[ControlAporteEmpresarioDocument]
+):
     collection_name = "control_aporte_empresario"
-    model = ControlAporteEmpresarioReport
+    model = ControlAporteEmpresarioDocument
 
 
 ControlAporteEmpresarioRepositoryDependency = Annotated[
