@@ -249,6 +249,7 @@ class ReportePlanillometroService(
                 )
 
                 # --- 5. Unificación final ---
+                df = df.loc[df["ejercicio"].astype(int) > 2008]
                 df = pd.concat([df, df_acum_2008], ignore_index=True)
                 df = df.drop(columns=["estructura"], errors="ignore")
 
