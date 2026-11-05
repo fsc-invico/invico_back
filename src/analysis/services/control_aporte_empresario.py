@@ -411,16 +411,16 @@ class ControlAporteEmpresarioService(
         data_recursos = await self.get_recursos(params=params)
         data_retenciones_siif = await self.get_retenciones_from_siif(params=params)
         data_retenciones_icaro = await self.get_retenciones_from_icaro(params=params)
-        data_control_siif = await self.generate_siif(params=params)
+        data_control_icaro = await self.generate_icaro(params=params)
 
         # El cruce ICARO (la tabla que ve el usuario en la página) se
         # exporta desde el snapshot persistido en Mongo; si todavía no
         # existe, se calcula on-demand para no dejar la hoja vacía.
         snapshot = await self.repository.find_with_filter_params(params=params)
-        data_control_icaro = (
+        data_control_siif = (
             [doc.model_dump(by_alias=True) for doc in snapshot]
             if snapshot
-            else await self.generate_icaro(params=params)
+            else await self.generate_siif(params=params)
         )
 
         # 3. Transformamos los datos a DataFrames de Pandas
