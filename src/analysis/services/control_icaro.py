@@ -244,7 +244,12 @@ class ControlIcaroService:
         # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
 
         df = pd.merge(siif, icaro, how="outer", on=groupby_cols)
-        df = df.fillna(0)
+        # Solo las columnas de importes se rellenan con 0: los desc_* de
+        # las filas que vienen solo de ICARO quedan en NaN y deben
+        # persistirse como None (Pydantic no admite int en Optional[str]).
+        df[["ejecucion_siif", "ejecucion_icaro"]] = df[
+            ["ejecucion_siif", "ejecucion_icaro"]
+        ].fillna(0)
         df["diferencia"] = df["ejecucion_siif"] - df["ejecucion_icaro"]
 
         df = df.loc[(df["diferencia"] < -0.2) | (df["diferencia"] > 0.2)]
