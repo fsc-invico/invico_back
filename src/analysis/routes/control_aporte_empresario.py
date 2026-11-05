@@ -1,4 +1,4 @@
-from typing import Annotated, List
+from typing import Annotated
 
 from fastapi import Depends
 
@@ -30,7 +30,7 @@ control_aporte_empresario_router = factory.get_router()
 @control_aporte_empresario_router.get(
     "/generateSIIF",
     description="Control Cruzado Aporte Empresario (3% INVICO)",
-    response_model=List[ControlAporteEmpresarioReport],
+    response_model=list[ControlAporteEmpresarioReport],
     response_model_exclude_none=True,
 )
 async def generate_siif(
@@ -46,7 +46,7 @@ async def generate_siif(
 @control_aporte_empresario_router.get(
     "/generateIcaro",
     description="Control Cruzado Aporte Empresario (3% INVICO) SIIF vs ICARO",
-    response_model=List[ControlAporteEmpresarioReport],
+    response_model=list[ControlAporteEmpresarioReport],
     response_model_exclude_none=True,
 )
 async def generate_icaro(

@@ -7,7 +7,7 @@ __all__ = [
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
@@ -24,7 +24,7 @@ class ControlAporteEmpresarioReport(BaseModel):
 
 # -------------------------------------------------
 class ControlAporteEmpresarioDocument(ControlAporteEmpresarioReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
 # -------------------------------------------------
