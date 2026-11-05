@@ -12,6 +12,7 @@ import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
+from ...config import logger
 from ...icaro.schemas import RetencionesFullFilter
 from ...icaro.services import RetencionesServiceDependency
 from ...siif.schemas import Rci02FullFilter, Rcocc31FullFilter
@@ -21,10 +22,15 @@ from ...siif.services import (
 )
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
-    export_multiple_dataframes_to_excel,
+    BaseService,
+    RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
+    sync_validated_to_repository,
+    validate_and_extract_data_from_list,
 )
+from ..repositories import ControlAporteEmpresarioRepositoryDependency
 from ..schemas import (
+    ControlAporteEmpresarioDocument,
     ControlAporteEmpresarioFilter,
     ControlAporteEmpresarioLiteFilter,
     ControlAporteEmpresarioReport,
@@ -33,11 +39,70 @@ from ..schemas import (
 
 @dataclass
 # -------------------------------------------------
-class ControlAporteEmpresarioService:
+class ControlAporteEmpresarioService(
+    BaseService[
+        ControlAporteEmpresarioReport,
+        ControlAporteEmpresarioDocument,
+        ControlAporteEmpresarioFilter,
+        ControlAporteEmpresarioLiteFilter,
+    ]
+):
+    repository: ControlAporteEmpresarioRepositoryDependency
     recursos_service: Rci02ServiceDependency
     retenciones_service: Rcocc31ServiceDependency
     icaro_service: RetencionesServiceDependency
     cta_cte_service: CtasCtesServiceDependency
+
+    def __post_init__(self):
+        # Como usamos @dataclass, el __init__ se genera solo.
+        # Usamos __post_init__ para pasarle los datos a la clase base.
+        super().__init__(
+            repository=self.repository,
+            filter_schema=ControlAporteEmpresarioFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+        )
+
+    # -------------------------------------------------
+    async def add_many(
+        self, data: List[ControlAporteEmpresarioReport]
+    ) -> RouteReturnSchema:
+        """Persiste el cruce (snapshot) con borrado idempotente por ejercicio.
+
+        Es la contraparte del ``GET /generateIcaro``: el frontend计算 el
+        reporte on-demand y luego llama aquí para congelarlo en la
+        colección ``control_aporte_empresario`` (patrón generate -> POST
+        de reporte_planillometro / control_recursos).
+        """
+        try:
+            # 1. Validar usando tu función genérica
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=ControlAporteEmpresarioReport,
+                field_id=[
+                    "ejercicio",
+                    "mes",
+                    "cta_cte",
+                ],  # Clave de la fila del cruce
+            )
+
+            # 2. Determinar filtro de borrado (Idempotencia)
+            # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
+            delete_filter = {}
+            if validation_result.validated:
+                ejercicio_detectado = validation_result.validated[0].ejercicio
+                delete_filter = {"ejercicio": ejercicio_detectado}
+
+            # 3. Sincronizar con el repositorio usando tu función genérica
+            return await sync_validated_to_repository(
+                repository=self.repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización Control Aporte Empresario",
+                label="Control Aporte Empresario",
+                logger=logger,
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
     async def get_recursos(
@@ -347,7 +412,16 @@ class ControlAporteEmpresarioService:
         data_retenciones_siif = await self.get_retenciones_from_siif(params=params)
         data_retenciones_icaro = await self.get_retenciones_from_icaro(params=params)
         data_control_siif = await self.generate_siif(params=params)
-        data_control_icaro = await self.generate_icaro(params=params)
+
+        # El cruce ICARO (la tabla que ve el usuario en la página) se
+        # exporta desde el snapshot persistido en Mongo; si todavía no
+        # existe, se calcula on-demand para no dejar la hoja vacía.
+        snapshot = await self.repository.find_with_filter_params(params=params)
+        data_control_icaro = (
+            [doc.model_dump(by_alias=True) for doc in snapshot]
+            if snapshot
+            else await self.generate_icaro(params=params)
+        )
 
         # 3. Transformamos los datos a DataFrames de Pandas
         df_recursos = pd.DataFrame(data_recursos)
@@ -360,7 +434,7 @@ class ControlAporteEmpresarioService:
 
         df_control_icaro = pd.DataFrame(data_control_icaro)
 
-        return export_multiple_dataframes_to_excel(
+        return self.export_to_excel(
             data_pairs=[
                 (df_recursos, "recursos_siif_db"),
                 (df_retenciones_siif, "retenciones_siif_db"),

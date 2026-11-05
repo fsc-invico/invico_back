@@ -1,16 +1,29 @@
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from ...auth.services import AuthorizationDependency
+from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (
+    ControlAporteEmpresarioDocument,
     ControlAporteEmpresarioFilter,
     ControlAporteEmpresarioLiteFilter,
     ControlAporteEmpresarioReport,
 )
-from ..services import ControlAporteEmpresarioServiceDependency
+from ..services import (
+    ControlAporteEmpresarioService,  # La clase del servicio
+    ControlAporteEmpresarioServiceDependency,
+)
 
-control_aporte_empresario_router = APIRouter(prefix="/controlAporteEmpresario")
+factory = GenericRouterFactory(
+    service_dependency=ControlAporteEmpresarioService,
+    report_schema=ControlAporteEmpresarioDocument,
+    full_filter_schema=ControlAporteEmpresarioFilter,  # Usa limit/offset
+    lite_filter_schema=ControlAporteEmpresarioLiteFilter,  # No usa limit/offset
+    prefix="/controlAporteEmpresario",
+)
+
+control_aporte_empresario_router = factory.get_router()
 
 
 # -------------------------------------------------
@@ -91,17 +104,3 @@ async def get_retenciones_from_icaro(
 ):
     security.is_admin_or_user_or_raise()
     return await service.get_retenciones_from_icaro(params=params)
-
-
-# -------------------------------------------------
-@control_aporte_empresario_router.get(
-    "/export",
-    name="Reportes exportables para Formulación Presupuestaria - Google Sheets and Excel",
-)
-async def export(
-    params: Annotated[ControlAporteEmpresarioLiteFilter, Depends()],
-    service: ControlAporteEmpresarioServiceDependency,
-    security: AuthorizationDependency,
-):
-    security.is_admin_or_user_or_raise()
-    return await service.export(params)
