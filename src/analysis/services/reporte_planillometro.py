@@ -382,11 +382,6 @@ class ReportePlanillometroService(
             }
         )
 
-        # sgv = await get_sgv_saldos_barrios_evolucion()
-        # sgv["ejercicio"] = sgv["ejercicio"].astype(str)
-        # sgv["cod_barrio"] = sgv["cod_barrio"].astype(int)
-        # sgv = sgv.sort_values(by=["ejercicio", "cod_barrio"], ascending=[True, True])
-
         # 4. Hojas SGV: obras recuperadas y desactivadas hasta el ejercicio
         #    seleccionado (incluido). El filtro se expresa en query_filter
         #    porque el campo 'ejercicio' del FullFilter aplica $eq exacto.
@@ -401,6 +396,41 @@ class ReportePlanillometroService(
             await self.obras_desactivadas_service.build_export_dataframe(
                 params=ObrasDesactivadasLiteFilter(query_filter=sgv_query_filter)
             )
+        )
+
+        # 5. Agregamos los campos Recupero Actual, Recupero Acum., Otros Motivos Actual, Otros Motivos Acum. y Saldo
+        df_planillometro["Recupero Actual"] = df_planillometro.merge(
+            df_obras_recuperadas.loc[
+                df_obras_recuperadas["ejercicio"] == int(params.ejercicio)
+            ]
+            .groupby("estructura")["importe"]
+            .sum()
+            .reset_index(),
+            on="estructura",
+            how="left",
+        )["importe"]
+        df_planillometro["Recupero Acum."] = df_planillometro.merge(
+            df_obras_recuperadas.groupby("estructura")["importe"].sum().reset_index(),
+            on="estructura",
+            how="left",
+        )["importe"]
+        df_planillometro["Otros Motivos Actual"] = df_planillometro.merge(
+            df_obras_desactivadas.loc[
+                df_obras_desactivadas["ejercicio"] == int(params.ejercicio)
+            ]
+            .groupby("estructura")["importe"]
+            .sum()
+            .reset_index(),
+            on="estructura",
+            how="left",
+        )["importe"]
+        df_planillometro["Otros Motivos Acum."] = df_planillometro.merge(
+            df_obras_desactivadas.groupby("estructura")["importe"].sum().reset_index(),
+            on="estructura",
+            how="left",
+        )["importe"]
+        df_planillometro["Saldo"] = (
+            df_planillometro["Recupero Acum."] - df_planillometro["Otros Motivos Acum."]
         )
 
         return export_multiple_dataframes_to_excel(
