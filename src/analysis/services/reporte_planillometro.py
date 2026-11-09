@@ -41,6 +41,123 @@ from ..schemas import (
 )
 
 
+# Descripciones que deben ser idénticas para todas las filas de una misma
+# estructura presupuestaria (actividad + '-' + partida).
+DESC_ESTRUCTURA_COLS: List[str] = [
+    "desc_programa",
+    "desc_subprograma",
+    "desc_proyecto",
+    "desc_actividad",
+]
+
+
+# -------------------------------------------------
+def _build_estructura(df: pd.DataFrame) -> pd.Series:
+    """Devuelve la clave de estructura normalizada del DataFrame.
+
+    Usa la columna ``estructura`` (sin espacios) si existe; si falta o está
+    vacía, la reconstruye desde ``actividad`` + ``-`` + ``partida``.
+    """
+    fuentes: List[pd.Series] = []
+
+    if "estructura" in df.columns:
+        propia = df["estructura"].astype("string").str.strip()
+        propia = propia.where(propia.notna() & (propia != ""), other=pd.NA)
+        fuentes.append(propia)
+
+    if "actividad" in df.columns and "partida" in df.columns:
+        fuentes.append(
+            df["actividad"].astype("string").str.strip()
+            + "-"
+            + df["partida"].astype("string").str.strip()
+        )
+
+    if not fuentes:
+        raise ValueError(
+            "No se puede construir la estructura: faltan las columnas "
+            "'estructura' y 'actividad' + 'partida'."
+        )
+
+    estructura = fuentes[0]
+    for siguiente in fuentes[1:]:
+        estructura = estructura.fillna(siguiente)
+    return estructura
+
+
+# -------------------------------------------------
+def _homogenize_acum_2008(
+    df: pd.DataFrame,
+    df_acum_2008: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Homogeneiza el acumulado histórico (Patricia) con las descripciones de icaro.
+
+    Usa la estructura completa (actividad + '-' + partida) como clave unívoca,
+    a diferencia del parseo parcial por códigos que confundía las variantes
+    421/422 de una misma actividad. También normaliza las filas de icaro entre
+    sí (defensa ante snapshots distintos de rf610 con ``include_pa6``) y
+    devuelve ambos DataFrames listos para concatenerar.
+    """
+    # 1. Clave de estructura en ambos DataFrames (normalizada)
+    df["estructura"] = _build_estructura(df)
+    df_acum_2008["estructura"] = _build_estructura(df_acum_2008)
+
+    # 2. Tabla canónica de descripciones tomada de icaro (1 fila por estructura)
+    desc_cols = [col for col in DESC_ESTRUCTURA_COLS if col in df.columns]
+    canonicas = (
+        df[["estructura"] + desc_cols]
+        .drop_duplicates(subset=["estructura"], keep="first")
+        .set_index("estructura")
+    )
+
+    # 2a. Avisar si icaro trae descripciones en conflicto para una estructura
+    for col in desc_cols:
+        conflictos = (
+            df.dropna(subset=[col]).groupby("estructura", sort=False)[col].nunique()
+        )
+        if int((conflictos > 1).sum()) > 0:
+            logger.warning(
+                f"generate(): icaro tiene descripciones en conflicto para "
+                f"'{col}'; se usa la primera por estructura."
+            )
+
+    # 3. Homogeneizar el histórico: prioriza icaro, conserva la propia si no hay match
+    for col in desc_cols:
+        if col in df_acum_2008.columns:
+            df_acum_2008[col] = (
+                df_acum_2008["estructura"].map(canonicas[col]).fillna(df_acum_2008[col])
+            )
+
+    # 3a. Avisar de estructuras del histórico sin datos en icaro
+    sin_icaro = sorted(
+        set(
+            df_acum_2008.loc[
+                ~df_acum_2008["estructura"].isin(canonicas.index), "estructura"
+            ].dropna()
+        )
+    )
+    if sin_icaro:
+        muestra = ", ".join(sin_icaro[:10])
+        logger.warning(
+            f"generate(): {len(sin_icaro)} estructura(s) del planillómetro "
+            f"histórico sin datos en icaro; conservan sus propias "
+            f"descripciones: {muestra}"
+        )
+
+    # 4. Normalizar también las filas de icaro entre sí
+    for col in desc_cols:
+        df[col] = df["estructura"].map(canonicas[col]).fillna(df[col])
+
+    # 5. Preparar las filas del acumulado histórico
+    df_acum_2008["ejercicio"] = 2008
+    df_acum_2008["avance"] = 1
+    if "desc_actividad" in df_acum_2008.columns:
+        df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
+    if "acum_2008" in df_acum_2008.columns:
+        df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
+
+    return df, df_acum_2008
+
+
 @dataclass
 # -------------------------------------------------
 class ReportePlanillometroService(
@@ -132,123 +249,18 @@ class ReportePlanillometroService(
         if params.agregar_acum_2008:
             df_acum_2008 = pd.DataFrame(await self.planillometro_hist_repo.get_all())
             if not df_acum_2008.empty:
-                df["estructura"] = df["actividad"] + "-" + df["partida"]
-                df_acum_2008["ejercicio"] = 2008
-                df_acum_2008["avance"] = 1
-                df_acum_2008["desc_obra"] = df_acum_2008["desc_actividad"]
-                df_acum_2008 = df_acum_2008.rename(columns={"acum_2008": "importe"})
-
-                # --- 1. Extraer los códigos de la estructura en ambos DataFrames ---
-                for dataframe in [df, df_acum_2008]:
-                    if "estructura" in dataframe.columns:
-                        partes = dataframe["estructura"].str.split("-", expand=True)
-                        dataframe["cod_programa"] = partes[0]
-                        dataframe["cod_subprograma"] = partes[1]
-                        dataframe["cod_proyecto"] = partes[2]
-                        dataframe["cod_actividad"] = partes[3]
-
-                # --- 2. Crear Mappings de Descripciones de "df" por Código ---
-                map_prog = (
-                    df[["cod_programa", "desc_programa"]]
-                    .dropna()
-                    .drop_duplicates(subset=["cod_programa"])
-                    .set_index("cod_programa")["desc_programa"]
+                # Homogeneizamos las descripciones del histórico (Patricia) con
+                # las de icaro usando la estructura completa (actividad-partida)
+                # como clave unívoca. La tabla canónica se arma ANTES de filtrar
+                # >2008 para alinear también las estructuras cuyo dato icaro
+                # llega solo hasta 2008.
+                df, df_acum_2008 = _homogenize_acum_2008(
+                    df=df,
+                    df_acum_2008=df_acum_2008,
                 )
 
-                map_proy = (
-                    df[["cod_programa", "cod_proyecto", "desc_proyecto"]]
-                    .dropna()
-                    .drop_duplicates(subset=["cod_programa", "cod_proyecto"])
-                    .set_index(["cod_programa", "cod_proyecto"])["desc_proyecto"]
-                )
-
-                map_act = (
-                    df[
-                        [
-                            "cod_programa",
-                            "cod_proyecto",
-                            "cod_actividad",
-                            "desc_actividad",
-                        ]
-                    ]
-                    .dropna()
-                    .drop_duplicates(
-                        subset=["cod_programa", "cod_proyecto", "cod_actividad"]
-                    )
-                    .set_index(["cod_programa", "cod_proyecto", "cod_actividad"])[
-                        "desc_actividad"
-                    ]
-                )
-
-                if params.desagregar_desc_subprog:
-                    map_subprog = (
-                        df[["cod_programa", "cod_subprograma", "desc_subprograma"]]
-                        .dropna()
-                        .drop_duplicates(subset=["cod_programa", "cod_subprograma"])
-                        .set_index(["cod_programa", "cod_subprograma"])[
-                            "desc_subprograma"
-                        ]
-                    )
-
-                # --- 3. Homogeneizar df_acum_2008 usando los Mappings de df ---
-
-                # A. Programa (Clave simple)
-                df_acum_2008["desc_programa"] = (
-                    df_acum_2008["cod_programa"]
-                    .map(map_prog)
-                    .fillna(df_acum_2008["desc_programa"])
-                )
-
-                # B. Proyecto (Clave Compuesta: Tupla de Pandas)
-                idx_proy = list(
-                    zip(df_acum_2008["cod_programa"], df_acum_2008["cod_proyecto"])
-                )
-                df_acum_2008["desc_proyecto"] = (
-                    pd.Series(idx_proy, index=df_acum_2008.index)
-                    .map(map_proy)
-                    .fillna(df_acum_2008["desc_proyecto"])
-                )
-
-                # C. Actividad (Clave Compuesta: Tupla de Pandas)
-                idx_act = list(
-                    zip(
-                        df_acum_2008["cod_programa"],
-                        df_acum_2008["cod_proyecto"],
-                        df_acum_2008["cod_actividad"],
-                    )
-                )
-                df_acum_2008["desc_actividad"] = (
-                    pd.Series(idx_act, index=df_acum_2008.index)
-                    .map(map_act)
-                    .fillna(df_acum_2008["desc_actividad"])
-                )
-
-                # D. Subprograma (Opcional)
-                if (
-                    params.desagregar_desc_subprog
-                    and "desc_subprograma" in df_acum_2008.columns
-                ):
-                    idx_sub = list(
-                        zip(
-                            df_acum_2008["cod_programa"],
-                            df_acum_2008["cod_subprograma"],
-                        )
-                    )
-                    df_acum_2008["desc_subprograma"] = (
-                        pd.Series(idx_sub, index=df_acum_2008.index)
-                        .map(map_subprog)
-                        .fillna(df_acum_2008["desc_subprograma"])
-                    )
-
-                # --- 4. Limpieza de columnas temporales ---
-                cols_aux = [c for c in df_acum_2008.columns if c.startswith("cod_")]
-                df_acum_2008 = df_acum_2008.drop(columns=cols_aux, errors="ignore")
-                df = df.drop(
-                    columns=[c for c in df.columns if c.startswith("cod_")],
-                    errors="ignore",
-                )
-
-                # --- 5. Unificación final ---
+                # --- Unificación final ---
+                # El acumulado histórico reemplaza a la ejecución de icaro <= 2008
                 df = df.loc[df["ejercicio"].astype(int) > 2008]
                 df = pd.concat([df, df_acum_2008], ignore_index=True)
                 df = df.drop(columns=["estructura"], errors="ignore")
