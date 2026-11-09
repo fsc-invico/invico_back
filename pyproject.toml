@@ -1,6 +1,6 @@
 [project]
 name = "invico-back"
-version = "2.6.0"
+version = "2.6.1"
 description = ""
 authors = [
     {name = "Fernando Corrales",email = "fscpython@gmail.com"}
@@ -24,6 +24,9 @@ dependencies = [
 [tool.poetry]
 package-mode = false
 
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.17.4"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
