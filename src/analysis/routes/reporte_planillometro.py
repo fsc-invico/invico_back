@@ -1,6 +1,6 @@
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
