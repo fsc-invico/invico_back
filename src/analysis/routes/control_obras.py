@@ -1,25 +1,30 @@
-from typing import Annotated
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from ...auth.services import AuthorizationDependency
+from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
+    ControlObrasDocument,
     ControlObrasFullFilter,
+    ControlObrasGenerateFilter,
     ControlObrasLiteFilter,
+    ControlObrasReport,
 )
-from ..services import ControlObrasServiceDependency
+from ..services import (
+    ControlObrasService,
+    ControlObrasServiceDependency,
+)
 
-# factory = GenericRouterFactory(
-#     service_dependency=ControlObrasService,
-#     report_schema=ControlObrasDocument,
-#     full_filter_schema=ControlObrasFullFilter,  # Usa limit/offset
-#     lite_filter_schema=ControlObrasLiteFilter,  # No usa limit/offset
-#     prefix="/controlObras",
-# )
+factory = GenericRouterFactory(
+    service_dependency=ControlObrasService,
+    report_schema=ControlObrasDocument,
+    full_filter_schema=ControlObrasFullFilter,  # Usa limit/offset
+    lite_filter_schema=ControlObrasLiteFilter,  # No usa limit/offset
+    prefix="/controlObras",
+)
 
-# control_obras_router = factory.get_router()
-
-control_obras_router = APIRouter(prefix="/controlObras")
+control_obras_router = factory.get_router()
 
 
 # -------------------------------------------------
@@ -72,13 +77,18 @@ async def compute(
 
 # -------------------------------------------------
 @control_obras_router.get(
-    "/export",
-    name="Reportes exportables para Control Obras - Google Sheets and Excel",
+    "/generate",
+    description=(
+        "Cruce ICARO vs SGF Resumen de Rendiciones calculado on-demand "
+        "por el backend (sin persistir; el snapshot lo congela el POST)"
+    ),
+    response_model=List[ControlObrasReport],
+    response_model_exclude_none=True,
 )
-async def export(
-    params: Annotated[ControlObrasLiteFilter, Depends()],
+async def generate(
+    params: Annotated[ControlObrasGenerateFilter, Depends()],
     service: ControlObrasServiceDependency,
     security: AuthorizationDependency,
 ):
     security.is_admin_or_user_or_raise()
-    return await service.export(params)
+    return await service.generate(params=params)

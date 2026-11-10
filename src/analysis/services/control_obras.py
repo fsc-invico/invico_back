@@ -4,56 +4,178 @@ __all__ = ["ControlObrasService", "ControlObrasServiceDependency"]
 from dataclasses import dataclass
 
 # from io import BytesIO
-from typing import Annotated
+from typing import Annotated, List
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 # from pydantic import ValidationError
+from ...config import logger
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
 from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
-    export_multiple_dataframes_to_excel,
+    BaseService,
+    RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
+    sync_validated_to_repository,
+    validate_and_extract_data_from_list,
 )
+from ..repositories import ControlObrasRepositoryDependency
 from ..schemas import (
+    ControlObrasDocument,
     ControlObrasFullFilter,
+    ControlObrasGenerateFilter,
     ControlObrasLiteFilter,
+    ControlObrasReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
-class ControlObrasService:
+class ControlObrasService(
+    BaseService[
+        ControlObrasReport,
+        ControlObrasDocument,
+        ControlObrasFullFilter,
+        ControlObrasLiteFilter,
+    ]
+):
+    repository: ControlObrasRepositoryDependency
     resumen_rend_service: ResumenRendProvServiceDependency
     icaro_service: CargaServiceDependency
     cta_cte_service: CtasCtesServiceDependency
 
+    def __post_init__(self):
+        # Como usamos @dataclass, el __init__ se genera solo.
+        # Usamos __post_init__ para pasarle los datos a la clase base.
+        super().__init__(
+            repository=self.repository,
+            filter_schema=ControlObrasFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+        )
+
+    # -------------------------------------------------
+    async def add_many(self, data: List[ControlObrasReport]) -> RouteReturnSchema:
+        """Persiste el cruce (snapshot) con borrado idempotente por ejercicio.
+
+        Es la contraparte del ``GET /generate``: el frontend arma el
+        cruce on-demand y luego llama aquí para congelarlo en la colección
+        ``control_obras`` (patrón generate -> POST de control_recursos /
+        control_aporte_empresario).
+        """
+        try:
+            # 1. Validar usando tu función genérica
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=ControlObrasReport,
+                field_id=[
+                    "ejercicio",
+                    "mes",
+                    "cta_cte",
+                    "cuit",
+                ],  # Clave de la fila del cruce
+            )
+
+            # 🔥 CONTROL CRÍTICO: Si no hay registros válidos, lanzamos un 400 Bad Request.
+            # (Asumo que validation_result.validated es una lista vacía o None cuando falla todo)
+            if not validation_result.validated:
+                # Si validation_result tiene una lista de errores detallados, los exponemos al frontend
+                detail_msg = "No se encontraron registros válidos para procesar."
+                if hasattr(validation_result, "errors") and validation_result.errors:
+                    # Formateamos los primeros errores para no saturar el log pero dar contexto claro
+                    detail_msg += f" Errores detectados: {validation_result.errors[:2]}"
+
+                raise HTTPException(status_code=400, detail=detail_msg)
+
+            # 2. Determinar filtro de borrado (Idempotencia)
+            # A esta altura ya es 100% seguro que al menos hay un registro válido en el índice [0]
+            ejercicio_detectado = validation_result.validated[0].ejercicio
+            delete_filter = {"ejercicio": ejercicio_detectado}
+
+            # 3. Sincronizar con el repositorio usando tu función genérica
+            return await sync_validated_to_repository(
+                repository=self.repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización Control Obras",
+                label="Control Obras",
+                logger=logger,  # Asegúrate de tener el logger importado
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
+
+    # -------------------------------------------------
+    async def generate(
+        self,
+        params: ControlObrasGenerateFilter,
+    ) -> List[ControlObrasReport]:
+        """Cruce ICARO vs SGF calculado en el backend (on-demand).
+
+        Replica el cómputo que la página ejecutaba en ``GET /compute``:
+        suma de ICARO neto de rdeu012 y del bruto del SGF por
+        ``[ejercicio, mes, cta_cte, cuit]`` y ``merge outer`` con la
+        diferencia entre ambos.
+
+        Lee las colecciones crudas directamente de MongoDB sin
+        descargarlas al cliente. El resultado es una vista on-demand: el
+        snapshot en la colección ``control_obras`` lo congela el frontend
+        con el ``POST`` posterior (patrón generate -> POST de
+        control_recursos).
+
+        Args:
+            params: Filtro con el ``ejercicio`` a recalcular.
+
+        Returns:
+            Lista de filas del cruce validadas como
+            ``ControlObrasReport``.
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        compute_params = ControlObrasFullFilter(
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+        return await self.compute_control_obras(params=compute_params)
+
     # -------------------------------------------------
     async def export(self, params: ControlObrasLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
-        params = ControlObrasFullFilter(
+        search_params = ControlObrasFullFilter(
+            query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
 
         # 2. Traemos los datos sin paginar
-        data_sgf = await self.get_sgf_resumend_rend(params=params)
-        data_icaro = await self.get_icaro_carga_neto_rdeu(params=params)
-        data_ctrl_obras = await self.compute_control_obras(
-            params=params, sgf=data_sgf, icaro=data_icaro
+        data_sgf = await self.get_sgf_resumend_rend(params=search_params)
+        data_icaro = await self.get_icaro_carga_neto_rdeu(params=search_params)
+
+        # El cruce (la tabla que ve el usuario en la página) se exporta
+        # desde el snapshot persistido en Mongo; si todavía no existe, se
+        # calcula on-demand para no dejar la hoja vacía.
+        snapshot = await self.repository.find_with_filter_params(params=search_params)
+        data_ctrl_obras = (
+            [doc.model_dump(by_alias=True) for doc in snapshot]
+            if snapshot
+            else await self.compute_control_obras(
+                params=search_params, sgf=data_sgf, icaro=data_icaro
+            )
         )
 
         # 3. Usar el método de la clase base
         df_ctrl_obras = pd.DataFrame(data_ctrl_obras)
         df_sgf = pd.DataFrame(data_sgf)
         df_icaro = pd.DataFrame(data_icaro)
-        return export_multiple_dataframes_to_excel(
+        return self.export_to_excel(
             data_pairs=[
                 (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
                 (df_sgf, "resumen_rend_cuit"),

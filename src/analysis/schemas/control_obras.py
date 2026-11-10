@@ -5,13 +5,14 @@ __all__ = [
     "ControlObrasDocument",
     "ControlObrasFullFilter",
     "ControlObrasLiteFilter",
+    "ControlObrasGenerateFilter",
 ]
 
 import os
 from datetime import date
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_mongo import PydanticObjectId
 
 from ...sgf.schemas.common import Origen
@@ -66,15 +67,24 @@ class ControlObrasReport(BaseModel):
 
 # -------------------------------------------------
 class ControlObrasDocument(ControlObrasReport):
-    id: PydanticObjectId = Field(alias="_id")
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
 
 
+# Este se usa para el Get All / Delete (Con limit/offset)
 # -------------------------------------------------
 class ControlObrasFullFilter(BaseFilterParams):
-    ejercicio: int
+    ejercicio: Optional[int] = None
 
 
+# Este se usa para el Excel y Borrar (Sin limit/offset)
 # -------------------------------------------------
 class ControlObrasLiteFilter(CamelModel):
-    ejercicio: int
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
     # Aquí podrías añadir: incluir_detalles: bool = False
+
+
+# Filtro del endpoint /generate: el backend arma el cruce on-demand
+# -------------------------------------------------
+class ControlObrasGenerateFilter(CamelModel):
+    ejercicio: int
