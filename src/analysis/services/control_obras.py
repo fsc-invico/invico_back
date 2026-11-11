@@ -34,6 +34,20 @@ from ..schemas import (
     ControlObrasReport,
 )
 
+# Orden de cabecera común a las hojas de SGF e ICARO del export: coloca
+# primero los campos compartidos (claves del cruce) para facilitar la
+# comparación fila a fila entre ambas tablas en el Excel. Solo se aplican
+# las columnas que existan en cada DataFrame.
+EXPORT_LEADING_COLUMNS: list[str] = [
+    "ejercicio",
+    "mes",
+    "fecha",
+    "cta_cte",
+    "cuit",
+    "beneficiario",
+    "importe_bruto",
+]
+
 
 @dataclass
 # -------------------------------------------------
@@ -147,6 +161,41 @@ class ControlObrasService(
         return await self.compute_control_obras(params=compute_params)
 
     # -------------------------------------------------
+    def _align_export_columns(
+        self,
+        df: pd.DataFrame,
+        renames: dict[str, str] | None = None,
+    ) -> pd.DataFrame:
+        """Reordena las columnas del DataFrame para el export.
+
+        Coloca primero los campos compartidos definidos en
+        ``EXPORT_LEADING_COLUMNS`` (solo los que existan en el
+        DataFrame) y deja el resto de columnas en su orden original,
+        de modo que las hojas de SGF e ICARO tengan una estructura
+        similar y se puedan comparar.
+
+        Args:
+            df: DataFrame a reordenar.
+            renames: Renombrados previos a aplicar (p.ej.
+                ``{"importe": "importe_bruto"}`` en ICARO).
+
+        Returns:
+            Copia del DataFrame con las columnas reordenadas.
+        """
+        if df.empty:
+            return df
+
+        if renames:
+            df = df.rename(columns=renames)
+
+        leading = [
+            column for column in EXPORT_LEADING_COLUMNS if column in df.columns
+        ]
+        remaining = [column for column in df.columns if column not in leading]
+
+        return df.loc[:, leading + remaining]
+
+    # -------------------------------------------------
     async def export(self, params: ControlObrasLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
         search_params = ControlObrasFullFilter(
@@ -171,10 +220,16 @@ class ControlObrasService(
             )
         )
 
-        # 3. Usar el método de la clase base
+        # 3. Usar el método de la clase base. Alineamos las columnas de
+        # SGF e ICARO para que ambas hojas compartan la misma cabecera
+        # inicial y sea fácil compararlas (en ICARO el importe se llama
+        # 'importe': el renombrado es solo para el export, ya que
+        # 'compute_control_obras' sigue consumiendo 'importe').
         df_ctrl_obras = pd.DataFrame(data_ctrl_obras)
-        df_sgf = pd.DataFrame(data_sgf)
-        df_icaro = pd.DataFrame(data_icaro)
+        df_sgf = self._align_export_columns(pd.DataFrame(data_sgf))
+        df_icaro = self._align_export_columns(
+            pd.DataFrame(data_icaro), renames={"importe": "importe_bruto"}
+        )
         return self.export_to_excel(
             data_pairs=[
                 (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
@@ -299,78 +354,6 @@ class ControlObrasService(
         df = sanitize_dataframe_for_json_with_datetime(df)
 
         return df.replace({np.nan: None}).to_dict(orient="records")
-
-    # # -------------------------------------------------
-    # async def compute_control_obras_old(
-    #     self, ejercicios: List[int]
-    # ) -> List[RouteReturnSchema]:
-    #     results: List[RouteReturnSchema] = []
-    #     group_by = ["ejercicio", "mes", "cta_cte", "cuit"]
-
-    #     if isinstance(ejercicios, int):
-    #         ejercicios = [ejercicios]
-
-    #     for ejercicio in ejercicios:
-    #         # 2. Reutilizamos las funciones del Back sin salir a internet (Velocidad local de servidor)
-    #         resumen_rend_params = ResumenRendProvFullFilter(
-    #             query_filter="",
-    #             ejercicio=str(ejercicio),
-    #             limit=None,  # Para traer todo
-    #             origen=None,
-    #         )
-    #         icaro_params = CargaFullFilter(
-    #             query_filter="",
-    #             ejercicio=str(ejercicio),
-    #             limit=None,
-    #         )
-
-    #         # Llamadas asincrónicas nativas cruzando lógica
-    #         data_icaro = await self.icaro_service.carga_neto_rdeu(params=icaro_params)
-    #         data_sgf = await self.resumen_rend_service.unique_obras(
-    #             params=resumen_rend_params
-    #         )  # O unique_obras según tu lógica
-
-    #         # 3. Procesamiento en memoria ultra veloz con Pandas en el Back
-    #         icaro = pd.DataFrame(data_icaro)
-    #         if not icaro.empty:
-    #             icaro = icaro.loc[:, group_by + ["importe"]]
-    #             icaro = icaro.groupby(group_by)["importe"].sum().reset_index()
-    #             icaro = icaro.rename(columns={"importe": "ejecutado_icaro"})
-    #         else:
-    #             icaro = pd.DataFrame(columns=group_by + ["ejecutado_icaro"])
-
-    #         sgf = pd.DataFrame(data_sgf)
-    #         if not sgf.empty:
-    #             sgf = sgf.loc[:, group_by + ["importe_bruto"]]
-    #             sgf = sgf.groupby(group_by)["importe_bruto"].sum().reset_index()
-    #             sgf = sgf.rename(columns={"importe_bruto": "bruto_sgf"})
-    #         else:
-    #             sgf = pd.DataFrame(columns=group_by + ["bruto_sgf"])
-
-    #         # 4. El Cruce de Datos
-    #         df = pd.merge(icaro, sgf, how="outer", on=group_by)
-    #         df[["ejecutado_icaro", "bruto_sgf"]] = df[
-    #             ["ejecutado_icaro", "bruto_sgf"]
-    #         ].fillna(0)
-    #         df["diferencia"] = df["ejecutado_icaro"] - df["bruto_sgf"]
-
-    #         # Sanitizamos antes de guardar/retornar
-    #         df = sanitize_dataframe_for_json_with_datetime(df)
-    #         json_data = df.to_dict(orient="records")
-
-    #         # 5. Guardamos directamente en la base de datos desde acá
-    #         if json_data:
-    #             # Mapeamos cada fila del diccionario al esquema que espera el método
-    #             lista_modelos = [ControlObrasReport(**fila) for fila in json_data]
-
-    #             # Llamamos al método del propio servicio con toda su lógica e idempotencia
-    #             response = await self.add_many(data=lista_modelos)
-
-    #             results.append(response)
-    #         else:
-    #             results.append(f"Ejercicio {ejercicio}: Sin datos para procesar")
-
-    #     return results
 
 
 ControlObrasServiceDependency = Annotated[ControlObrasService, Depends()]
