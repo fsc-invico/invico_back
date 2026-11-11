@@ -4,13 +4,14 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, List
 
 import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
+from ...config import logger
 from ...siif.schemas import GtoRpa03gFullFilter, Rcocc31FullFilter, Rdeu012FullFilter
 from ...siif.services import (
     GtoRpa03gServiceDependency,
@@ -20,23 +21,122 @@ from ...siif.services import (
 from ...sscc.schemas import BancoINVICOFullFilter
 from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
-    export_multiple_dataframes_to_excel,
+    BaseService,
+    RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
+    sync_validated_to_repository,
+    validate_and_extract_data_from_list,
 )
+from ..repositories import ControlHaberesRepositoryDependency
 from ..schemas import (
+    ControlHaberesDocument,
     ControlHaberesFullFilter,
+    ControlHaberesGenerateFilter,
     ControlHaberesLiteFilter,
+    ControlHaberesReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
-class ControlHaberesService:
+class ControlHaberesService(
+    BaseService[
+        ControlHaberesReport,
+        ControlHaberesDocument,
+        ControlHaberesFullFilter,
+        ControlHaberesLiteFilter,
+    ]
+):
+    repository: ControlHaberesRepositoryDependency
     gastos_service: GtoRpa03gServiceDependency
     rdeu_service: Rdeu012ServiceDependency
     contabilidad_service: Rcocc31ServiceDependency
     cta_cte_service: CtasCtesServiceDependency
     banco_service: BancoINVICOServiceDependency
+
+    def __post_init__(self):
+        # Como usamos @dataclass, el __init__ se genera solo.
+        # Usamos __post_init__ para pasarle los datos a la clase base.
+        super().__init__(
+            repository=self.repository,
+            filter_schema=ControlHaberesFullFilter,  # <--- LE DECIMOS QUIÉN ES 'F'
+        )
+
+    # -------------------------------------------------
+    async def add_many(self, data: List[ControlHaberesReport]) -> RouteReturnSchema:
+        """Persiste el cruce (snapshot) con borrado idempotente por ejercicio.
+
+        Es la contraparte del ``GET /generate``: el frontend arma el
+        cruce on-demand y luego llama aquí para congelarlo en la colección
+        ``control_haberes`` (patrón generate -> POST de control_recursos /
+        control_obras).
+        """
+        try:
+            # 1. Validar usando tu función genérica
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=ControlHaberesReport,
+                field_id=[
+                    "ejercicio",
+                    "mes",
+                ],  # Clave de la fila del cruce mensual
+            )
+
+            # 2. Determinar filtro de borrado (Idempotencia)
+            # Si hay registros válidos, extraemos el ejercicio para limpiar antes de insertar
+            delete_filter = {}
+            if validation_result.validated:
+                ejercicio_detectado = validation_result.validated[0].ejercicio
+                delete_filter = {"ejercicio": ejercicio_detectado}
+
+            # 3. Sincronizar con el repositorio usando tu función genérica
+            return await sync_validated_to_repository(
+                repository=self.repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización Control Haberes",
+                label="Control Haberes",
+                logger=logger,  # Asegúrate de tener el logger importado
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
+
+    # -------------------------------------------------
+    async def generate(
+        self,
+        params: ControlHaberesGenerateFilter,
+    ) -> List[ControlHaberesReport]:
+        """Cruce mensual Haberes SIIF vs Banco INVICO (on-demand).
+
+        Replica el cómputo que la página ejecutaba en ``GET /compute``:
+        suma del ejecutado SIIF y del pagado en SSCC por
+        ``[ejercicio, mes]``, la diferencia y su acumulado.
+
+        Lee las colecciones crudas directamente de MongoDB sin
+        descargarlas al cliente. El resultado es una vista on-demand: el
+        snapshot en la colección ``control_haberes`` lo congela el
+        frontend con el ``POST`` posterior (patrón generate -> POST de
+        control_recursos).
+
+        Args:
+            params: Filtro con el ``ejercicio`` a recalcular.
+
+        Returns:
+            Lista de filas del cruce validadas como
+            ``ControlHaberesReport``.
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        compute_params = ControlHaberesFullFilter(
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+        return await self.compute_control_haberes(params=compute_params)
 
     # -------------------------------------------------
     async def get_siif_comprobantes_haberes_neto_rdeu(
@@ -312,19 +412,25 @@ class ControlHaberesService:
         if not siif:
             siif = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
         siif = pd.DataFrame(siif)
-        siif = siif.loc[:, groupby_cols + ["importe"]]
-        siif = siif.groupby(groupby_cols)["importe"].sum()
-        siif = siif.reset_index()
-        siif = siif.rename(columns={"importe": "ejecutado_siif"})
+        if not siif.empty:
+            siif = siif.loc[:, groupby_cols + ["importe"]]
+            siif = siif.groupby(groupby_cols)["importe"].sum()
+            siif = siif.reset_index()
+            siif = siif.rename(columns={"importe": "ejecutado_siif"})
+        else:
+            siif = pd.DataFrame(columns=groupby_cols + ["ejecutado_siif"])
         # print(f"siif.shape: {siif.shape} - siif.head: {siif.head()}")
 
         if not sscc:
             sscc = await self.get_banco_invico(params=params)
         sscc = pd.DataFrame(sscc)
-        sscc = sscc.loc[:, groupby_cols + ["importe"]]
-        sscc = sscc.groupby(groupby_cols)["importe"].sum()
-        sscc = sscc.reset_index()
-        sscc = sscc.rename(columns={"importe": "pagado_sscc"})
+        if not sscc.empty:
+            sscc = sscc.loc[:, groupby_cols + ["importe"]]
+            sscc = sscc.groupby(groupby_cols)["importe"].sum()
+            sscc = sscc.reset_index()
+            sscc = sscc.rename(columns={"importe": "pagado_sscc"})
+        else:
+            sscc = pd.DataFrame(columns=groupby_cols + ["pagado_sscc"])
         # print(f"sscc.shape: {sscc.shape} - sscc.head: {sscc.head()}")
 
         df = pd.merge(siif, sscc, how="outer", on=groupby_cols, copy=False)
@@ -345,16 +451,28 @@ class ControlHaberesService:
     async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
-        params = ControlHaberesFullFilter(
+        search_params = ControlHaberesFullFilter(
+            query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
 
         # 2. Traemos los datos sin paginar
-        data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(params=params)
-        data_sscc = await self.get_banco_invico(params=params)
-        data_control = await self.compute_control_haberes(
-            params=params, siif=data_siif, sscc=data_sscc
+        data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(
+            params=search_params
+        )
+        data_sscc = await self.get_banco_invico(params=search_params)
+
+        # El cruce (la tabla que ve el usuario en la página) se exporta
+        # desde el snapshot persistido en Mongo; si todavía no existe, se
+        # calcula on-demand para no dejar la hoja vacía.
+        snapshot = await self.repository.find_with_filter_params(params=search_params)
+        data_control = (
+            [doc.model_dump(by_alias=True) for doc in snapshot]
+            if snapshot
+            else await self.compute_control_haberes(
+                params=search_params, siif=data_siif, sscc=data_sscc
+            )
         )
 
         # 3. Transformamos los datos a DataFrames de Pandas
@@ -362,7 +480,7 @@ class ControlHaberesService:
         df_sscc = pd.DataFrame(data_sscc)
         df_control = pd.DataFrame(data_control)
 
-        return export_multiple_dataframes_to_excel(
+        return self.export_to_excel(
             data_pairs=[
                 (df_siif, "siif_comprobantes_haberes_db"),
                 (df_sscc, "sscc_haberes_db"),

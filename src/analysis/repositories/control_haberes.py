@@ -8,14 +8,14 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_haberes import (
-    ControlHaberesReport,
+    ControlHaberesDocument,
 )
 
 
 # -------------------------------------------------
-class ControlHaberesRepository(BaseRepository[ControlHaberesReport]):
+class ControlHaberesRepository(BaseRepository[ControlHaberesDocument]):
     collection_name = "control_haberes"
-    model = ControlHaberesReport
+    model = ControlHaberesDocument
 
 
 ControlHaberesRepositoryDependency = Annotated[ControlHaberesRepository, Depends()]

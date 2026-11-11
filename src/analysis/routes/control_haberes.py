@@ -1,15 +1,30 @@
-from typing import Annotated
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 
 from ...auth.services import AuthorizationDependency
+from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (
+    ControlHaberesDocument,
     ControlHaberesFullFilter,
+    ControlHaberesGenerateFilter,
     ControlHaberesLiteFilter,
+    ControlHaberesReport,
 )
-from ..services import ControlHaberesServiceDependency
+from ..services import (
+    ControlHaberesService,
+    ControlHaberesServiceDependency,
+)
 
-control_haberes_router = APIRouter(prefix="/controlHaberes")
+factory = GenericRouterFactory(
+    service_dependency=ControlHaberesService,
+    report_schema=ControlHaberesDocument,
+    full_filter_schema=ControlHaberesFullFilter,  # Usa limit/offset
+    lite_filter_schema=ControlHaberesLiteFilter,  # No usa limit/offset
+    prefix="/controlHaberes",
+)
+
+control_haberes_router = factory.get_router()
 
 
 # -------------------------------------------------
@@ -26,6 +41,26 @@ async def compute_control_haberes(
 ):
     security.is_admin_or_user_or_raise()
     return await service.compute_control_haberes(params=params)
+
+
+# -------------------------------------------------
+@control_haberes_router.get(
+    "/generate",
+    description=(
+        "Cruce mensual Haberes SIIF vs Banco INVICO (SSCC) calculado "
+        "on-demand por el backend (sin persistir; el snapshot lo "
+        "congela el POST)"
+    ),
+    response_model=List[ControlHaberesReport],
+    response_model_exclude_none=True,
+)
+async def generate(
+    params: Annotated[ControlHaberesGenerateFilter, Depends()],
+    service: ControlHaberesServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.generate(params=params)
 
 
 # -------------------------------------------------
@@ -58,17 +93,3 @@ async def generate_banco(
 ):
     security.is_admin_or_user_or_raise()
     return await service.get_banco_invico(params=params)
-
-
-# -------------------------------------------------
-@control_haberes_router.get(
-    "/export",
-    name="Reportes exportables para Control Haberes - Google Sheets and Excel",
-)
-async def export(
-    params: Annotated[ControlHaberesLiteFilter, Depends()],
-    service: ControlHaberesServiceDependency,
-    security: AuthorizationDependency,
-):
-    security.is_admin_or_user_or_raise()
-    return await service.export(params)
