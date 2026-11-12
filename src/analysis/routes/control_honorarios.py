@@ -1,6 +1,6 @@
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from ...auth.services import AuthorizationDependency
 from ...utils import RouteReturnSchema
@@ -261,12 +261,13 @@ async def get_slave_honorarios(
 # -------------------------------------------------
 @control_honorarios_router.get(
     "/export",
-    name="Reportes exportables para Control Honorarios - Google Sheets and Excel",
+    name="Export to Google Sheets (sin archivo Excel)",
 )
 async def export(
     params: Annotated[ControlHonorariosLiteFilter, Depends()],
     service: ControlHonorariosServiceDependency,
     security: AuthorizationDependency,
-):
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
     security.is_admin_or_user_or_raise()
-    return await service.export(params)
+    return await service.export(params=params, background_tasks=background_tasks)

@@ -20,16 +20,19 @@ from types import SimpleNamespace
 from typing import Any, List
 from unittest import mock
 
+from fastapi import BackgroundTasks
 from pydantic import ValidationError
 
 from src.analysis.routes.control_honorarios import control_honorarios_router
 from src.analysis.schemas import (
     ControlHonorariosFullFilter,
     ControlHonorariosGenerateFilter,
+    ControlHonorariosLiteFilter,
     ControlHonorariosSGFvsSlaveReport,
     ControlHonorariosSIIFvsSlaveReport,
 )
 from src.analysis.services import ControlHonorariosService
+from src.analysis.services.control_honorarios import SPREADSHEET_KEY_CONTROL_HONORARIOS
 
 
 # -------------------------------------------------
@@ -273,6 +276,96 @@ class TestRutasControlHonorarios(unittest.TestCase):
         faltantes = esperadas - rutas
 
         self.assertFalse(faltantes, f"Faltan rutas: {sorted(faltantes)}")
+
+
+# -------------------------------------------------
+class TestExportControlHonorarios(unittest.IsolatedAsyncioTestCase):
+    """El export solo sube a Google Sheets (sin Excel), en background."""
+
+    # -------------------------------------------------
+    async def test_export_encola_gs_y_responde_json(self) -> None:
+        """Responde JSON de inmediato y encola el trabajo pesado."""
+        servicio = construir_servicio(RepositorioFalso(), RepositorioFalso())
+        background_tasks = BackgroundTasks()
+        params = ControlHonorariosLiteFilter(ejercicio=2024)
+
+        respuesta = await servicio.export(
+            params=params, background_tasks=background_tasks
+        )
+
+        self.assertIsInstance(respuesta, dict)
+        self.assertEqual(respuesta["title"], "Exportación a Google Sheets iniciada")
+        self.assertEqual(
+            respuesta["spreadsheet_key"], SPREADSHEET_KEY_CONTROL_HONORARIOS
+        )
+        # El trabajo pesado (queries + upload) queda encolado: no corre
+        # dentro del request, por lo que no bloqueia el event loop.
+        self.assertEqual(len(background_tasks.tasks), 1)
+
+    # -------------------------------------------------
+    async def test_export_no_genera_excel(self) -> None:
+        """La tarea de fondo sube las 5 hojas a GS sin construir XLS."""
+        import src.analysis.services.control_honorarios as service_module
+
+        # El módulo ya ni siquiera importa el generador de Excel
+        self.assertFalse(
+            hasattr(service_module, "export_multiple_dataframes_to_excel")
+        )
+
+        servicio = construir_servicio(RepositorioFalso(), RepositorioFalso())
+        with mock.patch(
+            "src.analysis.services.control_honorarios."
+            "upload_multiple_dataframes_to_google_sheets"
+        ) as upload_mock, mock.patch.object(
+            servicio,
+            "get_siif_honorarios",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "get_slave_honorarios",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "get_sgf_honorarios",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "get_snapshot_siif_vs_slave",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "get_snapshot_sgf_vs_slave",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "compute_control_siif_vs_slave",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "compute_control_sgf_vs_slave",
+            new=mock.AsyncMock(return_value=[]),
+        ):
+            await servicio._export_to_google_sheets(
+                params=ControlHonorariosLiteFilter(ejercicio=2024)
+            )
+
+        # Las 5 hojas subidas a Google Sheets, en el orden esperado
+        self.assertEqual(upload_mock.call_count, 5)
+        hojas = [call.args[0][0][1] for call in upload_mock.call_args_list]
+        self.assertEqual(
+            hojas,
+            [
+                "siif_vs_slave_db",
+                "sgf_vs_slave_db",
+                "siif_db",
+                "slave_db",
+                "sgf_db",
+            ],
+        )
+        for call in upload_mock.call_args_list:
+            self.assertEqual(
+                call.kwargs["spreadsheet_key"], SPREADSHEET_KEY_CONTROL_HONORARIOS
+            )
 
 
 if __name__ == "__main__":

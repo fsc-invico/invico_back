@@ -3,13 +3,14 @@ __all__ = [
     "ControlHonorariosServiceDependency",
 ]
 
+import asyncio
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends
-from fastapi.responses import StreamingResponse
+from fastapi import BackgroundTasks, Depends
+from fastapi.concurrency import run_in_threadpool
 
 from ...config import logger
 from ...sgf.schemas import ResumenRendProvFullFilter
@@ -24,9 +25,9 @@ from ...sscc.schemas import BancoINVICOFullFilter
 from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
     RouteReturnSchema,
-    export_multiple_dataframes_to_excel,
     sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
+    upload_multiple_dataframes_to_google_sheets,
     validate_and_extract_data_from_list,
 )
 from ..repositories import (
@@ -40,6 +41,12 @@ from ..schemas import (
     ControlHonorariosSGFvsSlaveReport,
     ControlHonorariosSIIFvsSlaveReport,
 )
+
+SPREADSHEET_KEY_CONTROL_HONORARIOS: str = "1fQhp1CdESnvqzrp3QMV5bFSHmGdi7SNoaBRWtmw-JgA"
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 
 @dataclass
@@ -580,67 +587,115 @@ class ControlHonorariosService:
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def export(self, params: ControlHonorariosLiteFilter) -> StreamingResponse:
+    async def export(
+        self, params: ControlHonorariosLiteFilter, background_tasks: BackgroundTasks
+    ) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
 
-        # 1. Creamos el objeto de filtros normal
+        El trabajo pesado (queries de los crudos, cruces con fallback y
+        upload de las 5 hojas) corre como tarea de fondo para no
+        bloquear el event loop ni agotar el timeout de Koyeb. No se
+        genera el archivo Excel: la subida a Google Sheets es el único
+        destino de la exportación (patrón ``control_banco``).
+        """
+        background_tasks.add_task(self._export_to_google_sheets, params)
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con las hojas: "
+                "siif_vs_slave_db, sgf_vs_slave_db, siif_db, slave_db y sgf_db."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_HONORARIOS,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlHonorariosLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube cada hoja a Google Sheets, una por vez.
+
+        NO genera el archivo Excel (a diferencia del export binario
+        anterior): solo queries + upload, corriendo fuera del request.
+        Procesa de a una hoja para mantener el pico de memoria acotado
+        (Koyeb dispone de poca RAM en su capa gratuita).
+
+        En background no hay respuesta HTTP que retornar: los errores se
+        loguean para que sean visibles en los logs de Koyeb.
+        """
         search_params = ControlHonorariosFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
-
-        # 2. Traemos los datos crudos sin paginar
-        data_siif = await self.get_siif_honorarios(params=search_params)
-        data_slave = await self.get_slave_honorarios(params=search_params, siif=data_siif)
-        data_sgf = await self.get_sgf_honorarios(params=search_params)
-
-        # Los cruces (las tablas que ve el usuario en las páginas) se
-        # exportan desde los snapshots persistidos en Mongo; si todavía
-        # no existen, se calculan on-demand para no dejar las hojas vacías.
-        snapshot_siif_vs_slave = await self.get_snapshot_siif_vs_slave(
-            params=search_params
-        )
-        data_siif_vs_slave = (
-            [doc.model_dump(by_alias=True) for doc in snapshot_siif_vs_slave]
-            if snapshot_siif_vs_slave
-            else await self.compute_control_siif_vs_slave(
-                params=search_params, siif=data_siif, slave=data_slave
+        async with _export_lock:
+            # 1. Crudos (servicios async)
+            data_siif = await self.get_siif_honorarios(params=search_params)
+            data_slave = await self.get_slave_honorarios(
+                params=search_params, siif=data_siif
             )
-        )
-        snapshot_sgf_vs_slave = await self.get_snapshot_sgf_vs_slave(
-            params=search_params
-        )
-        data_sgf_vs_slave = (
-            [doc.model_dump(by_alias=True) for doc in snapshot_sgf_vs_slave]
-            if snapshot_sgf_vs_slave
-            else await self.compute_control_sgf_vs_slave(
-                params=search_params, sgf=data_sgf, slave=data_slave
+            data_sgf = await self.get_sgf_honorarios(params=search_params)
+
+            # 2. Cruces desde los snapshots persistidos; si todavía no
+            #    existen, se calculan on-demand para no dejar la hoja
+            #    vacía (mismo criterio que el export binario anterior).
+            snapshot_siif_vs_slave = await self.get_snapshot_siif_vs_slave(
+                params=search_params
             )
-        )
+            data_siif_vs_slave = (
+                [doc.model_dump(by_alias=True) for doc in snapshot_siif_vs_slave]
+                if snapshot_siif_vs_slave
+                else await self.compute_control_siif_vs_slave(
+                    params=search_params, siif=data_siif, slave=data_slave
+                )
+            )
+            snapshot_sgf_vs_slave = await self.get_snapshot_sgf_vs_slave(
+                params=search_params
+            )
+            data_sgf_vs_slave = (
+                [doc.model_dump(by_alias=True) for doc in snapshot_sgf_vs_slave]
+                if snapshot_sgf_vs_slave
+                else await self.compute_control_sgf_vs_slave(
+                    params=search_params, sgf=data_sgf, slave=data_slave
+                )
+            )
 
-        # 3. Transformamos los datos a DataFrames de Pandas
-        # (sin los id internos de Mongo: export_multiple... solo dropea _id)
-        df_siif = pd.DataFrame(data_siif)
-        df_slave = pd.DataFrame(data_slave)
-        df_sgf = pd.DataFrame(data_sgf)
-        df_siif_vs_slave = pd.DataFrame(data_siif_vs_slave).drop(
-            columns=["id", "_id"], errors="ignore"
-        )
-        df_sgf_vs_slave = pd.DataFrame(data_sgf_vs_slave).drop(
-            columns=["id", "_id"], errors="ignore"
-        )
+            # 3. Upload hoja por hoja (fuera del event loop)
+            sheets: list[tuple[list[dict], str]] = [
+                (data_siif_vs_slave, "siif_vs_slave_db"),
+                (data_sgf_vs_slave, "sgf_vs_slave_db"),
+                (data_siif, "siif_db"),
+                (data_slave, "slave_db"),
+                (data_sgf, "sgf_db"),
+            ]
+            for records, sheet_name in sheets:
+                try:
+                    # DataFrame + sanitizado + upload corren en el threadpool
+                    await run_in_threadpool(
+                        self._build_df_and_upload, records, sheet_name
+                    )
+                    logger.info(
+                        f"Control Honorarios: hoja '{sheet_name}' "
+                        "actualizada en Google Sheets"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Control Honorarios: error al subir la hoja "
+                        f"'{sheet_name}': {e}"
+                    )
+        logger.info("Control Honorarios: exportación a Google Sheets finalizada")
 
-        return export_multiple_dataframes_to_excel(
-            data_pairs=[
-                (df_siif_vs_slave, "siif_vs_slave_db"),
-                (df_sgf_vs_slave, "sgf_vs_slave_db"),
-                (df_siif, "siif_db"),
-                (df_slave, "slave_db"),
-                (df_sgf, "sgf_db"),
-            ],
-            filename="Control Honorarios Factureros.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="1fQhp1CdESnvqzrp3QMV5bFSHmGdi7SNoaBRWtmw-JgA",
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(records: list[dict], sheet_name: str) -> None:
+        """Construye el DataFrame y sube la hoja (bloqueante → threadpool).
+
+        Descarta los id internos de Mongo y NO genera el archivo Excel:
+        solo sube la hoja a Google Sheets.
+        """
+        df = pd.DataFrame(records).drop(columns=["id", "_id"], errors="ignore")
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_HONORARIOS,
         )
 
     # -------------------------------------------------
