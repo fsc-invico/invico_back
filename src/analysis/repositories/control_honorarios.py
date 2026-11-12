@@ -9,17 +9,17 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_honorarios import (
-    ControlHonorariosSGFvsSlaveReport,
-    ControlHonorariosSIIFvsSlaveReport,
+    ControlHonorariosSGFvsSlaveDocument,
+    ControlHonorariosSIIFvsSlaveDocument,
 )
 
 
 # -------------------------------------------------
 class ControlHonorariosSIIFvsSlaveRepository(
-    BaseRepository[ControlHonorariosSIIFvsSlaveReport]
+    BaseRepository[ControlHonorariosSIIFvsSlaveDocument]
 ):
     collection_name = "control_honorarios_siif_vs_slave"
-    model = ControlHonorariosSIIFvsSlaveReport
+    model = ControlHonorariosSIIFvsSlaveDocument
 
 
 ControlHonorariosSIIFvsSlaveRepositoryDependency = Annotated[
@@ -29,10 +29,10 @@ ControlHonorariosSIIFvsSlaveRepositoryDependency = Annotated[
 
 # -------------------------------------------------
 class ControlHonorariosSGFvsSlaveRepository(
-    BaseRepository[ControlHonorariosSGFvsSlaveReport]
+    BaseRepository[ControlHonorariosSGFvsSlaveDocument]
 ):
     collection_name = "control_honorarios_sgf_vs_slave"
-    model = ControlHonorariosSGFvsSlaveReport
+    model = ControlHonorariosSGFvsSlaveDocument
 
 
 ControlHonorariosSGFvsSlaveRepositoryDependency = Annotated[

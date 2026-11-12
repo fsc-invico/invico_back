@@ -4,13 +4,14 @@ __all__ = [
 ]
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, List
 
 import numpy as np
 import pandas as pd
 from fastapi import Depends
 from fastapi.responses import StreamingResponse
 
+from ...config import logger
 from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
 from ...siif.schemas import GtoRpa03gFullFilter
@@ -22,23 +23,193 @@ from ...slave.services import HonorariosServiceDependency
 from ...sscc.schemas import BancoINVICOFullFilter
 from ...sscc.services import BancoINVICOServiceDependency, CtasCtesServiceDependency
 from ...utils import (
+    RouteReturnSchema,
     export_multiple_dataframes_to_excel,
     sanitize_dataframe_for_json_with_datetime,
+    sync_validated_to_repository,
+    validate_and_extract_data_from_list,
+)
+from ..repositories import (
+    ControlHonorariosSGFvsSlaveRepositoryDependency,
+    ControlHonorariosSIIFvsSlaveRepositoryDependency,
 )
 from ..schemas import (
     ControlHonorariosFullFilter,
+    ControlHonorariosGenerateFilter,
     ControlHonorariosLiteFilter,
+    ControlHonorariosSGFvsSlaveReport,
+    ControlHonorariosSIIFvsSlaveReport,
 )
 
 
 @dataclass
 # -------------------------------------------------
 class ControlHonorariosService:
+    siif_vs_slave_repository: ControlHonorariosSIIFvsSlaveRepositoryDependency
+    sgf_vs_slave_repository: ControlHonorariosSGFvsSlaveRepositoryDependency
     gastos_service: GtoRpa03gServiceDependency
     slave_service: HonorariosServiceDependency
     sgf_service: ResumenRendProvServiceDependency
     banco_service: BancoINVICOServiceDependency
     cta_cte_service: CtasCtesServiceDependency
+
+    # -------------------------------------------------
+    async def add_many_siif_vs_slave(
+        self, data: List[ControlHonorariosSIIFvsSlaveReport]
+    ) -> RouteReturnSchema:
+        """Persiste el cruce SIIF vs Slave con borrado idempotente por
+        ejercicio (patrón generate -> POST de los demás controles)."""
+        try:
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=ControlHonorariosSIIFvsSlaveReport,
+                field_id=["ejercicio", "siif_nro"],  # Clave de la fila
+            )
+
+            delete_filter = {}
+            if validation_result.validated:
+                ejercicio_detectado = validation_result.validated[0].ejercicio
+                delete_filter = {"ejercicio": ejercicio_detectado}
+
+            return await sync_validated_to_repository(
+                repository=self.siif_vs_slave_repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización Control Honorarios SIIF vs Slave",
+                label="Control Honorarios SIIF vs Slave",
+                logger=logger,
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
+
+    # -------------------------------------------------
+    async def add_many_sgf_vs_slave(
+        self, data: List[ControlHonorariosSGFvsSlaveReport]
+    ) -> RouteReturnSchema:
+        """Persiste el cruce SGF vs Slave con borrado idempotente por
+        ejercicio (patrón generate -> POST de los demás controles)."""
+        try:
+            validation_result = validate_and_extract_data_from_list(
+                data_list=data,
+                model=ControlHonorariosSGFvsSlaveReport,
+                field_id=["ejercicio", "mes", "cta_cte", "beneficiario"],
+            )
+
+            delete_filter = {}
+            if validation_result.validated:
+                ejercicio_detectado = validation_result.validated[0].ejercicio
+                delete_filter = {"ejercicio": ejercicio_detectado}
+
+            return await sync_validated_to_repository(
+                repository=self.sgf_vs_slave_repository,
+                validation=validation_result,
+                delete_filter=delete_filter,
+                title="Sincronización Control Honorarios SGF vs Slave",
+                label="Control Honorarios SGF vs Slave",
+                logger=logger,
+            )
+
+        except Exception as e:
+            self._handle_error("Error durante el proceso de add_many", e)
+
+    # -------------------------------------------------
+    async def generate_siif_vs_slave(
+        self, params: ControlHonorariosGenerateFilter
+    ) -> List[ControlHonorariosSIIFvsSlaveReport]:
+        """Cruce SIIF vs Slave on-demand (sin persistir; el snapshot lo
+        congela el POST posterior).
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        compute_params = ControlHonorariosFullFilter(
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+        return await self.compute_control_siif_vs_slave(params=compute_params)
+
+    # -------------------------------------------------
+    async def generate_sgf_vs_slave(
+        self, params: ControlHonorariosGenerateFilter
+    ) -> List[ControlHonorariosSGFvsSlaveReport]:
+        """Cruce SGF vs Slave on-demand (sin persistir; el snapshot lo
+        congela el POST posterior).
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        compute_params = ControlHonorariosFullFilter(
+            ejercicio=params.ejercicio,
+            limit=None,  # Para traer todo
+        )
+        return await self.compute_control_sgf_vs_slave(params=compute_params)
+
+    # -------------------------------------------------
+    async def get_snapshot_siif_vs_slave(
+        self, params: ControlHonorariosFullFilter
+    ) -> List[ControlHonorariosSIIFvsSlaveReport]:
+        """Lee el snapshot persistido del cruce SIIF vs Slave."""
+        return await self.siif_vs_slave_repository.find_with_filter_params(
+            params=params
+        )
+
+    # -------------------------------------------------
+    async def get_snapshot_sgf_vs_slave(
+        self, params: ControlHonorariosFullFilter
+    ) -> List[ControlHonorariosSGFvsSlaveReport]:
+        """Lee el snapshot persistido del cruce SGF vs Slave."""
+        return await self.sgf_vs_slave_repository.find_with_filter_params(params=params)
+
+    # -------------------------------------------------
+    async def delete_siif_vs_slave(self, params: ControlHonorariosLiteFilter) -> dict:
+        """Borra el snapshot SIIF vs Slave según el filtro (sin límite)."""
+        try:
+            full_filter = ControlHonorariosFullFilter(
+                **params.model_dump(exclude_none=True),
+                limit=None,
+            )
+            deleted_count = (
+                await self.siif_vs_slave_repository.delete_with_filter_params(
+                    params=full_filter
+                )
+            )
+            return {
+                "title": "Proceso de eliminación Control Honorarios SIIF vs Slave",
+                "deleted": deleted_count,
+                "added": 0,
+                "errors": [],
+            }
+        except Exception as e:
+            self._handle_error("Error en eliminación SIIF vs Slave", e)
+
+    # -------------------------------------------------
+    async def delete_sgf_vs_slave(self, params: ControlHonorariosLiteFilter) -> dict:
+        """Borra el snapshot SGF vs Slave según el filtro (sin límite)."""
+        try:
+            full_filter = ControlHonorariosFullFilter(
+                **params.model_dump(exclude_none=True),
+                limit=None,
+            )
+            deleted_count = (
+                await self.sgf_vs_slave_repository.delete_with_filter_params(
+                    params=full_filter
+                )
+            )
+            return {
+                "title": "Proceso de eliminación Control Honorarios SGF vs Slave",
+                "deleted": deleted_count,
+                "added": 0,
+                "errors": [],
+            }
+        except Exception as e:
+            self._handle_error("Error en eliminación SGF vs Slave", e)
 
     # -------------------------------------------------
     async def get_siif_honorarios(
@@ -412,28 +583,52 @@ class ControlHonorariosService:
     async def export(self, params: ControlHonorariosLiteFilter) -> StreamingResponse:
 
         # 1. Creamos el objeto de filtros normal
-        params = ControlHonorariosFullFilter(
+        search_params = ControlHonorariosFullFilter(
+            query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
 
-        # 2. Traemos los datos sin paginar
-        data_siif = await self.get_siif_honorarios(params=params)
-        data_slave = await self.get_slave_honorarios(params=params, siif=data_siif)
-        data_sgf = await self.get_sgf_honorarios(params=params)
-        data_siif_vs_slave = await self.compute_control_siif_vs_slave(
-            params=params, siif=data_siif, slave=data_slave
+        # 2. Traemos los datos crudos sin paginar
+        data_siif = await self.get_siif_honorarios(params=search_params)
+        data_slave = await self.get_slave_honorarios(params=search_params, siif=data_siif)
+        data_sgf = await self.get_sgf_honorarios(params=search_params)
+
+        # Los cruces (las tablas que ve el usuario en las páginas) se
+        # exportan desde los snapshots persistidos en Mongo; si todavía
+        # no existen, se calculan on-demand para no dejar las hojas vacías.
+        snapshot_siif_vs_slave = await self.get_snapshot_siif_vs_slave(
+            params=search_params
         )
-        data_sgf_vs_slave = await self.compute_control_sgf_vs_slave(
-            params=params, sgf=data_sgf, slave=data_slave
+        data_siif_vs_slave = (
+            [doc.model_dump(by_alias=True) for doc in snapshot_siif_vs_slave]
+            if snapshot_siif_vs_slave
+            else await self.compute_control_siif_vs_slave(
+                params=search_params, siif=data_siif, slave=data_slave
+            )
+        )
+        snapshot_sgf_vs_slave = await self.get_snapshot_sgf_vs_slave(
+            params=search_params
+        )
+        data_sgf_vs_slave = (
+            [doc.model_dump(by_alias=True) for doc in snapshot_sgf_vs_slave]
+            if snapshot_sgf_vs_slave
+            else await self.compute_control_sgf_vs_slave(
+                params=search_params, sgf=data_sgf, slave=data_slave
+            )
         )
 
         # 3. Transformamos los datos a DataFrames de Pandas
+        # (sin los id internos de Mongo: export_multiple... solo dropea _id)
         df_siif = pd.DataFrame(data_siif)
         df_slave = pd.DataFrame(data_slave)
         df_sgf = pd.DataFrame(data_sgf)
-        df_siif_vs_slave = pd.DataFrame(data_siif_vs_slave)
-        df_sgf_vs_slave = pd.DataFrame(data_sgf_vs_slave)
+        df_siif_vs_slave = pd.DataFrame(data_siif_vs_slave).drop(
+            columns=["id", "_id"], errors="ignore"
+        )
+        df_sgf_vs_slave = pd.DataFrame(data_sgf_vs_slave).drop(
+            columns=["id", "_id"], errors="ignore"
+        )
 
         return export_multiple_dataframes_to_excel(
             data_pairs=[
