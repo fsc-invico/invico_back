@@ -22,7 +22,13 @@ from ...utils import (
     sync_validated_to_repository,
     validate_and_extract_data_from_list,
 )
-from ..repositories import CargaRepositoryDependency, ProveedoresRepositoryDependency
+from ..repositories import (
+    CargaRepositoryDependency,
+    InformeContableRepositoryDependency,
+    ProveedoresRepositoryDependency,
+    ResumenRendObrasRepositoryDependency,
+    RetencionesRepositoryDependency,
+)
 from ..schemas import (
     CargaDocument,
     CargaFullDescSIIF,
@@ -42,6 +48,9 @@ class CargaService(
     rdeu_service: Rdeu012ServiceDependency
     proveedores_repo: ProveedoresRepositoryDependency
     rf610_service: Rf610ServiceDependency
+    retenciones_repo: RetencionesRepositoryDependency
+    informe_contable_repo: InformeContableRepositoryDependency
+    resumen_rend_obras_repo: ResumenRendObrasRepositoryDependency
 
     def __post_init__(self):
         # Como usamos @dataclass, el __init__ se genera solo.
@@ -76,6 +85,11 @@ class CargaService(
             mongo_id = ObjectId(id)
             new_timestamp = datetime.now(timezone.utc)
 
+            # 0. TRAEMOS EL DOCUMENTO ACTUAL PARA GUARDAR EL ID_CARGA ANTERIOR
+            # (lo necesitamos después para sincronizar las colecciones dependientes)
+            existing_doc = await self.repository.get_one_by_fields({"_id": mongo_id})
+            id_carga_anterior = existing_doc.get("id_carga") if existing_doc else None
+
             # 1. VERIFICACIÓN DE ID_CARGA DUPLICADO
             # Buscamos si existe otro documento con ese id_carga que NO sea el nuestro
             duplicate = await self.repository.get_one_by_fields(
@@ -108,12 +122,71 @@ class CargaService(
                     detail="Conflicto de edición: Los datos fueron modificados por otro usuario. Por favor, recargue la página.",
                 )
 
+            # 3. SINCRONIZAMOS LAS COLECCIONES QUE REFERENCIAN AL ID_CARGA
+            # (retenciones, informe contable y resumen de rendimiento de obras)
+            # para que no queden huérfanas cuando cambia el tipo, el nro o la fecha.
+            if id_carga_anterior and id_carga_anterior != data.id_carga:
+                await self._sync_dependents_id_carga(
+                    id_carga_anterior=id_carga_anterior,
+                    id_carga_nuevo=data.id_carga,
+                )
+
             return updated_doc
         except HTTPException:
             raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
         except Exception as e:
             logger.error(f"Error en update_one_safely: {str(e)}")
             self._handle_error("Error durante el proceso de update_one_safely", e)
+
+    # -------------------------------------------------
+    async def _sync_dependents_id_carga(
+        self, id_carga_anterior: str, id_carga_nuevo: str
+    ) -> None:
+        """
+        Actualiza el id_carga en las colecciones que referencian a la carga.
+
+        El id_carga se compone como {nro_comprobante}{primera letra del tipo}
+        (ej: 00117/25C). Si al editar cambia el tipo, el nro o la fecha, las
+        colecciones dependientes quedan apuntando al id_carga anterior y los
+        comprobantes quedan huérfanos de sus retenciones.
+        """
+        new_timestamp = datetime.now(timezone.utc)
+        update_data = {
+            "id_carga": id_carga_nuevo,
+            "updated_at": new_timestamp,
+        }
+
+        # En retenciones el ejercicio se deriva del id_carga (ej: 00544/26C -> 2026)
+        retenciones_data = dict(update_data)
+        ejercicio = self._ejercicio_from_id_carga(id_carga_nuevo)
+        if ejercicio is not None:
+            retenciones_data["ejercicio"] = ejercicio
+
+        modificadas_retenciones = await self.retenciones_repo.update_many(
+            {"id_carga": id_carga_anterior}, retenciones_data
+        )
+        modificadas_informe = await self.informe_contable_repo.update_many(
+            {"id_carga": id_carga_anterior}, update_data
+        )
+        modificadas_resumen = await self.resumen_rend_obras_repo.update_many(
+            {"id_carga": id_carga_anterior}, update_data
+        )
+
+        logger.info(
+            f"update_one_safely: id_carga '{id_carga_anterior}' -> '{id_carga_nuevo}' | "
+            f"retenciones: {modificadas_retenciones}, "
+            f"informe_contable: {modificadas_informe}, "
+            f"resumen_rend_obras: {modificadas_resumen}"
+        )
+
+    # -------------------------------------------------
+    @staticmethod
+    def _ejercicio_from_id_carga(id_carga: str) -> int | None:
+        """Extrae el ejercicio de un id_carga (ej: 00544/26C -> 2026)."""
+        try:
+            return int(f"20{id_carga.split('/')[1][:2]}")
+        except (AttributeError, IndexError, ValueError):
+            return None
 
     # -------------------------------------------------
     async def delete_one(self, id: str) -> CargaDocument:
