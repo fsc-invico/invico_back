@@ -1,5 +1,6 @@
 from .control_aporte_empresario import *
 from .control_banco import *
+from .control_debitos_bancarios import *
 from .control_haberes import *
 from .control_honorarios import *
 from .control_icaro import *

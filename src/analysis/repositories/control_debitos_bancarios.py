@@ -8,14 +8,14 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_debitos_bancarios import (
-    ControlDebitosBancariosReport,
+    ControlDebitosBancariosDocument,
 )
 
 
 # -------------------------------------------------
-class ControlDebitosBancariosRepository(BaseRepository[ControlDebitosBancariosReport]):
+class ControlDebitosBancariosRepository(BaseRepository[ControlDebitosBancariosDocument]):
     collection_name = "control_debitos_bancarios"
-    model = ControlDebitosBancariosReport
+    model = ControlDebitosBancariosDocument
 
 
 ControlDebitosBancariosRepositoryDependency = Annotated[

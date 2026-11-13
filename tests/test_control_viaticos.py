@@ -23,6 +23,7 @@ from typing import Any, List
 from unittest import mock
 
 import pandas as pd
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from src.analysis.routes.control_viaticos import control_viaticos_router
@@ -246,17 +247,19 @@ class TestAddManyControlViaticos(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(repository.saved[0], ControlViaticosRendicionReport)
 
     # -------------------------------------------------
-    async def test_add_many_reporta_filas_invalidas(self) -> None:
-        """Las filas que no validan contra el schema quedan en errors."""
+    async def test_add_many_sin_filas_validas_lanza_400(self) -> None:
+        """Si ninguna fila valida, add_many responde 400 y no persiste."""
         repository = RepositorioFalso()
         servicio = construir_servicio(repository)
         invalida = {"ejercicio": 2024, "nro_expte": "9000012024"}  # faltan importes
 
-        resumen = await servicio.add_many(data=[invalida])
+        with self.assertRaises(HTTPException) as ctx:
+            await servicio.add_many(data=[invalida])
 
-        self.assertEqual(resumen.added, 0)
-        self.assertEqual(len(resumen.errors), 1)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("No se encontraron registros válidos", ctx.exception.detail)
         self.assertEqual(len(repository.saved), 0)
+        self.assertEqual(repository.deleted_filters, [])
 
 
 # -------------------------------------------------

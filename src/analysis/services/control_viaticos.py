@@ -108,6 +108,9 @@ class ControlViaticosService(
                 logger=logger,
             )
 
+        except HTTPException:
+            # Respeta el 400 de "sin registros válidos" (no lo envuelve en 500)
+            raise
         except Exception as e:
             self._handle_error("Error durante el proceso de add_many", e)
 
