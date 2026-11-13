@@ -154,14 +154,42 @@ class ControlViaticosService(
         """SIIF gto_rpa03g unido con rcg01_uejp: partidas 372 (rendición)
         y 373 (reembolso) del ejercicio.
 
+        El SIIF persiste ``grupo`` con un solo dígito (``GrupoPartidaSIIF``:
+        "3" = servicios); para la hoja ``siif_gastos_db_new`` se lo pasa al
+        código de 3 dígitos agregándole "00" al final ("3" -> "300"),
+        igual que ``control_haberes`` y ``control_honorarios``.
+
         Returns:
             DataFrame con las columnas de gastos (vacío si no hay datos).
         """
         params = GtoRpa03gFullFilter(ejercicio=str(ejercicio), limit=None)
         params.set_extra_filter({"partida": {"$in": ["372", "373"]}})
         data = await self.gastos_service.get_joined_with_rcg01_uejp(params=params)
-        df = pd.DataFrame(data)
-        return df.drop(columns=["id"], errors="ignore")
+        df = pd.DataFrame(data).drop(columns=["id"], errors="ignore")
+        if df.empty or "grupo" not in df.columns:
+            return df
+
+        df["grupo"] = df["grupo"].map(self._normalizar_grupo)
+        return df
+
+    # --------------------------------------------------
+    @staticmethod
+    def _normalizar_grupo(valor: Any) -> Any:
+        """Pasa el grupo de 1 dígito del SIIF a código de 3 dígitos.
+
+        ``control_haberes`` y ``control_honorarios`` hacen
+        ``df["grupo"] + "00"`` sobre los mismos gastos del SIIF; acá se
+        aplica el mismo criterio pero tolerando nulos (None/NaN se
+        conservan tal cual y el saneador JSON los vuelve ``None``).
+
+        Args:
+            valor: Celda de ``grupo`` (str, None o NaN).
+
+        Returns:
+            El grupo con "00" al final, o el valor sin modificar si no
+            es string.
+        """
+        return valor + "00" if isinstance(valor, str) else valor
 
     # --------------------------------------------------
     async def generate_banco(self, ejercicio: int) -> pd.DataFrame:
@@ -424,9 +452,9 @@ class ControlViaticosService(
 
             # 3. Upload hoja por hoja (fuera del event loop)
             sheets: list[tuple[pd.DataFrame, str]] = [
-                (control_rendicion, "control_rendicion_db_new"),
-                (siif_fondos, "siif_fondos_db_new"),
-                (siif_gastos, "siif_gastos_db_new"),
+                (control_rendicion, "control_rendicion_db"),
+                (siif_fondos, "siif_fondos_db"),
+                (siif_gastos, "siif_gastos_db"),
             ]
             for df, sheet_name in sheets:
                 try:
@@ -447,8 +475,15 @@ class ControlViaticosService(
         """Descarta los id internos y sube la hoja (bloqueante → threadpool).
 
         NO genera el archivo Excel: solo sube la hoja a Google Sheets.
+
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
         """
         df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
         upload_multiple_dataframes_to_google_sheets(
             [(df, sheet_name)],
             spreadsheet_key=SPREADSHEET_KEY_CONTROL_VIATICOS,

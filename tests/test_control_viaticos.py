@@ -8,6 +8,8 @@ Cubre la paridad con los demás controles:
   ejercicio (clave ``[ejercicio, nro_expte]``).
 - ``compute_control_rendicion`` arma el cruce (rfondos04 PA3/REV +
   gastos 372/373 + banco 029/040/005) y soporta lados vacíos.
+- ``generate_siif_gastos`` normaliza ``grupo`` a 3 dígitos ("3" -> "300")
+  para la hoja ``siif_gastos_db_new``.
 - ``export`` solo sube a Google Sheets en background (sin Excel).
 - Superficie de rutas: snapshot CRUD + ``/generate`` + ``/export``.
 
@@ -17,6 +19,7 @@ Ejecutar desde la raíz del proyecto:
 """
 
 import asyncio
+import json
 import unittest
 from types import SimpleNamespace
 from typing import Any, List
@@ -229,6 +232,52 @@ class TestComputeControlViaticos(unittest.IsolatedAsyncioTestCase):
 
 
 # -------------------------------------------------
+class TestGenerateSiifGastosControlViaticos(unittest.IsolatedAsyncioTestCase):
+    """generate_siif_gastos normaliza 'grupo' a 3 dígitos para la hoja."""
+
+    # -------------------------------------------------
+    async def test_grupo_se_exporta_con_los_dos_ceros(self) -> None:
+        """El SIIF guarda '3'; la hoja siif_gastos_db_new debe llevar '300'."""
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.gastos_service = SimpleNamespace(
+            get_joined_with_rcg01_uejp=mock.AsyncMock(
+                return_value=[
+                    {
+                        "ejercicio": 2024,
+                        "partida": "372",
+                        "grupo": "3",
+                        "importe": 70.0,
+                    },
+                    {
+                        "ejercicio": 2024,
+                        "partida": "373",
+                        "grupo": None,
+                        "importe": 10.0,
+                    },
+                ]
+            )
+        )
+
+        df = await servicio.generate_siif_gastos(ejercicio=2024)
+
+        self.assertEqual(df["grupo"].tolist()[0], "300")
+        # Un grupo nulo no rompe la concatenación y sigue siendo nulo
+        self.assertTrue(pd.isna(df["grupo"].tolist()[1]))
+
+    # -------------------------------------------------
+    async def test_sin_gastos_del_ejercicio_devuelve_vacio(self) -> None:
+        """Sin datos crudos la hoja se sube vacía sin truenos."""
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.gastos_service = SimpleNamespace(
+            get_joined_with_rcg01_uejp=mock.AsyncMock(return_value=[])
+        )
+
+        df = await servicio.generate_siif_gastos(ejercicio=2024)
+
+        self.assertTrue(df.empty)
+
+
+# -------------------------------------------------
 class TestAddManyControlViaticos(unittest.IsolatedAsyncioTestCase):
     """POST /controlViaticos congela el snapshot (borrado por ejercicio)."""
 
@@ -329,6 +378,40 @@ class TestExportControlViaticos(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 call.kwargs["spreadsheet_key"], SPREADSHEET_KEY_CONTROL_VIATICOS
             )
+
+
+    # -------------------------------------------------
+    def test_sube_hojas_sin_celdas_nan(self) -> None:
+        """_build_df_and_upload sanitiza antes de subir (defensa).
+
+        gspread serializa con ``json.dumps(allow_nan=False)``: una sola
+        celda NaN aborta la subida completa y deja la hoja vacía.
+        """
+        df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "partida": ["372", "373", None],
+                "importe": [100.5, float("nan"), 3.0],
+                "glosa": ["Rendicion", None, float("inf")],
+            }
+        )
+
+        with mock.patch(
+            "src.analysis.services.control_viaticos."
+            "upload_multiple_dataframes_to_google_sheets"
+        ) as upload_mock:
+            ControlViaticosService._build_df_and_upload(df, "siif_gastos_db_new")
+
+        df_subido = upload_mock.call_args.args[0][0][0]
+        hoja = upload_mock.call_args.args[0][0][1]
+        self.assertEqual(hoja, "siif_gastos_db_new")
+        # Los id internos no viajan a la hoja
+        self.assertNotIn("id", df_subido.columns)
+        # Misma validación que hace gspread/requests al serializar
+        json.dumps(df_subido.values.tolist(), allow_nan=False)
+        self.assertIsNone(df_subido["partida"].tolist()[2])
+        self.assertIsNone(df_subido["importe"].tolist()[1])
+        self.assertIsNone(df_subido["glosa"].tolist()[2])
 
 
 # -------------------------------------------------
