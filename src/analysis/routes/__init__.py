@@ -15,6 +15,7 @@ from .control_icaro_comprobantes import control_icaro_comprobantes_router
 from .control_icaro_pa6 import control_icaro_pa6_router
 from .control_obras import control_obras_router
 from .control_recursos import control_recursos_router
+from .control_viaticos import control_viaticos_router
 from .reporte_formulacion import reporte_formulacion_router
 from .reporte_planillometro import reporte_planillometro_router
 
@@ -30,6 +31,7 @@ control_router.include_router(control_icaro_pa6_router)
 control_router.include_router(control_obras_router)
 control_router.include_router(control_haberes_router)
 control_router.include_router(control_honorarios_router)
+control_router.include_router(control_viaticos_router)
 control_router.include_router(control_banco_cruzado_router)
 control_router.include_router(control_banco_siif_router)
 control_router.include_router(control_banco_sscc_router)
