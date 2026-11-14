@@ -9,7 +9,7 @@ Cubre la paridad con los demás controles:
 - ``compute_control_rendicion`` arma el cruce (rfondos04 PA3/REV +
   gastos 372/373 + banco 029/040/005) y soporta lados vacíos.
 - ``generate_siif_gastos`` normaliza ``grupo`` a 3 dígitos ("3" -> "300")
-  para la hoja ``siif_gastos_db_new``.
+  para la hoja ``siif_gastos_db``.
 - ``export`` solo sube a Google Sheets en background (sin Excel).
 - Superficie de rutas: snapshot CRUD + ``/generate`` + ``/export``.
 
@@ -237,7 +237,7 @@ class TestGenerateSiifGastosControlViaticos(unittest.IsolatedAsyncioTestCase):
 
     # -------------------------------------------------
     async def test_grupo_se_exporta_con_los_dos_ceros(self) -> None:
-        """El SIIF guarda '3'; la hoja siif_gastos_db_new debe llevar '300'."""
+        """El SIIF guarda '3'; la hoja siif_gastos_db debe llevar '300'."""
         servicio = construir_servicio(RepositorioFalso())
         servicio.gastos_service = SimpleNamespace(
             get_joined_with_rcg01_uejp=mock.AsyncMock(
@@ -372,7 +372,7 @@ class TestExportControlViaticos(unittest.IsolatedAsyncioTestCase):
         hojas = [call.args[0][0][1] for call in upload_mock.call_args_list]
         self.assertEqual(
             hojas,
-            ["control_rendicion_db_new", "siif_fondos_db_new", "siif_gastos_db_new"],
+            ["control_rendicion_db", "siif_fondos_db", "siif_gastos_db"],
         )
         for call in upload_mock.call_args_list:
             self.assertEqual(
@@ -400,11 +400,11 @@ class TestExportControlViaticos(unittest.IsolatedAsyncioTestCase):
             "src.analysis.services.control_viaticos."
             "upload_multiple_dataframes_to_google_sheets"
         ) as upload_mock:
-            ControlViaticosService._build_df_and_upload(df, "siif_gastos_db_new")
+            ControlViaticosService._build_df_and_upload(df, "siif_gastos_db")
 
         df_subido = upload_mock.call_args.args[0][0][0]
         hoja = upload_mock.call_args.args[0][0][1]
-        self.assertEqual(hoja, "siif_gastos_db_new")
+        self.assertEqual(hoja, "siif_gastos_db")
         # Los id internos no viajan a la hoja
         self.assertNotIn("id", df_subido.columns)
         # Misma validación que hace gspread/requests al serializar

@@ -155,7 +155,7 @@ class ControlViaticosService(
         y 373 (reembolso) del ejercicio.
 
         El SIIF persiste ``grupo`` con un solo dígito (``GrupoPartidaSIIF``:
-        "3" = servicios); para la hoja ``siif_gastos_db_new`` se lo pasa al
+        "3" = servicios); para la hoja ``siif_gastos_db`` se lo pasa al
         código de 3 dígitos agregándole "00" al final ("3" -> "300"),
         igual que ``control_haberes`` y ``control_honorarios``.
 
@@ -401,9 +401,9 @@ class ControlViaticosService(
     async def export(self, params: ControlViaticosLiteFilter) -> dict[str, Any]:
         """Encola la exportación a Google Sheets y responde de inmediato.
 
-        Sube las hojas ``control_rendicion_db_new`` (snapshot con
-        fallback on-demand), ``siif_fondos_db_new`` y
-        ``siif_gastos_db_new``. NO se genera el archivo Excel (patrón
+        Sube las hojas ``control_rendicion_db`` (snapshot con
+        fallback on-demand), ``siif_fondos_db`` y
+        ``siif_gastos_db``. NO se genera el archivo Excel (patrón
         ``control_banco`` / ``control_honorarios``): el trabajo pesado
         corre como tarea de fondo para no bloquear el event loop ni
         agotar el timeout de Koyeb.
@@ -422,7 +422,7 @@ class ControlViaticosService(
             "title": "Exportación a Google Sheets iniciada",
             "detail": (
                 "El Google Sheet se actualizará en segundo plano con las hojas: "
-                "control_rendicion_db_new, siif_fondos_db_new y siif_gastos_db_new."
+                "control_rendicion_db, siif_fondos_db y siif_gastos_db."
             ),
             "spreadsheet_key": SPREADSHEET_KEY_CONTROL_VIATICOS,
         }
