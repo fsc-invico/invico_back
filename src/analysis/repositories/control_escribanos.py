@@ -9,17 +9,17 @@ from fastapi import Depends
 
 from ...config import BaseRepository
 from ..schemas.control_escribanos import (
-    ControlEscribanosSGFvsSSCCReport,
-    ControlEscribanosSIIFvsSGFReport,
+    ControlEscribanosSGFvsSSCCDocument,
+    ControlEscribanosSIIFvsSGFDocument,
 )
 
 
 # -------------------------------------------------
 class ControlEscribanosSIIFvsSGFRepository(
-    BaseRepository[ControlEscribanosSIIFvsSGFReport]
+    BaseRepository[ControlEscribanosSIIFvsSGFDocument]
 ):
     collection_name = "control_escribanos_siif_vs_sgf"
-    model = ControlEscribanosSIIFvsSGFReport
+    model = ControlEscribanosSIIFvsSGFDocument
 
 
 ControlEscribanosSIIFvsSGFRepositoryDependency = Annotated[
@@ -29,10 +29,10 @@ ControlEscribanosSIIFvsSGFRepositoryDependency = Annotated[
 
 # -------------------------------------------------
 class ControlEscribanosSGFvsSSCCRepository(
-    BaseRepository[ControlEscribanosSGFvsSSCCReport]
+    BaseRepository[ControlEscribanosSGFvsSSCCDocument]
 ):
     collection_name = "control_escribanos_sgf_vs_sscc"
-    model = ControlEscribanosSGFvsSSCCReport
+    model = ControlEscribanosSGFvsSSCCDocument
 
 
 ControlEscribanosSGFvsSSCCRepositoryDependency = Annotated[
