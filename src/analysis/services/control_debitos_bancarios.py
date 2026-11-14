@@ -145,6 +145,15 @@ class ControlDebitosBancariosService(
         bancarios) del ejercicio, con ``cta_cte`` unificada (nexo
         ``siif_gastos_cta_cte``).
 
+        El SIIF persiste ``grupo`` con un solo dígito (``GrupoPartidaSIIF``:
+        "1" = sueldos); para la hoja ``siif_db`` se lo pasa al código de
+        3 dígitos agregándole "00" al final ("1" -> "100"), igual que
+        ``control_haberes``, ``control_honorarios`` y ``control_viaticos``.
+
+        Se descarta además ``importe_total``: es la proyección
+        ``$temp_info.importe`` del join con ``rcg01_uejp`` y duplica
+        ``importe``.
+
         Returns:
             DataFrame de gastos SIIF (vacío si no hay datos).
         """
@@ -152,10 +161,31 @@ class ControlDebitosBancariosService(
         params.set_extra_filter({"partida": {"$in": ["355"]}})
         data = await self.gastos_service.get_joined_with_rcg01_uejp(params=params)
         df = pd.DataFrame(data)
-        df = df.drop(columns=["id"], errors="ignore")
+        df = df.drop(columns=["id", "importe_total"], errors="ignore")
         if df.empty:
             return df
+        if "grupo" in df.columns:
+            df["grupo"] = df["grupo"].map(self._normalizar_grupo)
         return await self.cta_cte_service.cta_cte_unifier(df, "siif_gastos_cta_cte")
+
+    # --------------------------------------------------
+    @staticmethod
+    def _normalizar_grupo(valor: Any) -> Any:
+        """Pasa el grupo de 1 dígito del SIIF a código de 3 dígitos.
+
+        ``control_haberes`` y ``control_honorarios`` hacen
+        ``df["grupo"] + "00"`` sobre los mismos gastos del SIIF; acá se
+        aplica el mismo criterio pero tolerando nulos (None/NaN se
+        conservan tal cual y el saneador JSON los vuelve ``None``).
+
+        Args:
+            valor: Celda de ``grupo`` (str, None o NaN).
+
+        Returns:
+            El grupo con "00" al final, o el valor sin modificar si no
+            es string.
+        """
+        return valor + "00" if isinstance(valor, str) else valor
 
     # --------------------------------------------------
     async def generate_banco_debitos(self, ejercicio: int) -> pd.DataFrame:

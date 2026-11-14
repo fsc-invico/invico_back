@@ -8,6 +8,8 @@ Cubre la paridad con los demás controles:
   ejercicio (clave ``[ejercicio, mes, cta_cte]``).
 - ``compute_control_debitos_bancarios`` arma el cruce (partida 355
   SIIF vs imputación 031 del banco) y soporta lados vacíos.
+- ``generate_siif_debitos`` normaliza ``grupo`` a 3 dígitos ("1" ->
+  "100") y descarta ``importe_total`` (duplica ``importe``).
 - ``export`` solo sube a Google Sheets en background (sin Excel) con
   las hojas ``siif_vs_sscc_db``, ``siif_db`` y ``sscc_db``.
 - Superficie de rutas: snapshot CRUD (factory) + ``/generate`` +
@@ -194,6 +196,67 @@ class TestComputeControlDebitosBancarios(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(filas, [])
+
+
+# -------------------------------------------------
+class TestGenerateSiifDebitos(unittest.IsolatedAsyncioTestCase):
+    """generate_siif_debitos normaliza 'grupo' y descarta 'importe_total'."""
+
+    # -------------------------------------------------
+    async def test_grupo_con_dos_ceros_y_sin_importe_total(self) -> None:
+        """El SIIF guarda '1'; la hoja siif_db debe llevar '100' sin duplicar importes."""
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.gastos_service = SimpleNamespace(
+            get_joined_with_rcg01_uejp=mock.AsyncMock(
+                return_value=[
+                    {
+                        "ejercicio": 2025,
+                        "partida": "355",
+                        "grupo": "1",
+                        "importe": 100.0,
+                        "importe_total": 100.0,
+                    },
+                    {
+                        "ejercicio": 2025,
+                        "partida": "355",
+                        "grupo": "4",
+                        "importe": 50.0,
+                        "importe_total": 50.0,
+                    },
+                    {
+                        "ejercicio": 2025,
+                        "partida": "355",
+                        "grupo": None,
+                        "importe": 10.0,
+                        "importe_total": 10.0,
+                    },
+                ]
+            )
+        )
+        servicio.cta_cte_service = SimpleNamespace(
+            cta_cte_unifier=mock.AsyncMock(side_effect=lambda df, nexo: df)
+        )
+
+        df = await servicio.generate_siif_debitos(ejercicio=2025)
+
+        # 1 -> 100, 4 -> 400; el nulo no rompe la concatenación
+        self.assertEqual(df["grupo"].tolist()[:2], ["100", "400"])
+        self.assertTrue(pd.isna(df["grupo"].tolist()[2]))
+        # importe_total duplica importe: se descarta de la hoja
+        self.assertNotIn("importe_total", df.columns)
+        self.assertIn("importe", df.columns)
+
+    # -------------------------------------------------
+    async def test_sin_gastos_del_ejercicio_devuelve_vacio(self) -> None:
+        """Sin datos crudos la hoja se sube vacía sin truenos."""
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.gastos_service = SimpleNamespace(
+            get_joined_with_rcg01_uejp=mock.AsyncMock(return_value=[])
+        )
+
+        df = await servicio.generate_siif_debitos(ejercicio=2025)
+
+        self.assertTrue(df.empty)
 
 
 # -------------------------------------------------
