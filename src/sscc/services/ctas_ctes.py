@@ -1,10 +1,12 @@
 __all__ = ["CtasCtesService", "CtasCtesServiceDependency"]
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Annotated, List
 
 import pandas as pd
-from fastapi import Depends
+from bson import ObjectId
+from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from ...config import logger
@@ -21,6 +23,20 @@ from ..schemas import (
     CtasCtesLiteFilter,
     CtasCtesReport,
 )
+
+
+# --------------------------------------------------
+def _normalize_lock_timestamp(value: datetime) -> datetime:
+    """Normaliza un timestamp cerrojo a UTC aware con precisión de milisegundos.
+
+    MongoDB almacena fechas en UTC con precisión de milisegundos y Motor las
+    devuelve naive (sin tz). Para comparar el valor enviado por el front con el
+    guardado en BD, ambos se convierten a UTC y se truncan los microsegundos.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    value = value.astimezone(timezone.utc)
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
 
 
 @dataclass
@@ -71,6 +87,181 @@ class CtasCtesService(
             self._handle_error("Error durante el proceso de add_many", e)
 
     # -------------------------------------------------
+    async def add_one(self, cta_cte: CtasCtesReport) -> CtasCtesDocument:
+        """Alta individual de una cuenta corriente.
+
+        El cerrojo ``updated_at`` se asigna en el servidor cuando el
+        payload no lo trae (paridad con ``ObrasRecuperadasService``).
+
+        Args:
+            cta_cte: Registro a dar de alta.
+
+        Returns:
+            Documento creado con el ``id`` asignado por MongoDB.
+
+        Raises:
+            HTTPException: 400 ante errores de validación; 500 ante
+                cualquier otro fallo inesperado.
+        """
+        try:
+            # El cerrojo de edición se asigna en el servidor al crear
+            if cta_cte.updated_at is None:
+                cta_cte.updated_at = datetime.now(timezone.utc)
+            # Invocamos save_one que ya maneja la conversión a dict
+            nueva_cta_cte = await self.repository.save_one(cta_cte)
+            return nueva_cta_cte
+        except ValueError as e:
+            self._handle_error("Error de validación", e, status_code=400)
+        except Exception as e:
+            self._handle_error("Error inesperado en el servidor", e)
+
+    # -------------------------------------------------
+    async def update_one_safely(
+        self, id: str, data: CtasCtesReport
+    ) -> CtasCtesDocument:
+        """Actualización con cerrojo de concurrencia optimista.
+
+        Paridad estricta con
+        ``ObrasRecuperadasService.update_one_safely``: 404 si el
+        registro ya no existe, 409 ante conflictos de ``updated_at`` y
+        re-chequeo atómico del cerrojo en la actualización. Los
+        registros históricos sin ``updated_at`` en BD se actualizan sin
+        control de concurrencia.
+
+        Args:
+            id: Identificador ``_id`` del registro a editar.
+            data: Nuevos valores; debe traer el ``updated_at``
+                original leído en el GET.
+
+        Returns:
+            Documento actualizado.
+
+        Raises:
+            HTTPException: 404 si no existe, 409 si hay conflicto de
+                cerrojo, 500 ante fallos inesperados.
+        """
+        try:
+            mongo_id = ObjectId(id)
+
+            # 1. EXISTENCIA DEL REGISTRO (distingue 404 de 409)
+            current_doc = await self.repository.get_by_id(mongo_id)
+            if not current_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        "La Cuenta Corriente ya no existe "
+                        "(fue eliminada o re-sincronizada). "
+                        "Recargue la página."
+                    ),
+                )
+
+            db_lock = current_doc.get("updated_at")
+
+            # 2. CERROJO AUSENTE EN LA BD (registro antiguo sin timestamp):
+            #    no hay con qué comparar, se procede sin cerrojo.
+            if db_lock is None:
+                logger.warning(
+                    f"update_one_safely: registro {id} sin updated_at en BD; "
+                    "se omite el control de concurrencia."
+                )
+            else:
+                # 3. CERROJO AUSENTE EN EL PAYLOAD (estricto):
+                #    el front debe reenviar el updated_at original del registro.
+                if data.updated_at is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "No se recibió 'updated_at': el front debe enviar "
+                            "el valor original del registro para evitar "
+                            "conflictos de edición."
+                        ),
+                    )
+
+                # 4. COMPARACIÓN NORMALIZADA (UTC + precisión de milisegundos)
+                received_lock = _normalize_lock_timestamp(data.updated_at)
+                stored_lock = _normalize_lock_timestamp(db_lock)
+                if received_lock != stored_lock:
+                    logger.warning(
+                        f"update_one_safely: conflicto de cerrojo en registro "
+                        f"{id}. Recibido={data.updated_at!r} | BD={db_lock!r}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "Conflicto de edición: Los datos fueron modificados "
+                            "por otro usuario. Por favor, recargue la página."
+                        ),
+                    )
+
+            # 5. INTENTO DE ACTUALIZACIÓN (re-chequeo atómico del cerrojo)
+            new_data = data.model_dump(by_alias=True)
+            new_data["updated_at"] = datetime.now(timezone.utc)
+
+            update_filter: dict = {"_id": mongo_id}
+            if db_lock is not None:
+                # Valor crudo de la BD: coincidencia exacta en Mongo
+                update_filter["updated_at"] = db_lock
+
+            updated_doc = await self.repository.find_one_and_update(
+                filter=update_filter,
+                update_data=new_data,
+                return_document=True,
+            )
+
+            if not updated_doc:
+                # Carrera entre la verificación y esta actualización:
+                # otro usuario modificó el registro en el ínterim.
+                logger.warning(
+                    f"update_one_safely: carrera detectada en registro {id}; "
+                    "el cerrojo cambió entre la verificación y la "
+                    "actualización."
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Conflicto de edición: Los datos fueron modificados "
+                        "por otro usuario. Por favor, recargue la página."
+                    ),
+                )
+
+            return updated_doc
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en update_one_safely: {str(e)}")
+            self._handle_error("Error durante el proceso de update_one_safely", e)
+
+    # -------------------------------------------------
+    async def delete_one(self, id: str) -> CtasCtesDocument:
+        """Baja individual de una cuenta corriente.
+
+        Args:
+            id: Identificador ``_id`` del registro a eliminar.
+
+        Returns:
+            Documento eliminado.
+
+        Raises:
+            HTTPException: 404 si el registro no existe; 500 ante
+                fallos inesperados.
+        """
+        try:
+            mongo_id = ObjectId(id)
+            document = await self.repository.delete_by_id(mongo_id)
+
+            if not document:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="La Cuenta Corriente no existe o ya fue eliminada.",
+                )
+            return document
+        except HTTPException:
+            raise  # Re-lanzamos la excepción de FastAPI si ya la manejamos
+        except Exception as e:
+            logger.error(f"Error en delete_one: {str(e)}")
+            self._handle_error("Error durante el proceso de delete_one", e)
+
+    # --------------------------------------------------
     async def export(self, params: CtasCtesLiteFilter) -> StreamingResponse:
         # 1. Creamos el objeto de filtros normal
         search_params = CtasCtesFullFilter(

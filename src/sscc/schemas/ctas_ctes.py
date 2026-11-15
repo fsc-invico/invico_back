@@ -5,6 +5,7 @@ __all__ = [
     "CtasCtesLiteFilter",
 ]
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -25,6 +26,10 @@ class CtasCtesReport(BaseModel):
     sgf_cta_cte: Optional[str] = None
     siif_cta_cte: Optional[str] = None
     icaro_cta_cte: Optional[str] = None
+    # Cerrojo de edición (concurrencia optimista), paridad con
+    # sgv.obras_recuperadas: los documentos históricos quedan en None y
+    # el servicio omite el control cuando la BD no tiene timestamp.
+    updated_at: Optional[datetime] = None
 
 
 # -------------------------------------------------
