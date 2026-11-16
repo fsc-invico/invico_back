@@ -155,7 +155,13 @@ class ControlEscribanosService:
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
-        return await self.compute_control_sgf_vs_sscc(params=compute_params)
+        # only_diff=False explícito: el snapshot congela TODOS los meses,
+        # también los que cuadran (dif=0). Si se filtraran solo las
+        # diferencias, un ejercicio cerrado devolvería [] y el front no
+        # realizaría el POST, dejando la pestaña sin filas.
+        return await self.compute_control_sgf_vs_sscc(
+            params=compute_params, only_diff=False
+        )
 
     # -------------------------------------------------
     async def get_snapshot_siif_vs_sgf(
@@ -510,7 +516,7 @@ class ControlEscribanosService:
     async def compute_control_sgf_vs_sscc(
         self,
         params: ControlEscribanosFullFilter,
-        only_diff: bool = True,
+        only_diff: bool = False,
     ) -> List[dict]:
         """Cruce Escribanos SGF vs SSCC on-demand (sin persistir).
 
@@ -521,8 +527,13 @@ class ControlEscribanosService:
 
         Args:
             params: Filtro con el ``ejercicio`` a recalcular.
-            only_diff: Si es True (default), devuelve solo las filas con
-                diferencia material (``|dif| > 0.01``).
+            only_diff: Si es True, devuelve solo las filas con diferencia
+                material (``|dif| > 0.01``). **Default False**: el
+                snapshot debe congelar TODOS los meses. Con el filtro
+                activo, un ejercicio cuadrado (``dif=0`` en los 12 meses)
+                devolvía ``[]``, el front omitía el POST
+                (``_compute_y_persistir``) y la pestaña quedaba vacía,
+                haciendo creer que "no había datos".
 
         Returns:
             Filas del cruce como lista de dicts (vacía si no hay datos).
@@ -629,7 +640,7 @@ class ControlEscribanosService:
                 [doc.model_dump(by_alias=True) for doc in snapshot_sgf_vs_sscc]
                 if snapshot_sgf_vs_sscc
                 else await self.compute_control_sgf_vs_sscc(
-                    params=search_params, only_diff=True
+                    params=search_params, only_diff=False
                 )
             )
 
@@ -640,11 +651,11 @@ class ControlEscribanosService:
 
             # 3. Upload hoja por hoja (fuera del event loop)
             sheets: list[tuple[list[dict], str]] = [
-                (data_siif_vs_sgf, "siif_vs_sgf_db_new"),
-                (data_sgf_vs_sscc, "sgf_vs_sscc_db_new"),
-                (data_siif, "siif_db_new"),
-                (data_sscc, "sscc_db_new"),
-                (data_sgf, "sgf_db_new"),
+                (data_siif_vs_sgf, "siif_vs_sgf_db"),
+                (data_sgf_vs_sscc, "sgf_vs_sscc_db"),
+                (data_siif, "siif_db"),
+                (data_sscc, "sscc_db"),
+                (data_sgf, "sgf_db"),
             ]
             for records, sheet_name in sheets:
                 try:

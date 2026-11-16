@@ -22,8 +22,10 @@ from ...utils import BaseFilterParams, CamelModel
 
 
 # Salida real de compute_control_sgf_vs_sscc: cruce agregado por
-# [ejercicio, mes] con el neto de cada sistema y su diferencia (solo se
-# conservan filas con diferencia material, patrón control_honorarios).
+# [ejercicio, mes] con el neto de cada sistema y su diferencia. Se
+# persisten TODOS los meses, incluidos los que cuadran (dif=0): si solo
+# se guardaran las filas con diferencia material, un ejercicio cerrado
+# no tendría snapshot y la pestaña del front mostraría "sin resultados".
 # -------------------------------------------------
 class ControlEscribanosSGFvsSSCCReport(BaseModel):
     ejercicio: int
