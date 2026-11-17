@@ -3,14 +3,15 @@ __all__ = [
     "ControlAporteEmpresarioServiceDependency",
 ]
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
 import pandas as pd
 from fastapi import Depends
-from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 
 from ...config import logger
 from ...icaro.schemas import RetencionesFullFilter
@@ -26,6 +27,7 @@ from ...utils import (
     RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
+    upload_multiple_dataframes_to_google_sheets,
     validate_and_extract_data_from_list,
 )
 from ..repositories import ControlAporteEmpresarioRepositoryDependency
@@ -35,6 +37,14 @@ from ..schemas import (
     ControlAporteEmpresarioLiteFilter,
     ControlAporteEmpresarioReport,
 )
+
+SPREADSHEET_KEY_CONTROL_APORTE_EMPRESARIO: str = (
+    "1bZnvl9YkHC-N1HbIbnFNrqU3Iq03PG81u7fdHe_v_pw"
+)
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 
 @dataclass
@@ -399,52 +409,118 @@ class ControlAporteEmpresarioService(
     # -------------------------------------------------
     async def export(
         self, params: ControlAporteEmpresarioLiteFilter
-    ) -> StreamingResponse:
+    ) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
 
-        # 1. Creamos el objeto de filtros normal
-        params = ControlAporteEmpresarioFilter(
+        Sube las hojas ``recursos_siif_db``, ``retenciones_siif_db``,
+        ``retenciones_icaro_db``, ``control_cruzado_siif_db`` y
+        ``control_cruzado_icaro_db``. NO se genera el archivo Excel
+        (patrón ``control_viaticos``): el trabajo pesado corre como tarea
+        de fondo para no bloquear el event loop ni agotar el timeout de
+        Koyeb.
+
+        Se encola con ``asyncio.create_task`` (y no con ``BackgroundTasks``)
+        para ser compatible con la ruta ``/export`` del
+        ``GenericRouterFactory``, que no inyecta ``BackgroundTasks``.
+        """
+        asyncio.create_task(self._export_to_google_sheets(params))
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con las hojas: "
+                "recursos_siif_db, retenciones_siif_db, retenciones_icaro_db, "
+                "control_cruzado_siif_db y control_cruzado_icaro_db."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_APORTE_EMPRESARIO,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlAporteEmpresarioLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube cada hoja a Google Sheets, una por vez.
+
+        NO genera el archivo Excel (a diferencia del export binario
+        anterior): solo queries + upload, corriendo fuera del request.
+        Procesa de a una hoja para mantener el pico de memoria acotado
+        (Koyeb dispone de poca RAM en su capa gratuita).
+
+        En background no hay respuesta HTTP que retornar: los errores se
+        loguean para que sean visibles en los logs de Koyeb.
+        """
+        filter_params = ControlAporteEmpresarioFilter(
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
+        async with _export_lock:
+            # 1. Fuentes crudas + cruce ICARO
+            data_recursos = await self.get_recursos(params=filter_params)
+            data_retenciones_siif = await self.get_retenciones_from_siif(
+                params=filter_params
+            )
+            data_retenciones_icaro = await self.get_retenciones_from_icaro(
+                params=filter_params
+            )
+            data_control_icaro = await self.generate_icaro(
+                params=filter_params
+            )
 
-        # 2. Traemos los datos sin paginar
-        data_recursos = await self.get_recursos(params=params)
-        data_retenciones_siif = await self.get_retenciones_from_siif(params=params)
-        data_retenciones_icaro = await self.get_retenciones_from_icaro(params=params)
-        data_control_icaro = await self.generate_icaro(params=params)
+            # El cruce SIIF (la tabla que ve el usuario en la página) se
+            # exporta desde el snapshot persistido en Mongo; si todavía no
+            # existe, se calcula on-demand para no dejar la hoja vacía.
+            snapshot = await self.repository.find_with_filter_params(
+                params=filter_params
+            )
+            data_control_siif = (
+                [doc.model_dump(by_alias=True) for doc in snapshot]
+                if snapshot
+                else await self.generate_siif(params=filter_params)
+            )
 
-        # El cruce ICARO (la tabla que ve el usuario en la página) se
-        # exporta desde el snapshot persistido en Mongo; si todavía no
-        # existe, se calcula on-demand para no dejar la hoja vacía.
-        snapshot = await self.repository.find_with_filter_params(params=params)
-        data_control_siif = (
-            [doc.model_dump(by_alias=True) for doc in snapshot]
-            if snapshot
-            else await self.generate_siif(params=params)
+            # 2. DataFrames + upload hoja por hoja (fuera del event loop)
+            sheets: list[tuple[pd.DataFrame, str]] = [
+                (pd.DataFrame(data_recursos), "recursos_siif_db"),
+                (pd.DataFrame(data_retenciones_siif), "retenciones_siif_db"),
+                (pd.DataFrame(data_retenciones_icaro), "retenciones_icaro_db"),
+                (pd.DataFrame(data_control_siif), "control_cruzado_siif_db"),
+                (pd.DataFrame(data_control_icaro), "control_cruzado_icaro_db"),
+            ]
+            for df, sheet_name in sheets:
+                try:
+                    await run_in_threadpool(
+                        self._build_df_and_upload, df, sheet_name
+                    )
+                    logger.info(
+                        f"Control Aporte Empresario: hoja '{sheet_name}' "
+                        "actualizada en Google Sheets"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Control Aporte Empresario: error al subir la hoja "
+                        f"'{sheet_name}': {e}"
+                    )
+        logger.info(
+            "Control Aporte Empresario: exportación a Google Sheets finalizada"
         )
 
-        # 3. Transformamos los datos a DataFrames de Pandas
-        df_recursos = pd.DataFrame(data_recursos)
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(df: pd.DataFrame, sheet_name: str) -> None:
+        """Descarta los id internos y sube la hoja (bloqueante → threadpool).
 
-        df_retenciones_siif = pd.DataFrame(data_retenciones_siif)
+        NO genera el archivo Excel: solo sube la hoja a Google Sheets.
 
-        df_retenciones_icaro = pd.DataFrame(data_retenciones_icaro)
-
-        df_control_siif = pd.DataFrame(data_control_siif)
-
-        df_control_icaro = pd.DataFrame(data_control_icaro)
-
-        return self.export_to_excel(
-            data_pairs=[
-                (df_recursos, "recursos_siif_db"),
-                (df_retenciones_siif, "retenciones_siif_db"),
-                (df_retenciones_icaro, "retenciones_icaro_db"),
-                (df_control_siif, "control_cruzado_siif_db"),
-                (df_control_icaro, "control_cruzado_icaro_db"),
-            ],
-            filename="Control Aporte Empresario.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="1bZnvl9YkHC-N1HbIbnFNrqU3Iq03PG81u7fdHe_v_pw",
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
+        """
+        df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_APORTE_EMPRESARIO,
         )
 
 

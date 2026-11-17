@@ -1,15 +1,16 @@
 __all__ = ["ControlRecursosService", "ControlRecursosServiceDependency"]
 
 # import os
+import asyncio
 from dataclasses import dataclass
 
 # from io import BytesIO
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 # from pydantic import ValidationError
 from ...config import logger
@@ -22,6 +23,7 @@ from ...utils import (
     RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
+    upload_multiple_dataframes_to_google_sheets,
     validate_and_extract_data_from_list,
 )
 from ..repositories import ControlRecursosRepositoryDependency
@@ -32,6 +34,14 @@ from ..schemas import (
     ControlRecursosLiteFilter,
     ControlRecursosReport,
 )
+
+SPREADSHEET_KEY_CONTROL_RECURSOS: str = (
+    "1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY"
+)
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 
 @dataclass
@@ -232,24 +242,89 @@ class ControlRecursosService(
         return df.rename(columns={"importe": "depositos_banco"})
 
     # -------------------------------------------------
-    async def export(self, params: ControlRecursosLiteFilter) -> StreamingResponse:
-        # 1. Creamos el objeto de filtros normal
+    async def export(self, params: ControlRecursosLiteFilter) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
+
+        Sube la hoja ``control_recursos``. NO se genera el archivo Excel
+        (patrón ``control_viaticos``): el trabajo pesado corre como tarea
+        de fondo para no bloquear el event loop ni agotar el timeout de
+        Koyeb.
+
+        Se encola con ``asyncio.create_task`` (y no con ``BackgroundTasks``)
+        para ser compatible con la ruta ``/export`` del
+        ``GenericRouterFactory``, que no inyecta ``BackgroundTasks``.
+        """
+        if params.ejercicio is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El parámetro 'ejercicio' es obligatorio para exportar.",
+            )
+        asyncio.create_task(self._export_to_google_sheets(params))
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con la hoja: "
+                "control_recursos."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_RECURSOS,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlRecursosLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube la hoja a Google Sheets.
+
+        NO genera el archivo Excel: solo query + upload, corriendo fuera
+        del request. En background no hay respuesta HTTP que retornar: los
+        errores se loguean para que sean visibles en los logs de Koyeb.
+        """
         search_params = ControlRecursosFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
+        async with _export_lock:
+            # 1. Traemos los datos sin paginar
+            data = await self.repository.find_with_filter_params(
+                params=search_params
+            )
+            df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
 
-        # 2. Traemos los datos sin paginar
-        data = await self.repository.find_with_filter_params(params=search_params)
+            # 2. Upload de la hoja (fuera del event loop)
+            try:
+                await run_in_threadpool(
+                    self._build_df_and_upload, df, "control_recursos"
+                )
+                logger.info(
+                    "Control Recursos: hoja 'control_recursos' "
+                    "actualizada en Google Sheets"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Control Recursos: error al subir la hoja "
+                    f"'control_recursos': {e}"
+                )
+        logger.info("Control Recursos: exportación a Google Sheets finalizada")
 
-        # 3. Usar el método de la clase base
-        df = pd.DataFrame([d.model_dump(by_alias=True) for d in data])
-        return self.export_to_excel(
-            data_pairs=[(df, "control_recursos")],
-            filename="Control Recursos.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="1u_I5wN3w_rGX6rWIsItXkmwfIEuSox6ZsmKYbMZ2iUY",
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(df: pd.DataFrame, sheet_name: str) -> None:
+        """Descarta los id internos y sube la hoja (bloqueante → threadpool).
+
+        NO genera el archivo Excel: solo sube la hoja a Google Sheets.
+
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
+        """
+        df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_RECURSOS,
         )
 
 
