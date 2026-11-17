@@ -3,13 +3,14 @@ __all__ = [
     "ControlHaberesServiceDependency",
 ]
 
+import asyncio
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 from ...config import logger
 from ...siif.schemas import GtoRpa03gFullFilter, Rcocc31FullFilter, Rdeu012FullFilter
@@ -25,6 +26,7 @@ from ...utils import (
     RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
+    upload_multiple_dataframes_to_google_sheets,
     validate_and_extract_data_from_list,
 )
 from ..repositories import ControlHaberesRepositoryDependency
@@ -35,6 +37,14 @@ from ..schemas import (
     ControlHaberesLiteFilter,
     ControlHaberesReport,
 )
+
+SPREADSHEET_KEY_CONTROL_HABERES: str = (
+    "1A9ypUkwm4kfLqUAwr6-55crcFElisOO9fOdI6iflMAc"
+)
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 
 @dataclass
@@ -448,47 +458,115 @@ class ControlHaberesService(
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def export(self, params: ControlHaberesLiteFilter) -> StreamingResponse:
+    async def export(self, params: ControlHaberesLiteFilter) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
 
-        # 1. Creamos el objeto de filtros normal
+        Sube las hojas ``siif_comprobantes_haberes_db``,
+        ``sscc_haberes_db`` y ``control_mensual_db``. NO se genera el
+        archivo Excel (patrón ``control_viaticos``): el trabajo pesado
+        corre como tarea de fondo para no bloquear el event loop ni
+        agotar el timeout de Koyeb.
+
+        Se encola con ``asyncio.create_task`` (y no con ``BackgroundTasks``)
+        para ser compatible con la ruta ``/export`` del
+        ``GenericRouterFactory``, que no inyecta ``BackgroundTasks``.
+        """
+        if params.ejercicio is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El parámetro 'ejercicio' es obligatorio para exportar.",
+            )
+        asyncio.create_task(self._export_to_google_sheets(params))
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con las hojas: "
+                "siif_comprobantes_haberes_db, sscc_haberes_db y "
+                "control_mensual_db."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_HABERES,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlHaberesLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube cada hoja a Google Sheets, una por vez.
+
+        NO genera el archivo Excel (a diferencia del export binario
+        anterior): solo queries + upload, corriendo fuera del request.
+        Procesa de a una hoja para mantener el pico de memoria acotado
+        (Koyeb dispone de poca RAM en su capa gratuita).
+
+        En background no hay respuesta HTTP que retornar: los errores se
+        loguean para que sean visibles en los logs de Koyeb.
+        """
         search_params = ControlHaberesFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
-
-        # 2. Traemos los datos sin paginar
-        data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(
-            params=search_params
-        )
-        data_sscc = await self.get_banco_invico(params=search_params)
-
-        # El cruce (la tabla que ve el usuario en la página) se exporta
-        # desde el snapshot persistido en Mongo; si todavía no existe, se
-        # calcula on-demand para no dejar la hoja vacía.
-        snapshot = await self.repository.find_with_filter_params(params=search_params)
-        data_control = (
-            [doc.model_dump(by_alias=True) for doc in snapshot]
-            if snapshot
-            else await self.compute_control_haberes(
-                params=search_params, siif=data_siif, sscc=data_sscc
+        async with _export_lock:
+            # 1. Crudos SIIF + SSCC
+            data_siif = await self.get_siif_comprobantes_haberes_neto_rdeu(
+                params=search_params
             )
-        )
+            data_sscc = await self.get_banco_invico(params=search_params)
 
-        # 3. Transformamos los datos a DataFrames de Pandas
-        df_siif = pd.DataFrame(data_siif)
-        df_sscc = pd.DataFrame(data_sscc)
-        df_control = pd.DataFrame(data_control)
+            # El cruce (la tabla que ve el usuario en la página) se exporta
+            # desde el snapshot persistido en Mongo; si todavía no existe,
+            # se calcula on-demand para no dejar la hoja vacía.
+            snapshot = await self.repository.find_with_filter_params(
+                params=search_params
+            )
+            data_control = (
+                [doc.model_dump(by_alias=True) for doc in snapshot]
+                if snapshot
+                else await self.compute_control_haberes(
+                    params=search_params, siif=data_siif, sscc=data_sscc
+                )
+            )
 
-        return self.export_to_excel(
-            data_pairs=[
-                (df_siif, "siif_comprobantes_haberes_db"),
-                (df_sscc, "sscc_haberes_db"),
-                (df_control, "control_mensual_db"),
-            ],
-            filename="Control Haberes.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="1A9ypUkwm4kfLqUAwr6-55crcFElisOO9fOdI6iflMAc",
+            # 2. DataFrames + upload hoja por hoja (fuera del event loop)
+            sheets: list[tuple[pd.DataFrame, str]] = [
+                (pd.DataFrame(data_siif), "siif_comprobantes_haberes_db"),
+                (pd.DataFrame(data_sscc), "sscc_haberes_db"),
+                (pd.DataFrame(data_control), "control_mensual_db"),
+            ]
+            for df, sheet_name in sheets:
+                try:
+                    await run_in_threadpool(
+                        self._build_df_and_upload, df, sheet_name
+                    )
+                    logger.info(
+                        f"Control Haberes: hoja '{sheet_name}' "
+                        "actualizada en Google Sheets"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Control Haberes: error al subir la hoja "
+                        f"'{sheet_name}': {e}"
+                    )
+        logger.info("Control Haberes: exportación a Google Sheets finalizada")
+
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(df: pd.DataFrame, sheet_name: str) -> None:
+        """Descarta los id internos y sube la hoja (bloqueante → threadpool).
+
+        NO genera el archivo Excel: solo sube la hoja a Google Sheets.
+
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
+        """
+        df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_HABERES,
         )
 
 
