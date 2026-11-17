@@ -1,16 +1,18 @@
 __all__ = ["ControlIcaroService", "ControlIcaroServiceDependency"]
 
 # import os
+import asyncio
 from dataclasses import dataclass
 
 # from io import BytesIO
-from typing import Annotated
+from typing import Annotated, Any
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
+from ...config import logger
 from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
 from ...siif.schemas import (
@@ -26,13 +28,21 @@ from ...siif.services import (
 
 # from pydantic import ValidationError
 from ...utils import (
-    BaseService,
     sanitize_dataframe_for_json_with_datetime,
+    upload_multiple_dataframes_to_google_sheets,
 )
 from ..schemas import (
     ControlIcaroFullFilter,
     ControlIcaroLiteFilter,
 )
+
+SPREADSHEET_KEY_CONTROL_ICARO: str = (
+    "1KKeeoop_v_Nf21s7eFp4sS6SmpxRZQ9DPa1A5wVqnZ0"
+)
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 
 @dataclass
@@ -643,82 +653,136 @@ class ControlIcaroService:
         return df.replace({np.nan: None}).to_dict(orient="records")
 
     # -------------------------------------------------
-    async def export(self, params: ControlIcaroLiteFilter) -> StreamingResponse:
-        # 1. Creamos el objeto de filtros normal
+    async def export(self, params: ControlIcaroLiteFilter) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
+
+        Sube las hojas ``control_ejecucion_anual_db``,
+        ``control_comprobantes_db``, ``control_pa6_db``,
+        ``siif_comprobantes_db``, ``siif_obras_db``, ``siif_pa6_db`` e
+        ``icaro_comprobantes_db`` (los 3 subreportes/pestañas). NO se
+        genera el archivo Excel (patrón ``control_viaticos``): el trabajo
+        pesado corre como tarea de fondo para no bloquear el event loop ni
+        agotar el timeout de Koyeb.
+
+        Se encola con ``asyncio.create_task`` (y no con ``BackgroundTasks``)
+        para ser compatible con la ruta ``/export``, que no inyecta
+        ``BackgroundTasks``.
+        """
+        if params.ejercicio is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El parámetro 'ejercicio' es obligatorio para exportar.",
+            )
+        asyncio.create_task(self._export_to_google_sheets(params))
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con las hojas: "
+                "control_ejecucion_anual_db, control_comprobantes_db, "
+                "control_pa6_db, siif_comprobantes_db, siif_obras_db, "
+                "siif_pa6_db e icaro_comprobantes_db."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_ICARO,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlIcaroLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube cada hoja a Google Sheets, una por vez.
+
+        NO genera el archivo Excel (a diferencia del export binario
+        anterior): solo queries + upload, corriendo fuera del request.
+        Procesa de a una hoja para mantener el pico de memoria acotado
+        (Koyeb dispone de poca RAM en su capa gratuita).
+
+        En background no hay respuesta HTTP que retornar: los errores se
+        loguean para que sean visibles en los logs de Koyeb.
+        """
         search_params = ControlIcaroFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
+        async with _export_lock:
+            # 1. Crudos SIIF + ICARO
+            data_siif_comprobantes = await self.get_siif_gastos(
+                params=search_params
+            )
+            data_siif_obras = await self.get_siif_obras(params=search_params)
+            data_siif_pa6 = await self.get_siif_pa6(params=search_params)
+            data_icaro_comprobantes = await self.get_icaro_comprobantes(
+                params=search_params, exclude_pa6=False
+            )
 
-        # 2. Traemos los datos sin paginar
-        data_siif_comprobantes = await self.get_siif_gastos(params=search_params)
-        data_siif_obras = await self.get_siif_obras(params=search_params)
-        data_siif_pa6 = await self.get_siif_pa6(params=search_params)
-        data_icaro_comprobantes = await self.get_icaro_comprobantes(
-            params=search_params, exclude_pa6=False
-        )
+            # 2. Cruces de los 3 subreportes con los crudos ya leídos
+            data_ctrl_anual = await self.compute_control_anual(
+                params=search_params,
+                icaro=data_icaro_comprobantes,
+                siif=data_siif_obras,
+            )
+            data_ctrl_comprobantes = await self.compute_control_comprobantes(
+                params=search_params,
+                icaro=data_icaro_comprobantes,
+                siif=data_siif_comprobantes,
+            )
+            data_ctrl_pa6 = await self.compute_control_pa6(
+                params=search_params,
+                icaro=data_icaro_comprobantes,
+                siif_fdos=data_siif_pa6,
+                siif_gtos=data_siif_comprobantes,
+            )
 
-        data_ctrl_anual = await self.compute_control_anual(
-            params=search_params, icaro=data_icaro_comprobantes, siif=data_siif_obras
-        )
-        data_ctrl_comprobantes = await self.compute_control_comprobantes(
-            params=search_params,
-            icaro=data_icaro_comprobantes,
-            siif=data_siif_comprobantes,
-        )
-        data_ctrl_pa6 = await self.compute_control_pa6(
-            params=search_params,
-            icaro=data_icaro_comprobantes,
-            siif_fdos=data_siif_pa6,
-            siif_gtos=data_siif_comprobantes,
-        )
-
-        # 3. Transformamos los datos a DataFrames de Pandas
-        df_siif_comprobantes = pd.DataFrame(data_siif_comprobantes)
-        df_siif_obras = pd.DataFrame(data_siif_obras)
-        df_siif_pa6 = pd.DataFrame(data_siif_pa6)
-        df_icaro_comprobantes = pd.DataFrame(data_icaro_comprobantes)
-        df_ctrl_anual = pd.DataFrame(data_ctrl_anual)
-        df_ctrl_comprobantes = pd.DataFrame(data_ctrl_comprobantes)
-        df_ctrl_pa6 = pd.DataFrame(data_ctrl_pa6)
-
-        # 3. Usar el método de la clase base
-        return BaseService.export_to_excel(
-            self,
-            data_pairs=[
+            # 3. DataFrames + upload hoja por hoja (fuera del event loop)
+            sheets: list[tuple[pd.DataFrame, str]] = [
+                (pd.DataFrame(data_ctrl_anual), "control_ejecucion_anual_db"),
                 (
-                    df_ctrl_anual,
-                    "control_ejecucion_anual_db",
-                ),
-                (
-                    df_ctrl_comprobantes,
+                    pd.DataFrame(data_ctrl_comprobantes),
                     "control_comprobantes_db",
                 ),
+                (pd.DataFrame(data_ctrl_pa6), "control_pa6_db"),
+                (pd.DataFrame(data_siif_comprobantes), "siif_comprobantes_db"),
+                (pd.DataFrame(data_siif_obras), "siif_obras_db"),
+                (pd.DataFrame(data_siif_pa6), "siif_pa6_db"),
                 (
-                    df_ctrl_pa6,
-                    "control_pa6_db",
-                ),
-                (
-                    df_siif_comprobantes,
-                    "siif_comprobantes_db",
-                ),
-                (
-                    df_siif_obras,
-                    "siif_obras_db",
-                ),
-                (
-                    df_siif_pa6,
-                    "siif_pa6_db",
-                ),
-                (
-                    df_icaro_comprobantes,
+                    pd.DataFrame(data_icaro_comprobantes),
                     "icaro_comprobantes_db",
                 ),
-            ],
-            filename="Control Icaro vs SIIF.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="1KKeeoop_v_Nf21s7eFp4sS6SmpxRZQ9DPa1A5wVqnZ0",
+            ]
+            for df, sheet_name in sheets:
+                try:
+                    await run_in_threadpool(
+                        self._build_df_and_upload, df, sheet_name
+                    )
+                    logger.info(
+                        f"Control Icaro: hoja '{sheet_name}' "
+                        "actualizada en Google Sheets"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Control Icaro: error al subir la hoja "
+                        f"'{sheet_name}': {e}"
+                    )
+        logger.info("Control Icaro: exportación a Google Sheets finalizada")
+
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(df: pd.DataFrame, sheet_name: str) -> None:
+        """Descarta los id internos y sube la hoja (bloqueante → threadpool).
+
+        NO genera el archivo Excel: solo sube la hoja a Google Sheets.
+
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
+        """
+        df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_ICARO,
         )
 
 
