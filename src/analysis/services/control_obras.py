@@ -1,15 +1,16 @@
 __all__ = ["ControlObrasService", "ControlObrasServiceDependency"]
 
 # import os
+import asyncio
 from dataclasses import dataclass
 
 # from io import BytesIO
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
 import pandas as pd
 from fastapi import Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 
 # from pydantic import ValidationError
 from ...config import logger
@@ -23,6 +24,7 @@ from ...utils import (
     RouteReturnSchema,
     sanitize_dataframe_for_json_with_datetime,
     sync_validated_to_repository,
+    upload_multiple_dataframes_to_google_sheets,
     validate_and_extract_data_from_list,
 )
 from ..repositories import ControlObrasRepositoryDependency
@@ -33,6 +35,14 @@ from ..schemas import (
     ControlObrasLiteFilter,
     ControlObrasReport,
 )
+
+SPREADSHEET_KEY_CONTROL_OBRAS: str = (
+    "16v2ovmQnS1v73-WxTOK6b9Tx9DRugGc70ufpjVi-rPA"
+)
+
+# Serializa las exportaciones para que dos tareas simultáneas no
+# intercaleen sus chunks dentro de la misma hoja.
+_export_lock: asyncio.Lock = asyncio.Lock()
 
 # Orden de cabecera común a las hojas de SGF e ICARO del export: coloca
 # primero los campos compartidos (claves del cruce) para facilitar la
@@ -196,49 +206,131 @@ class ControlObrasService(
         return df.loc[:, leading + remaining]
 
     # -------------------------------------------------
-    async def export(self, params: ControlObrasLiteFilter) -> StreamingResponse:
-        # 1. Creamos el objeto de filtros normal
+    async def export(self, params: ControlObrasLiteFilter) -> dict[str, Any]:
+        """Encola la exportación a Google Sheets y responde de inmediato.
+
+        Sube las hojas ``control_mes_cta_cte_cuit_db``, ``resumen_rend_cuit``
+        e ``icaro_carga_neto_rdeu``. NO se genera el archivo Excel (patrón
+        ``control_viaticos``): el trabajo pesado corre como tarea de fondo
+        para no bloquear el event loop ni agotar el timeout de Koyeb.
+
+        Se encola con ``asyncio.create_task`` (y no con ``BackgroundTasks``)
+        para ser compatible con la ruta ``/export`` del
+        ``GenericRouterFactory``, que no inyecta ``BackgroundTasks``.
+        """
+        if params.ejercicio is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El parámetro 'ejercicio' es obligatorio para exportar.",
+            )
+        asyncio.create_task(self._export_to_google_sheets(params))
+        return {
+            "title": "Exportación a Google Sheets iniciada",
+            "detail": (
+                "El Google Sheet se actualizará en segundo plano con las hojas: "
+                "control_mes_cta_cte_cuit_db, resumen_rend_cuit e "
+                "icaro_carga_neto_rdeu."
+            ),
+            "spreadsheet_key": SPREADSHEET_KEY_CONTROL_OBRAS,
+        }
+
+    # -------------------------------------------------
+    async def _export_to_google_sheets(
+        self, params: ControlObrasLiteFilter
+    ) -> None:
+        """Tarea de fondo: sube cada hoja a Google Sheets, una por vez.
+
+        NO genera el archivo Excel (a diferencia del export binario
+        anterior): solo queries + upload, corriendo fuera del request.
+        Procesa de a una hoja para mantener el pico de memoria acotado
+        (Koyeb dispone de poca RAM en su capa gratuita).
+
+        En background no hay respuesta HTTP que retornar: los errores se
+        loguean para que sean visibles en los logs de Koyeb.
+        """
         search_params = ControlObrasFullFilter(
             query_filter=params.query_filter,
             ejercicio=params.ejercicio,
             limit=None,  # Para traer todo
         )
-
-        # 2. Traemos los datos sin paginar
-        data_sgf = await self.get_sgf_resumend_rend(params=search_params)
-        data_icaro = await self.get_icaro_carga_neto_rdeu(params=search_params)
-
-        # El cruce (la tabla que ve el usuario en la página) se exporta
-        # desde el snapshot persistido en Mongo; si todavía no existe, se
-        # calcula on-demand para no dejar la hoja vacía.
-        snapshot = await self.repository.find_with_filter_params(params=search_params)
-        data_ctrl_obras = (
-            [doc.model_dump(by_alias=True) for doc in snapshot]
-            if snapshot
-            else await self.compute_control_obras(
-                params=search_params, sgf=data_sgf, icaro=data_icaro
+        async with _export_lock:
+            # 1. Crudos SGF + ICARO
+            data_sgf = await self.get_sgf_resumend_rend(params=search_params)
+            data_icaro = await self.get_icaro_carga_neto_rdeu(
+                params=search_params
             )
-        )
 
-        # 3. Usar el método de la clase base. Alineamos las columnas de
-        # SGF e ICARO para que ambas hojas compartan la misma cabecera
-        # inicial y sea fácil compararlas (en ICARO el importe se llama
-        # 'importe': el renombrado es solo para el export, ya que
-        # 'compute_control_obras' sigue consumiendo 'importe').
-        df_ctrl_obras = pd.DataFrame(data_ctrl_obras)
-        df_sgf = self._align_export_columns(pd.DataFrame(data_sgf))
-        df_icaro = self._align_export_columns(
-            pd.DataFrame(data_icaro), renames={"importe": "importe_bruto"}
-        )
-        return self.export_to_excel(
-            data_pairs=[
-                (df_ctrl_obras, "control_mes_cta_cte_cuit_db"),
-                (df_sgf, "resumen_rend_cuit"),
-                (df_icaro, "icaro_carga_neto_rdeu"),
-            ],
-            filename="Control Obras.xlsx",
-            upload_to_google_sheets=True,
-            spreadsheet_key="16v2ovmQnS1v73-WxTOK6b9Tx9DRugGc70ufpjVi-rPA",
+            # El cruce (la tabla que ve el usuario en la página) se exporta
+            # desde el snapshot persistido en Mongo; si todavía no existe,
+            # se calcula on-demand para no dejar la hoja vacía.
+            snapshot = await self.repository.find_with_filter_params(
+                params=search_params
+            )
+            data_ctrl_obras = (
+                [doc.model_dump(by_alias=True) for doc in snapshot]
+                if snapshot
+                else await self.compute_control_obras(
+                    params=search_params, sgf=data_sgf, icaro=data_icaro
+                )
+            )
+
+            # 2. DataFrames + upload hoja por hoja (fuera del event loop).
+            # Alineamos las columnas de SGF e ICARO para que ambas hojas
+            # compartan la misma cabecera inicial y sea fácil compararlas
+            # (en ICARO el importe se llama 'importe': el renombrado es
+            # solo para el export, ya que 'compute_control_obras' sigue
+            # consumiendo 'importe').
+            sheets: list[tuple[pd.DataFrame, str]] = [
+                (
+                    pd.DataFrame(data_ctrl_obras),
+                    "control_mes_cta_cte_cuit_db",
+                ),
+                (
+                    self._align_export_columns(pd.DataFrame(data_sgf)),
+                    "resumen_rend_cuit",
+                ),
+                (
+                    self._align_export_columns(
+                        pd.DataFrame(data_icaro),
+                        renames={"importe": "importe_bruto"},
+                    ),
+                    "icaro_carga_neto_rdeu",
+                ),
+            ]
+            for df, sheet_name in sheets:
+                try:
+                    await run_in_threadpool(
+                        self._build_df_and_upload, df, sheet_name
+                    )
+                    logger.info(
+                        f"Control Obras: hoja '{sheet_name}' "
+                        "actualizada en Google Sheets"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Control Obras: error al subir la hoja "
+                        f"'{sheet_name}': {e}"
+                    )
+        logger.info("Control Obras: exportación a Google Sheets finalizada")
+
+    # -------------------------------------------------
+    @staticmethod
+    def _build_df_and_upload(df: pd.DataFrame, sheet_name: str) -> None:
+        """Descarta los id internos y sube la hoja (bloqueante → threadpool).
+
+        NO genera el archivo Excel: solo sube la hoja a Google Sheets.
+
+        Sanitiza explícitamente (defensa en profundidad) para que ninguna
+        celda viaje como ``nan``: gspread serializa con
+        ``json.dumps(allow_nan=False)`` y una sola celda NaN aborta la
+        subida completa con 'Out of range float values are not JSON
+        compliant: nan' (hoja vacía en Google Sheets).
+        """
+        df = df.drop(columns=["id", "_id"], errors="ignore")
+        df = sanitize_dataframe_for_json_with_datetime(df)
+        upload_multiple_dataframes_to_google_sheets(
+            [(df, sheet_name)],
+            spreadsheet_key=SPREADSHEET_KEY_CONTROL_OBRAS,
         )
 
     # -------------------------------------------------

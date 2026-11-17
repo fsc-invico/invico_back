@@ -8,41 +8,53 @@ Cubre la paridad con control_recursos:
 - Los filtros exponen las rutas estándar del ``GenericRouterFactory``
   (Get All / Add Many / Delete / export) más las rutas propias
   (``/generate``, ``/compute``, ``/getIcaro``, ``/getSGF``).
+- ``export`` solo sube a Google Sheets en background (sin Excel).
 
 Ejecutar desde la raíz del proyecto:
 
     python -m unittest tests.test_control_obras -v
 """
 
+import asyncio
+import json
 import unittest
 from types import SimpleNamespace
 from typing import Any, List
 from unittest import mock
 
+import pandas as pd
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from src.analysis.routes.control_obras import control_obras_router
 from src.analysis.schemas import (
     ControlObrasFullFilter,
     ControlObrasGenerateFilter,
+    ControlObrasLiteFilter,
     ControlObrasReport,
 )
 from src.analysis.services import ControlObrasService
+from src.analysis.services.control_obras import SPREADSHEET_KEY_CONTROL_OBRAS
 
 
 # -------------------------------------------------
 class RepositorioFalso:
     """Repositorio en memoria que registra las operaciones de add_many."""
 
-    def __init__(self, filas_previas: int = 3) -> None:
+    def __init__(self, filas_previas: int = 3, filas: List[Any] = None) -> None:
         self.filas_previas = filas_previas
         self.deleted_filters: List[dict] = []
         self.deleted_all_llamado = False
         self.saved: List[Any] = []
+        self.filas = filas if filas is not None else []
 
     # -------------------------------------------------
     async def count_by_fields(self, filters: dict) -> int:
         return self.filas_previas
+
+    # -------------------------------------------------
+    async def find_with_filter_params(self, params: Any) -> List[Any]:
+        return list(self.filas)
 
     # -------------------------------------------------
     async def delete_by_fields(self, filters: dict) -> int:
@@ -178,6 +190,128 @@ class TestFiltrosControlObras(unittest.TestCase):
         """/generate sin ejercicio debe rechazarse en la validación."""
         with self.assertRaises(ValidationError):
             ControlObrasGenerateFilter()
+
+
+# -------------------------------------------------
+class TestExportControlObras(unittest.IsolatedAsyncioTestCase):
+    """El export solo sube a Google Sheets (sin Excel), en background."""
+
+    # -------------------------------------------------
+    async def test_export_responde_json_y_lanza_tarea(self) -> None:
+        """Responde JSON de inmediato y lanza la tarea de fondo."""
+        servicio = construir_servicio(RepositorioFalso())
+        with mock.patch.object(
+            servicio,
+            "_export_to_google_sheets",
+            new=mock.AsyncMock(),
+        ) as tarea_mock:
+            respuesta = await servicio.export(
+                params=ControlObrasLiteFilter(ejercicio=2024),
+            )
+            # Deja avanzar la tarea encolada en el event loop
+            await asyncio.sleep(0)
+
+        self.assertIsInstance(respuesta, dict)
+        self.assertEqual(respuesta["title"], "Exportación a Google Sheets iniciada")
+        self.assertEqual(
+            respuesta["spreadsheet_key"], SPREADSHEET_KEY_CONTROL_OBRAS
+        )
+        self.assertIn("control_mes_cta_cte_cuit_db", respuesta["detail"])
+        self.assertIn("resumen_rend_cuit", respuesta["detail"])
+        self.assertIn("icaro_carga_neto_rdeu", respuesta["detail"])
+        tarea_mock.assert_awaited_once()
+
+    # -------------------------------------------------
+    async def test_export_requiere_ejercicio(self) -> None:
+        """Sin ejercicio se responde 400 (no se encola nada)."""
+        servicio = construir_servicio(RepositorioFalso())
+
+        with self.assertRaises(HTTPException) as ctx:
+            await servicio.export(params=ControlObrasLiteFilter())
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("ejercicio", ctx.exception.detail)
+
+    # -------------------------------------------------
+    async def test_export_sube_tres_hojas_sin_excel(self) -> None:
+        """La tarea de fondo sube las 3 hojas a GS sin construir XLS."""
+        import src.analysis.services.control_obras as service_module
+
+        # El módulo ya ni siquiera importa la respuesta binaria
+        self.assertFalse(hasattr(service_module, "StreamingResponse"))
+
+        servicio = construir_servicio(RepositorioFalso())
+        with mock.patch(
+            "src.analysis.services.control_obras."
+            "upload_multiple_dataframes_to_google_sheets"
+        ) as upload_mock, mock.patch.object(
+            servicio,
+            "get_sgf_resumend_rend",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "get_icaro_carga_neto_rdeu",
+            new=mock.AsyncMock(return_value=[]),
+        ), mock.patch.object(
+            servicio,
+            "compute_control_obras",
+            new=mock.AsyncMock(return_value=[]),
+        ):
+            await servicio._export_to_google_sheets(
+                params=ControlObrasLiteFilter(ejercicio=2024)
+            )
+
+        # Las 3 hojas subidas a Google Sheets, en el orden esperado
+        self.assertEqual(upload_mock.call_count, 3)
+        hojas = [call.args[0][0][1] for call in upload_mock.call_args_list]
+        self.assertEqual(
+            hojas,
+            [
+                "control_mes_cta_cte_cuit_db",
+                "resumen_rend_cuit",
+                "icaro_carga_neto_rdeu",
+            ],
+        )
+        for call in upload_mock.call_args_list:
+            self.assertEqual(
+                call.kwargs["spreadsheet_key"],
+                SPREADSHEET_KEY_CONTROL_OBRAS,
+            )
+
+    # -------------------------------------------------
+    def test_sube_hoja_sin_celdas_nan(self) -> None:
+        """_build_df_and_upload sanitiza antes de subir (defensa).
+
+        gspread serializa con ``json.dumps(allow_nan=False)``: una sola
+        celda NaN aborta la subida completa y deja la hoja vacía.
+        """
+        df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "cta_cte": ["10158-8", "334", None],
+                "ejecutado_icaro": [100.5, float("nan"), 3.0],
+                "bruto_sgf": [90.0, None, float("inf")],
+            }
+        )
+
+        with mock.patch(
+            "src.analysis.services.control_obras."
+            "upload_multiple_dataframes_to_google_sheets"
+        ) as upload_mock:
+            ControlObrasService._build_df_and_upload(
+                df, "control_mes_cta_cte_cuit_db"
+            )
+
+        df_subido = upload_mock.call_args.args[0][0][0]
+        hoja = upload_mock.call_args.args[0][0][1]
+        self.assertEqual(hoja, "control_mes_cta_cte_cuit_db")
+        # Los id internos no viajan a la hoja
+        self.assertNotIn("id", df_subido.columns)
+        # Misma validación que hace gspread/requests al serializar
+        json.dumps(df_subido.values.tolist(), allow_nan=False)
+        self.assertIsNone(df_subido["cta_cte"].tolist()[2])
+        self.assertIsNone(df_subido["ejecutado_icaro"].tolist()[1])
+        self.assertIsNone(df_subido["bruto_sgf"].tolist()[2])
 
 
 # -------------------------------------------------
