@@ -449,12 +449,14 @@ class ControlViaticosService(
             # 2. Hojas SIIF crudas del mismo ejercicio
             siif_fondos = await self.generate_siif_fondo(ejercicio=params.ejercicio)
             siif_gastos = await self.generate_siif_gastos(ejercicio=params.ejercicio)
+            sscc = await self.generate_banco(ejercicio=params.ejercicio)
 
             # 3. Upload hoja por hoja (fuera del event loop)
             sheets: list[tuple[pd.DataFrame, str]] = [
                 (control_rendicion, "control_rendicion_db"),
                 (siif_fondos, "siif_fondos_db"),
                 (siif_gastos, "siif_gastos_db"),
+                (sscc, "sscc_db_new"),
             ]
             for df, sheet_name in sheets:
                 try:
