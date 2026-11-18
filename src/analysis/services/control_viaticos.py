@@ -1,6 +1,7 @@
 __all__ = ["ControlViaticosService", "ControlViaticosServiceDependency"]
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Annotated, Any, List
 
@@ -218,9 +219,9 @@ class ControlViaticosService(
         df = df.copy()
         df["importe"] = df["importe"] * (-1)
         df["new_concepto"] = df["concepto"].str.replace(".", "")
-        df["nro_expte"] = df["new_concepto"].str.extract(r"EXP\s*(\d+\s*\d+\s*\d+)\s*")[
-            0
-        ]
+        df["nro_expte"] = df["new_concepto"].str.extract(
+            r"EXP\s*(\d+\s*\d+\s*\d+)\s*", flags=re.IGNORECASE
+        )[0]
         df = df.drop(["new_concepto"], axis=1)
         df["nro_expte"] = df["nro_expte"].apply(self._transform_nro_expte)
         return df
