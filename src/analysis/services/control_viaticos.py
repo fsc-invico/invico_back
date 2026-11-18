@@ -366,9 +366,40 @@ class ControlViaticosService(
             .sum()
             .reset_index()
         )
-        df = df.merge(siif_reembolso, how="left", on="nro_expte")
+        # Outer join también con reembolsos (373): un nro_expte con
+        # reembolso pero sin rendición 372 no debe perder el importe
+        # de siif_reembolso (y quedar en 0 erróneamente).
+        df = df.merge(siif_reembolso, how="outer", on="nro_expte")
 
-        df = df.merge(sscc, how="left", on="nro_expte")
+        # Outer join con el banco: incluye los nro_expte que solo
+        # aparecen en sscc (sin rendición 372 en SIIF). En esas filas
+        # las columnas siif_ quedan en NaN y el groupby posterior las
+        # convierte en 0 (mismo criterio inverso que sscc_* cuando no
+        # hay datos de banco).
+        df = df.merge(sscc, how="outer", on="nro_expte")
+        # El lado izquierdo (siif) aporta 'ejercicio': al venir solo de
+        # sscc la columna llega en NaN, así que se rellena con el
+        # parámetro y se restaura a int (el merge con NaN la promueve a
+        # float y el reporte espera un entero).
+        df["ejercicio"] = df["ejercicio"].fillna(ejercicio)
+        if pd.api.types.is_float_dtype(df["ejercicio"]):
+            df["ejercicio"] = df["ejercicio"].astype(int)
+
+        # Normaliza los importes: las filas que vienen de un solo lado
+        # (siif o sscc) traen NaN en las columnas del otro; se convierten
+        # en 0.0 y se fuerzan a float para que el groupby no dependa del
+        # dtype object que produce el merge con un DataFrame vacío.
+        metric_cols = [
+            "siif_anticipo",
+            "siif_rendicion",
+            "siif_reversion",
+            "siif_reembolso",
+            "sscc_anticipo",
+            "sscc_reversion",
+            "sscc_reembolso",
+            "sscc_gasto_total",
+        ]
+        df[metric_cols] = df[metric_cols].fillna(0.0).astype(float)
 
         df = (
             df.groupby(groupby_cols)[
@@ -403,11 +434,11 @@ class ControlViaticosService(
         """Encola la exportación a Google Sheets y responde de inmediato.
 
         Sube las hojas ``control_rendicion_db`` (snapshot con
-        fallback on-demand), ``siif_fondos_db`` y
-        ``siif_gastos_db``. NO se genera el archivo Excel (patrón
-        ``control_banco`` / ``control_honorarios``): el trabajo pesado
-        corre como tarea de fondo para no bloquear el event loop ni
-        agotar el timeout de Koyeb.
+        fallback on-demand), ``siif_fondos_db``,
+        ``siif_gastos_db`` y ``sscc_db``. NO se genera el archivo
+        Excel (patrón ``control_banco`` / ``control_honorarios``): el
+        trabajo pesado corre como tarea de fondo para no bloquear el
+        event loop ni agotar el timeout de Koyeb.
 
         Se encola con ``asyncio.create_task`` (y no con
         ``BackgroundTasks``) para ser compatible con la ruta ``/export``
@@ -423,7 +454,7 @@ class ControlViaticosService(
             "title": "Exportación a Google Sheets iniciada",
             "detail": (
                 "El Google Sheet se actualizará en segundo plano con las hojas: "
-                "control_rendicion_db, siif_fondos_db y siif_gastos_db."
+                "control_rendicion_db, siif_fondos_db, siif_gastos_db y sscc_db."
             ),
             "spreadsheet_key": SPREADSHEET_KEY_CONTROL_VIATICOS,
         }

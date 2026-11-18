@@ -338,11 +338,12 @@ class TestExportControlViaticos(unittest.IsolatedAsyncioTestCase):
         self.assertIn("control_rendicion_db", respuesta["detail"])
         self.assertIn("siif_fondos_db", respuesta["detail"])
         self.assertIn("siif_gastos_db", respuesta["detail"])
+        self.assertIn("sscc_db", respuesta["detail"])
         tarea_mock.assert_awaited_once()
 
     # -------------------------------------------------
-    async def test_export_sube_tres_hojas_sin_excel(self) -> None:
-        """La tarea de fondo sube exactamente las 3 hojas pedidas."""
+    async def test_export_sube_cuatro_hojas_sin_excel(self) -> None:
+        """La tarea de fondo sube exactamente las 4 hojas pedidas."""
         servicio = construir_servicio(RepositorioFalso())
         with mock.patch(
             "src.analysis.services.control_viaticos."
@@ -363,16 +364,25 @@ class TestExportControlViaticos(unittest.IsolatedAsyncioTestCase):
             servicio,
             "generate_siif_gastos",
             new=mock.AsyncMock(return_value=pd.DataFrame()),
+        ), mock.patch.object(
+            servicio,
+            "generate_banco",
+            new=mock.AsyncMock(return_value=pd.DataFrame()),
         ):
             await servicio._export_to_google_sheets(
                 params=ControlViaticosLiteFilter(ejercicio=2024)
             )
 
-        self.assertEqual(upload_mock.call_count, 3)
+        self.assertEqual(upload_mock.call_count, 4)
         hojas = [call.args[0][0][1] for call in upload_mock.call_args_list]
         self.assertEqual(
             hojas,
-            ["control_rendicion_db", "siif_fondos_db", "siif_gastos_db"],
+            [
+                "control_rendicion_db",
+                "siif_fondos_db",
+                "siif_gastos_db",
+                "sscc_db",
+            ],
         )
         for call in upload_mock.call_args_list:
             self.assertEqual(
