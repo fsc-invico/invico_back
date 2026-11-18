@@ -227,7 +227,10 @@ class ControlViaticosService(
         df["importe"] = df["importe"] * (-1)
         df["new_concepto"] = df["concepto"].str.replace(".", "")
         df["nro_expte"] = df["new_concepto"].str.extract(
-            r"EXP\s*(\d+\s*\d+\s*\d+)\s*", flags=re.IGNORECASE
+            # "EXP" o "EXPTE" (el "TE" es opcional), sin distinguir
+            # mayúsculas/minúsculas; "EXPEDIENTE" sin números no matchea.
+            r"EXP(?:TE)?\s*(\d+\s*\d+\s*\d+)\s*",
+            flags=re.IGNORECASE,
         )[0]
         df = df.drop(["new_concepto"], axis=1)
         df["nro_expte"] = df["nro_expte"].apply(self._transform_nro_expte)
@@ -325,9 +328,10 @@ class ControlViaticosService(
             )
         else:
             sscc = sscc.copy()
-            # Movimientos sin expediente extraíble (concepto sin "EXP"):
-            # groupby descartaría las claves NaN, así que se agrupan
-            # bajo un nro_expte placeholder para incluirlos del cruce.
+            # Movimientos sin expediente extraíble (concepto sin "EXP"
+            # ni "EXPTE"): groupby descartaría las claves NaN, así que
+            # se agrupan bajo un nro_expte placeholder para incluirlos
+            # del cruce.
             sscc["nro_expte"] = sscc["nro_expte"].fillna(NRO_EXPTE_PLACEHOLDER)
             sscc["sscc_anticipo"] = np.where(
                 sscc["cod_imputacion"] == "029", sscc["importe"], 0

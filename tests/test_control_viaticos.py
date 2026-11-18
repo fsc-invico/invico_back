@@ -345,6 +345,28 @@ class TestGenerateBancoControlViaticos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(con_expte["nro_expte"], "900001232024")
         self.assertEqual(con_expte["importe"], 20.0)
 
+    # -------------------------------------------------
+    async def test_acepta_exp_y_expte(self) -> None:
+        """La extracción acepta tanto "EXP" como "EXPTE" (cualquier
+        combinación de mayúsculas/minúsculas), con y sin espacio antes
+        de los dígitos."""
+        documentos = [
+            _DocFalso({"concepto": "PAGO EXP 111 22", "importe": -1.0}),
+            _DocFalso({"concepto": "PAGO EXPTE 333 24", "importe": -2.0}),
+            _DocFalso({"concepto": "anticipo exp 555 23", "importe": -3.0}),
+            _DocFalso({"concepto": "PAGO EXPTE777 24", "importe": -4.0}),
+        ]
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.banco_service = _BancoServiceFalso(documentos)
+
+        df = await servicio.generate_banco(ejercicio=2024)
+
+        por_concepto = dict(zip(df["concepto"], df["nro_expte"]))
+        self.assertEqual(por_concepto["PAGO EXP 111 22"], "900001112022")
+        self.assertEqual(por_concepto["PAGO EXPTE 333 24"], "900003332024")
+        self.assertEqual(por_concepto["anticipo exp 555 23"], "900005552023")
+        self.assertEqual(por_concepto["PAGO EXPTE777 24"], "900007772024")
+
 
 # -------------------------------------------------
 class TestAddManyControlViaticos(unittest.IsolatedAsyncioTestCase):
