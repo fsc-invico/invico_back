@@ -26,7 +26,10 @@ from src.analysis.schemas import (
     ControlViaticosFilter,
     ControlViaticosRendicionReport,
 )
-from src.analysis.services.control_viaticos import ControlViaticosService
+from src.analysis.services.control_viaticos import (
+    NRO_EXPTE_PLACEHOLDER,
+    ControlViaticosService,
+)
 
 EJERCICIO: int = 2024
 EXPTE_RENDICION: str = "90000012024"
@@ -228,6 +231,50 @@ class TestComputeControlRendicion(unittest.TestCase):
         self.assertEqual(rendicion["siif_gasto_total"], 60.0)
         self.assertEqual(rendicion["sscc_gasto_total"], 0.0)
         self.assertEqual(rendicion["dif_gasto_total"], 60.0)
+
+    # -------------------------------------------------
+    def test_banco_sin_expte_usa_placeholder(self) -> None:
+        """Los movimientos sin expediente extraíble (``nro_expte`` None)
+        se incluyen agrupados bajo ``NRO_EXPTE_PLACEHOLDER``: el
+        ``groupby`` descartaba las claves NaN y los perdía."""
+        fondos, gastos, banco = _datos_completos()
+        banco = pd.concat(
+            [
+                banco,
+                pd.DataFrame(
+                    [
+                        {
+                            "nro_expte": None,
+                            "cod_imputacion": "029",
+                            "importe": 10.0,
+                        },
+                        {
+                            "nro_expte": None,
+                            "cod_imputacion": "040",
+                            "importe": 5.0,
+                        },
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+        servicio = _crear_servicio(fondos=fondos, gastos=gastos, banco=banco)
+
+        filas: Dict[str, dict] = {
+            f["nro_expte"]: f for f in _calcular(servicio)
+        }
+
+        self.assertIn(NRO_EXPTE_PLACEHOLDER, filas)
+        placeholder = filas[NRO_EXPTE_PLACEHOLDER]
+        # Ambos movimientos sin expediente van en una sola fila.
+        self.assertEqual(placeholder["sscc_anticipo"], 10.0)
+        self.assertEqual(placeholder["sscc_reembolso"], 5.0)
+        self.assertEqual(placeholder["sscc_gasto_total"], 15.0)
+        self.assertEqual(placeholder["siif_anticipo"], 0.0)
+        self.assertEqual(placeholder["siif_gasto_total"], 0.0)
+        self.assertEqual(placeholder["dif_gasto_total"], -15.0)
+        self.assertEqual(placeholder["ejercicio"], EJERCICIO)
+        ControlViaticosRendicionReport(**placeholder)
 
     # -------------------------------------------------
     def test_todo_vacio_devuelve_lista_vacia(self) -> None:

@@ -10,6 +10,8 @@ Cubre la paridad con los demás controles:
   gastos 372/373 + banco 029/040/005) y soporta lados vacíos.
 - ``generate_siif_gastos`` normaliza ``grupo`` a 3 dígitos ("3" -> "300")
   para la hoja ``siif_gastos_db``.
+- ``generate_banco`` asigna ``NRO_EXPTE_PLACEHOLDER`` cuando el
+  concepto no permite extraer el expediente (no se pierde el movimiento).
 - ``export`` solo sube a Google Sheets en background (sin Excel).
 - Superficie de rutas: snapshot CRUD + ``/generate`` + ``/export``.
 
@@ -37,7 +39,10 @@ from src.analysis.schemas import (
     ControlViaticosRendicionReport,
 )
 from src.analysis.services import ControlViaticosService
-from src.analysis.services.control_viaticos import SPREADSHEET_KEY_CONTROL_VIATICOS
+from src.analysis.services.control_viaticos import (
+    NRO_EXPTE_PLACEHOLDER,
+    SPREADSHEET_KEY_CONTROL_VIATICOS,
+)
 
 
 # -------------------------------------------------
@@ -98,6 +103,28 @@ def fila_valida(ejercicio: int) -> dict:
         "sscc_gasto_total": 100.0,
         "dif_gasto_total": -20.0,
     }
+
+
+# -------------------------------------------------
+class _DocFalso:
+    """Documento crudo del banco con la interfaz ``model_dump``."""
+
+    def __init__(self, datos: dict) -> None:
+        self._datos = datos
+
+    def model_dump(self, by_alias: bool = False) -> dict:
+        return self._datos
+
+
+# -------------------------------------------------
+class _BancoServiceFalso:
+    """Servicio de banco que devuelve una lista fija de documentos."""
+
+    def __init__(self, documentos: List[_DocFalso]) -> None:
+        self.documentos = documentos
+
+    async def get_all(self, params: Any) -> List[_DocFalso]:
+        return self.documentos
 
 
 # -------------------------------------------------
@@ -275,6 +302,48 @@ class TestGenerateSiifGastosControlViaticos(unittest.IsolatedAsyncioTestCase):
         df = await servicio.generate_siif_gastos(ejercicio=2024)
 
         self.assertTrue(df.empty)
+
+
+# -------------------------------------------------
+class TestGenerateBancoControlViaticos(unittest.IsolatedAsyncioTestCase):
+    """generate_banco extrae el nro_expte del concepto del banco."""
+
+    # -------------------------------------------------
+    async def test_sin_expte_extraible_usa_placeholder(self) -> None:
+        """Un concepto sin "EXP ..." no pierde el movimiento: se le
+        asigna ``NRO_EXPTE_PLACEHOLDER`` (para la hoja sscc_db y el
+        cruce), mientras que el concepto con expediente se transforma
+        al formato 900 + 5 dígitos + año."""
+        documentos = [
+            _DocFalso(
+                {
+                    "concepto": "PAGO SIN EXPEDIENTE",
+                    "importe": -10.0,
+                    "cod_imputacion": "029",
+                }
+            ),
+            _DocFalso(
+                {
+                    "concepto": "PAGO EXP 123 24",
+                    "importe": -20.0,
+                    "cod_imputacion": "040",
+                }
+            ),
+        ]
+        servicio = construir_servicio(RepositorioFalso())
+        servicio.banco_service = _BancoServiceFalso(documentos)
+
+        df = await servicio.generate_banco(ejercicio=2024)
+
+        self.assertEqual(len(df), 2)
+        sin_expte = df.loc[df["concepto"] == "PAGO SIN EXPEDIENTE"].iloc[0]
+        self.assertEqual(sin_expte["nro_expte"], NRO_EXPTE_PLACEHOLDER)
+        # Los importes se invierten (en el banco salen negativos).
+        self.assertEqual(sin_expte["importe"], 10.0)
+
+        con_expte = df.loc[df["concepto"] == "PAGO EXP 123 24"].iloc[0]
+        self.assertEqual(con_expte["nro_expte"], "900001232024")
+        self.assertEqual(con_expte["importe"], 20.0)
 
 
 # -------------------------------------------------

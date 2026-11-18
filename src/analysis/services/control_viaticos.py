@@ -36,6 +36,12 @@ from ..schemas.control_viaticos import (
 
 SPREADSHEET_KEY_CONTROL_VIATICOS: str = "1alo5UBd7YRIBhSXqfo_c5Lz8JBfU3CXrVC0XOmtiH8c"
 
+# nro_expte de los movimientos del banco cuyo ``concepto`` no permite
+# extraer el expediente (None/NaN). El ``groupby`` descarta las claves
+# NaN, así que se agrupan bajo este placeholder para no perderlos del
+# cruce (llegan con las columnas ``siif_`` en 0).
+NRO_EXPTE_PLACEHOLDER: str = "000000000000"
+
 # Serializa las exportaciones para que dos tareas simultáneas no
 # intercaleen sus chunks dentro de la misma hoja.
 _export_lock: asyncio.Lock = asyncio.Lock()
@@ -199,7 +205,8 @@ class ControlViaticosService(
 
         Reproduce la transformación del script original de invicofapy:
         importes con signo negativo y ``nro_expte`` extraído del campo
-        ``concepto``.
+        ``concepto``; cuando el concepto no permite extraerlo se le
+        asigna ``NRO_EXPTE_PLACEHOLDER`` para no perder el movimiento.
 
         Returns:
             DataFrame crudo transformado (vacío si no hay datos).
@@ -224,6 +231,11 @@ class ControlViaticosService(
         )[0]
         df = df.drop(["new_concepto"], axis=1)
         df["nro_expte"] = df["nro_expte"].apply(self._transform_nro_expte)
+        # Conceptos sin expediente extraíble quedan en None/NaN: se les
+        # asigna el placeholder para que el movimiento aparezca tanto en
+        # la hoja sscc_db como en el cruce (el groupby descarta claves
+        # NaN). Cubre None y NaN por igual (fillna).
+        df["nro_expte"] = df["nro_expte"].fillna(NRO_EXPTE_PLACEHOLDER)
         return df
 
     # --------------------------------------------------
@@ -313,6 +325,10 @@ class ControlViaticosService(
             )
         else:
             sscc = sscc.copy()
+            # Movimientos sin expediente extraíble (concepto sin "EXP"):
+            # groupby descartaría las claves NaN, así que se agrupan
+            # bajo un nro_expte placeholder para incluirlos del cruce.
+            sscc["nro_expte"] = sscc["nro_expte"].fillna(NRO_EXPTE_PLACEHOLDER)
             sscc["sscc_anticipo"] = np.where(
                 sscc["cod_imputacion"] == "029", sscc["importe"], 0
             )
