@@ -457,7 +457,7 @@ class ControlViaticosService(
                 (control_rendicion, "control_rendicion_db"),
                 (siif_fondos, "siif_fondos_db"),
                 (siif_gastos, "siif_gastos_db"),
-                (sscc, "sscc_db_new"),
+                (sscc, "sscc_db"),
             ]
             for df, sheet_name in sheets:
                 try:
