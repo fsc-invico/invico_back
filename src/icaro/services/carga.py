@@ -30,6 +30,7 @@ from ..repositories import (
     RetencionesRepositoryDependency,
 )
 from ..schemas import (
+    CargaAcumObraFilter,
     CargaDocument,
     CargaFullDescSIIF,
     CargaFullFilter,
@@ -591,6 +592,64 @@ class CargaService(
             return []
 
         return documentos
+
+    # -------------------------------------------------
+    async def acum_obra(
+        self,
+        params: CargaAcumObraFilter,
+        group_by: List[str] = ["actividad", "partida", "desc_obra"],
+    ) -> List[dict]:
+        """
+        Agrupa la colección icaro_carga por los campos indicados en `group_by`
+        (por defecto: actividad, partida y desc_obra) acumulando:
+
+        - importe: suma ($sum)
+        - ejercicio: mínimo ($min)
+        - avance: máximo ($max)
+
+        Toda la agregación se resuelve en MongoDB ($match + $group + $project),
+        al igual que `acum_with_desc_siif`, para no traer documentos crudos al
+        servidor de aplicación (Koyeb) ni recorrerlos con Pandas.
+
+        `params.limit` se aplica como etapa $limit del pipeline (limit en 0 u
+        omiso => se devuelven todos los grupos).
+        """
+        # 1. Dict de filtro de MongoDB (ejercicio_hasta / actividad / partida)
+        mongo_query = params.get_full_filter()
+
+        # 2. Armamos el _id del $group y las proyecciones para el $project
+        id_group = {col: f"${col}" for col in group_by}
+        projection = {col: f"$_id.{col}" for col in group_by}
+        projection.update({"_id": 0, "importe": 1, "ejercicio": 1, "avance": 1})
+
+        # 3. Pipeline de Agregación
+        pipeline = [
+            # ETAPA 1: Filtra la colección ANTES de agrupar (cero desperdicio de CPU)
+            {"$match": mongo_query},
+            # ETAPA 2: Agrupa únicamente sobre el resultado del $match
+            {
+                "$group": {
+                    "_id": id_group,
+                    "importe": {"$sum": "$importe"},
+                    "ejercicio": {"$min": "$ejercicio"},
+                    "avance": {"$max": "$avance"},
+                }
+            },
+            # ETAPA 3: Proyección limpia con campos planos para el front
+            {"$project": projection},
+            # ETAPA 4: Orden estable para la UI (el set de grupos es acotado)
+            {"$sort": {"actividad": 1, "partida": 1, "desc_obra": 1}},
+        ]
+
+        # ETAPA 5: limita la cantidad de grupos (limit en 0 u omiso => sin límite)
+        if params.limit:
+            pipeline.append({"$limit": params.limit})
+
+        # 4. Ejecución Asíncrona con Motor: .aggregate() devuelve un cursor asíncrono
+        cursor = self.repository.collection.aggregate(pipeline)
+
+        # length=None trae todos los grupos (un set acotado, no los documentos crudos)
+        return await cursor.to_list(length=None)
 
 
 CargaServiceDependency = Annotated[CargaService, Depends()]

@@ -5,6 +5,8 @@ from fastapi import Depends
 from ...auth.services import AuthorizationDependency
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (  # El esquema de parámetros para el filtro
+    CargaAcumObra,
+    CargaAcumObraFilter,
     CargaDocument,
     CargaFullDescSIIF,
     CargaFullFilter,
@@ -143,3 +145,23 @@ async def acum_estructura(
 ):
     security.is_admin_or_user_or_raise()
     return await service.acum_estructura(params=params)
+
+
+# -------------------------------------------------
+@carga_router.get(
+    "/acumObra",
+    description=(
+        "Get grouped Carga data by actividad/partida/obra: importe (sum), "
+        "ejercicio (min) y avance (max). Permite filtrar hasta un ejercicio "
+        "inclusive, opcionalmente por actividad/partida, y acotar la cantidad "
+        "de grupos con limit (sin límite si se omite)."
+    ),
+    response_model=list[CargaAcumObra],
+)
+async def acum_obra(
+    params: Annotated[CargaAcumObraFilter, Depends()],
+    service: CargaServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.acum_obra(params=params)
