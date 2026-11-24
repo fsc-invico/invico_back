@@ -305,7 +305,9 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
                 "00022/05", "00022", nro_fondo="97", clase_reg="CYO"
             ),
             fila_siif("00023/05", "00023"),  # REG sin nro_fondo
-            fila_siif("00024/05", "00024", nro_fondo="00097"),  # normalizado
+            fila_siif(  # comparación literal: "00097" ≠ "97" → queda
+                "00024/05", "00024", nro_fondo="00097"
+            ),
         ]
         servicio = construir_servicio_siif(
             GastosFalso(base),
@@ -317,7 +319,9 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         )
 
         nros = [fila["nro_comprobante"] for fila in resultado]
-        self.assertEqual(nros, ["00021/05", "00022/05", "00023/05"])
+        self.assertEqual(
+            nros, ["00021/05", "00022/05", "00023/05", "00024/05"]
+        )
 
     # --------------------------------------------------
     async def test_sin_datos_devuelve_vacio(self) -> None:

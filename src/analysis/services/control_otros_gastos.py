@@ -378,15 +378,13 @@ class ControlOtrosGastosSiifService(
             limit=None,
         )
         pa6_docs = await self.rfondo07tp_service.get_all(params=pa6_params)
-        fondos_pa6 = {
-            doc.nro_fondo.zfill(5) for doc in pa6_docs or [] if doc.nro_fondo
-        }
+        # nro_fondo es SIEMPRE el número como str sin ceros a la
+        # izquierda (igual en rfondo07tp y en rcg01_uejp): comparación
+        # literal, sin normalizar.
+        fondos_pa6 = {doc.nro_fondo for doc in pa6_docs or [] if doc.nro_fondo}
         if fondos_pa6:
             antes = len(df)
-            nros_fondo_norm = (
-                df["nro_fondo"].fillna("").astype(str).str.strip().str.zfill(5)
-            )
-            mask_fondos = (df["clase_reg"] == "REG") & nros_fondo_norm.isin(
+            mask_fondos = (df["clase_reg"] == "REG") & df["nro_fondo"].isin(
                 fondos_pa6
             )
             df = df.loc[~mask_fondos]
