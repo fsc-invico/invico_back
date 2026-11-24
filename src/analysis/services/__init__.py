@@ -12,6 +12,7 @@ from .control_icaro_anual import *
 from .control_icaro_comprobantes import *
 from .control_icaro_pa6 import *
 from .control_obras import *
+from .control_otros_gastos import *
 from .control_recursos import *
 from .control_viaticos import *
 from .reporte_formulacion import *
