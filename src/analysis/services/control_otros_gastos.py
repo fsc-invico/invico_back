@@ -22,8 +22,16 @@ from ...icaro.schemas import CargaFullFilter
 from ...icaro.services import CargaServiceDependency
 from ...sgf.schemas import ResumenRendProvFullFilter
 from ...sgf.services import ResumenRendProvServiceDependency
-from ...siif.schemas import GtoRpa03gFullFilter, Rcg01UejpFullFilter
-from ...siif.services import GtoRpa03gServiceDependency, Rcg01UejpServiceDependency
+from ...siif.schemas import (
+    GtoRpa03gFullFilter,
+    Rcg01UejpFullFilter,
+    Rfondo07tpFullFilter,
+)
+from ...siif.services import (
+    GtoRpa03gServiceDependency,
+    Rcg01UejpServiceDependency,
+    Rfondo07tpServiceDependency,
+)
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
     BaseService,
@@ -82,6 +90,12 @@ _export_lock: asyncio.Lock = asyncio.Lock()
 # tanto hay que depurar de SIIF por nro_comprobante. PA6 (subsistema de
 # fondos) queda FUERA: no representa gasto de rcg01_uejp.
 TIPOS_ICARO_OBRAS: List[str] = ["REG", "CYO"]
+
+# PA6 = regularización de fondos (siif_rfondo07tp). NO sirve para el
+# cruce de obras por nro_comprobante, pero SÍ para detectar gastos REG
+# cuyo fondo ya fue regularizado en el mismo ejercicio (paso 4 de
+# compute_otros_gastos_siif).
+TIPO_COMPROBANTE_PA6: str = "PA6"
 
 # Espejo de get_sgf_honorarios (control_honorarios): destinos y cuentas
 # corrientes de honorarios que ya cubre ese control.
@@ -161,6 +175,7 @@ class ControlOtrosGastosSiifService(
     repository: ControlOtrosGastosSiifRepositoryDependency
     gastos_service: GtoRpa03gServiceDependency
     rcg01_service: Rcg01UejpServiceDependency
+    rfondo07tp_service: Rfondo07tpServiceDependency
     icaro_carga_service: CargaServiceDependency
     honorarios_service: ControlHonorariosServiceDependency
     viaticos_service: ControlViaticosServiceDependency
@@ -276,21 +291,25 @@ class ControlOtrosGastosSiifService(
            descartan).
         3. Depura MAP: los ``clase_mod = "MAP"`` y el comprobante
            positivo que revierten (``MAP.nro_origen = fila.nro_entrada``).
-        4. Obras: ``nro_comprobante`` de Icaro con ``tipo`` REG/CYO
-           (PA6 no se usa: es subsistema de fondos).
-        5. Haberes: cta. cte. 130832-04 sin las partidas 150/151
+        4. Fondos regularizados por PA6: los ``clase_reg = "REG"``
+           cuyo ``nro_fondo`` coincide con el ``nro_fondo`` de un PA6
+           (``siif_rfondo07tp``, ``tipo_comprobante = "PA6"``) del
+           MISMO ejercicio (no se cruzan PA6 de otros ejercicios).
+        5. Obras: ``nro_comprobante`` de Icaro con ``tipo`` REG/CYO
+           (el PA6 de Icaro no se usa: es subsistema de fondos).
+        6. Haberes: cta. cte. 130832-04 sin las partidas 150/151
            (criterio de ``control_haberes``; se aplica sobre la cta_cte
            unificada porque el SIIF guarda "130832004" sin guiones).
-        6. Honorarios: criterio de ``get_siif_honorarios`` (grupo 3,
+        7. Honorarios: criterio de ``get_siif_honorarios`` (grupo 3,
            sin partida 384, cuit INVICO, ctas 130832-05/07 y glosa
            HONOR/RECON/LOC con cta_cte unificada) más el
            ``nro_comprobante`` de Slave de ``control_honorarios``.
-        7. Viáticos: ``nro_comprobante``/``nro_expte`` de
+        8. Viáticos: ``nro_comprobante``/``nro_expte`` de
            ``control_viaticos`` (partidas 372/373).
-        8. Débitos bancarios: ``nro_comprobante`` de
+        9. Débitos bancarios: ``nro_comprobante`` de
            ``control_debitos_bancarios`` (partida 355).
-        9. Escribanos NO se depura de SIIF (impactan como fondos, no
-           como gastos).
+        10. Escribanos NO se depura de SIIF (impactan como fondos, no
+            como gastos).
 
         Args:
             params: Filtro con el ``ejercicio`` a depurar.
@@ -348,7 +367,34 @@ class ControlOtrosGastosSiifService(
             df = df.loc[~df["nro_entrada"].isin(nros_origen)]
             logger.info(f"{etiqueta} → MAP depurados: {antes - len(df)} filas")
 
-        # 4. Obras: nro_comprobante de Icaro REG/CYO (sin PA6)
+        # 4. Fondos regularizados por PA6: los REG cuyo nro_fondo
+        #    coincide con el de un PA6 del MISMO ejercicio
+        #    (siif_rfondo07tp) ya están regularizados. Corre antes de
+        #    obras para que el log refleje su aporte (los PA6 mismos
+        #    no están en el df: son otra colección, de fondos).
+        pa6_params = Rfondo07tpFullFilter(
+            tipo_comprobante=TIPO_COMPROBANTE_PA6,
+            ejercicio=str(ejercicio),
+            limit=None,
+        )
+        pa6_docs = await self.rfondo07tp_service.get_all(params=pa6_params)
+        fondos_pa6 = {
+            doc.nro_fondo.zfill(5) for doc in pa6_docs or [] if doc.nro_fondo
+        }
+        if fondos_pa6:
+            antes = len(df)
+            nros_fondo_norm = (
+                df["nro_fondo"].fillna("").astype(str).str.strip().str.zfill(5)
+            )
+            mask_fondos = (df["clase_reg"] == "REG") & nros_fondo_norm.isin(
+                fondos_pa6
+            )
+            df = df.loc[~mask_fondos]
+            logger.info(
+                f"{etiqueta} → fondos PA6 (regularizados): {antes - len(df)} filas"
+            )
+
+        # 5. Obras: nro_comprobante de Icaro REG/CYO (sin PA6)
         carga_params = CargaFullFilter(ejercicio=str(ejercicio), limit=None)
         carga_params.set_extra_filter({"tipo": {"$in": TIPOS_ICARO_OBRAS}})
         carga_docs = await self.icaro_carga_service.get_all(params=carga_params)
@@ -360,7 +406,7 @@ class ControlOtrosGastosSiifService(
             df = df.loc[~df["nro_comprobante"].isin(nros_obras)]
             logger.info(f"{etiqueta} → obras (Icaro REG/CYO): {antes - len(df)}")
 
-        # 5. Haberes: cta_cte 130832-04 sin las partidas 150/151
+        # 6. Haberes: cta_cte 130832-04 sin las partidas 150/151
         #    (criterio INTENCIONAL de control_haberes, aplicado sobre la
         #    cta_cte ya unificada: ese control filtra la cta_cte CRUDA
         #    "130832-04" contra el valor sin guiones "130832004", por lo
@@ -375,7 +421,7 @@ class ControlOtrosGastosSiifService(
         if df.empty:
             return []
 
-        # 6. Honorarios: criterio de get_siif_honorarios con cta_cte
+        # 7. Honorarios: criterio de get_siif_honorarios con cta_cte
         #    unificada (grupo 3, sin 384, cuit INVICO, ctas -05/-07 y
         #    glosa HONOR/RECON/LOC) ∪ nro_comprobante de Slave de
         #    control_honorarios (casi 10% de la ejecución del gasto).
@@ -411,7 +457,7 @@ class ControlOtrosGastosSiifService(
         df = df.loc[~df["nro_comprobante"].isin(nros_honorarios)]
         logger.info(f"{etiqueta} → honorarios: {antes - len(df)} filas")
 
-        # 7. Viáticos: nro_comprobante y nro_expte de control_viaticos
+        # 8. Viáticos: nro_comprobante y nro_expte de control_viaticos
         #    (partidas 372/373). Los PA3/REV de rfondos04 pertenecen al
         #    subsistema de fondos y no aparecen en gto_rpa03g: no se
         #    cruzan para evitar colisiones de numeración.
@@ -432,7 +478,7 @@ class ControlOtrosGastosSiifService(
                 df = df.loc[~df["nro_expte"].isin(exptes)]
             logger.info(f"{etiqueta} → viáticos: {antes - len(df)} filas")
 
-        # 8. Débitos bancarios: nro_comprobante de control_debitos_
+        # 9. Débitos bancarios: nro_comprobante de control_debitos_
         #    bancarios (partida 355).
         debitos = await self.debitos_service.generate_siif_debitos(ejercicio=ejercicio)
         if debitos is not None and not debitos.empty and (
@@ -443,7 +489,7 @@ class ControlOtrosGastosSiifService(
             df = df.loc[~df["nro_comprobante"].isin(nros_debitos)]
             logger.info(f"{etiqueta} → débitos bancarios: {antes - len(df)} filas")
 
-        # 9. Escribanos NO se depura de SIIF (ver docstring).
+        # 10. Escribanos NO se depura de SIIF (ver docstring).
 
         if df.empty:
             logger.info(f"{etiqueta}: sin registros después de depurar (0 de {total}).")

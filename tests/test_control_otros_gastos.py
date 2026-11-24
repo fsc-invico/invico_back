@@ -4,9 +4,9 @@ los demás controles).
 Cubre:
 
 - ``compute_otros_gastos_siif``: cada paso de depuración (es_aprobado,
-  MAP + positivo revierto, obras Icaro REG/CYO, haberes, honorarios
-  SIIF ∪ Slave, viáticos por nro_comprobante/nro_expte y débitos
-  bancarios) deja SOLO el resto.
+  MAP + positivo revierto, fondos regularizados por PA6, obras Icaro
+  REG/CYO, haberes, honorarios SIIF ∪ Slave, viáticos por
+  nro_comprobante/nro_expte y débitos bancarios) deja SOLO el resto.
 - ``compute_otros_gastos_sgf``: dedup + exclusiones de obras,
   honorarios y escribanos.
 - ``generate`` delega el cómputo on-demand con el ``ejercicio``
@@ -116,6 +116,18 @@ class CargaFalso:
 
 
 # --------------------------------------------------
+class Rfondo07tpFalso:
+    """Devuelve los comprobantes PA6 de siif_rfondo07tp."""
+
+    def __init__(self, documentos: List[Any]) -> None:
+        self.documentos = documentos
+
+    # --------------------------------------------------
+    async def get_all(self, params: Any) -> List[Any]:
+        return self.documentos
+
+
+# --------------------------------------------------
 class HonorariosFalso:
     # --------------------------------------------------
     async def get_slave_honorarios(self, params: Any) -> List[dict]:
@@ -155,7 +167,9 @@ def fila_siif(
     nro_entrada: str,
     es_aprobado: Any = True,
     clase_mod: str = "NOR",
+    clase_reg: str = "REG",
     nro_expte: str = "EXP-0",
+    nro_fondo: Optional[str] = None,
     cta_cte: str = "130101-01",
     cuit: str = "20223334445",
     grupo: str = "4",
@@ -171,7 +185,7 @@ def fila_siif(
         "cta_cte": cta_cte,
         "cuit": cuit,
         "beneficiario": "PROVEEDOR SA",
-        "clase_reg": "REG",
+        "clase_reg": clase_reg,
         "clase_mod": clase_mod,
         "clase_gto": "REM",
         "es_comprometido": True,
@@ -180,6 +194,7 @@ def fila_siif(
         "es_pagado": True,
         "nro_entrada": nro_entrada,
         "nro_expte": nro_expte,
+        "nro_fondo": nro_fondo,
         "partida": partida,
         "grupo": grupo,
         "glosa": glosa,
@@ -223,6 +238,7 @@ def fila_sgf(
 def construir_servicio_siif(
     gastos: GastosFalso,
     repository: Optional[RepositorioFalso] = None,
+    rfondo07tp: Optional[Rfondo07tpFalso] = None,
 ) -> ControlOtrosGastosSiifService:
     """Instancia el servicio SIIF con dependencias simuladas (dataclass)."""
     return ControlOtrosGastosSiifService(
@@ -231,6 +247,7 @@ def construir_servicio_siif(
         rcg01_service=Rcg01Falso(
             [SimpleNamespace(nro_comprobante="00003/05", nro_origen="00004")]
         ),
+        rfondo07tp_service=rfondo07tp or Rfondo07tpFalso([]),
         icaro_carga_service=CargaFalso(
             [SimpleNamespace(nro_comprobante="00002/05")]
         ),
@@ -277,6 +294,30 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
 
         nros = [fila["nro_comprobante"] for fila in resultado]
         self.assertEqual(nros, ["00001/05"])
+
+    # --------------------------------------------------
+    async def test_depuracion_fondos_pa6(self) -> None:
+        """Solo los REG cuyo nro_fondo es de un PA6 del ejercicio salen."""
+        base = [
+            fila_siif("00020/05", "00020", nro_fondo="97"),  # fondo PA6
+            fila_siif("00021/05", "00021", nro_fondo="42"),  # otro fondo
+            fila_siif(  # no REG: CYO con fondo PA6
+                "00022/05", "00022", nro_fondo="97", clase_reg="CYO"
+            ),
+            fila_siif("00023/05", "00023"),  # REG sin nro_fondo
+            fila_siif("00024/05", "00024", nro_fondo="00097"),  # normalizado
+        ]
+        servicio = construir_servicio_siif(
+            GastosFalso(base),
+            rfondo07tp=Rfondo07tpFalso([SimpleNamespace(nro_fondo="97")]),
+        )
+
+        resultado = await servicio.compute_otros_gastos_siif(
+            params=ControlOtrosGastosSiifFilter(ejercicio=2026, limit=None)
+        )
+
+        nros = [fila["nro_comprobante"] for fila in resultado]
+        self.assertEqual(nros, ["00021/05", "00022/05", "00023/05"])
 
     # --------------------------------------------------
     async def test_sin_datos_devuelve_vacio(self) -> None:
