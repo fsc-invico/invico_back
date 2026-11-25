@@ -265,6 +265,18 @@ class ControlOtrosGastosSiifService(
                     detail_msg += f" Errores detectados: {detalle}"
                 raise HTTPException(status_code=400, detail=detail_msg)
 
+            # Visibilidad: si el POST trae filas que la validación
+            # descartó, se avisa en logs (el detalle completo viaja en
+            # la respuesta). Sin este warning, un snapshot parcial pasa
+            # inadvertido (fue lo que dejó la tabla SIIF sin el resto).
+            descartadas = len(data) - len(validation_result.validated)
+            if descartadas > 0:
+                logger.warning(
+                    f"Otros Gastos SIIF: {descartadas} de {len(data)} filas "
+                    "descartadas por validación en add_many. "
+                    f"Primeros errores: {list(validation_result.errors)[:2]}"
+                )
+
             ejercicio_detectado = validation_result.validated[0].ejercicio
             delete_filter = {"ejercicio": ejercicio_detectado}
 
@@ -642,6 +654,18 @@ class ControlOtrosGastosSgfService(
                     detalle = validation_result.errors[:2]
                     detail_msg += f" Errores detectados: {detalle}"
                 raise HTTPException(status_code=400, detail=detail_msg)
+
+            # Visibilidad: si el POST trae filas que la validación
+            # descartó, se avisa en logs (el detalle completo viaja en
+            # la respuesta). Sin este warning, un snapshot parcial pasa
+            # inadvertido (fue lo que dejó la tabla SGF sin cuit nulos).
+            descartadas = len(data) - len(validation_result.validated)
+            if descartadas > 0:
+                logger.warning(
+                    f"Otros Gastos SGF: {descartadas} de {len(data)} filas "
+                    "descartadas por validación en add_many. "
+                    f"Primeros errores: {list(validation_result.errors)[:2]}"
+                )
 
             ejercicio_detectado = validation_result.validated[0].ejercicio
             delete_filter = {"ejercicio": ejercicio_detectado}

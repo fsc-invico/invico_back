@@ -24,12 +24,42 @@ __all__ = [
     "ESTADO_SGF_SIN_SIIF",
 ]
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from pydantic_mongo import PydanticObjectId
 
 from ...utils import BaseFilterParams, CamelModel
+
+
+# --------------------------------------------------
+def _texto_o_none(valor: Any) -> Any:
+    """Normaliza campos de texto en modo ``before`` (patrón del módulo).
+
+    El frontend arma los payloads pasando las filas por un
+    ``pd.DataFrame``: los campos opcionales ausentes llegan como
+    ``float('nan')`` (httpx serializa ``NaN`` con ``allow_nan=True``).
+    Sin esta coerción, Pydantic rechaza ``nan`` en campos ``str`` y el
+    ``add_many`` descarta filas COMPLETAS en silencio (fue lo que dejó
+    la tabla SIIF sin el resto y la SGF sin los cuit nulos).
+
+    - ``None`` / ``NaN`` → ``None`` (opcionales aceptan nulo).
+    - Enteros y floats enteros → ``str`` (``27.0`` → ``"27"``,
+      ``900008022026`` → ``"900008022026"``).
+    - Cualquier otro valor no-texto → ``str``.
+    """
+    if valor is None:
+        return None
+    if isinstance(valor, float):
+        # valor != valor es True solo para NaN (sin dependencias)
+        if valor != valor:
+            return None
+        if valor.is_integer():
+            return str(int(valor))
+        return str(valor)
+    if isinstance(valor, int) and not isinstance(valor, bool):
+        return str(valor)
+    return valor
 
 
 # Respuesta de detalle (fila a fila, sin agregar) del SIIF depurado:
@@ -61,6 +91,31 @@ class ControlOtrosGastosSiifReport(BaseModel):
     grupo: Optional[str] = None
     partida: Optional[str] = None
     glosa: Optional[str] = None
+
+    # tolerancia a payloads con NaN/numéricos (ver _texto_o_none)
+    @field_validator(
+        "mes",
+        "fecha",
+        "nro_comprobante",
+        "cta_cte",
+        "cuit",
+        "beneficiario",
+        "clase_reg",
+        "clase_mod",
+        "clase_gto",
+        "fuente",
+        "nro_expte",
+        "nro_fondo",
+        "nro_entrada",
+        "nro_origen",
+        "grupo",
+        "partida",
+        "glosa",
+        mode="before",
+    )
+    @classmethod
+    def _coercer_texto(cls, valor: Any) -> Any:
+        return _texto_o_none(valor)
 
 
 # -------------------------------------------------
@@ -109,6 +164,24 @@ class ControlOtrosGastosSgfReport(BaseModel):
     retenciones: float
     importe_neto: float
     cuit: Optional[str] = None
+
+    # tolerancia a payloads con NaN/numéricos (ver _texto_o_none).
+    # El cuit nulo del SGF era exactamente lo que perdía el POST.
+    @field_validator(
+        "origen",
+        "mes",
+        "fecha",
+        "beneficiario",
+        "destino",
+        "libramiento",
+        "movimiento",
+        "cta_cte",
+        "cuit",
+        mode="before",
+    )
+    @classmethod
+    def _coercer_texto(cls, valor: Any) -> Any:
+        return _texto_o_none(valor)
 
 
 # -------------------------------------------------

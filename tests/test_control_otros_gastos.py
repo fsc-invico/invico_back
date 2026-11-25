@@ -69,6 +69,7 @@ from src.analysis.services.control_otros_gastos import (
     HOJA_SGF,
     HOJA_SIIF,
 )
+from src.config import logger as logger_pruebas
 
 
 # -------------------------------------------------
@@ -592,6 +593,94 @@ class TestAddManyOtrosGastos(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as contexto:
             await servicio.add_many([{"nro_comprobante": "incompleto"}])
         self.assertEqual(contexto.exception.status_code, 400)
+
+    # --------------------------------------------------
+    async def test_add_many_siif_con_descartes_registra_warning(self) -> None:
+        """Si la validación descarta filas, el servicio avisa en logs.
+
+        Sin este warning, un snapshot parcial pasa inadvertido (fue lo
+        que dejó la hoja SIIF sin el resto de registros)."""
+        repositorio = RepositorioFalso()
+        servicio = construir_servicio_siif(
+            GastosFalso([]), repository=repositorio
+        )
+        payload: List[Any] = [
+            fila_siif("00001/05", "00001"),
+            {"nro_comprobante": "incompleto"},  # falla validación
+        ]
+
+        with self.assertLogs(logger_pruebas, level="WARNING") as capturado:
+            resultado = await servicio.add_many(payload)  # type: ignore[arg-type]
+
+        self.assertEqual(resultado.added, 1)
+        self.assertTrue(
+            any("1 de 2 filas descartadas" in m for m in capturado.output)
+        )
+
+
+# --------------------------------------------------
+class TestEsquemaToleranteANan(unittest.IsolatedAsyncioTestCase):
+    """El frontend arma los payloads pasando las filas por un
+    ``pd.DataFrame``: los opcionales ausentes llegan como ``NaN``
+    (httpx serializa con ``allow_nan=True``). Sin la coerción de los
+    esquemas, Pydantic rechaza ``nan`` en campos ``str`` y ``add_many``
+    descarta filas COMPLETAS en silencio: fue lo que dejó la hoja
+    ``otros_gastos_siif`` sin el resto (``nro_fondo`` nulo) y la SGF
+    sin los cuit nulos, vaciando el cruce 1:1."""
+
+    # --------------------------------------------------
+    def test_siif_nan_en_opcional_queda_none(self) -> None:
+        """El nro_fondo nulo (np.nan del DataFrame) valida como None."""
+        fila = ControlOtrosGastosSiifReport(
+            **fila_siif(  # type: ignore[arg-type]
+                "00048/26", "00048", nro_fondo=float("nan")
+            )
+        )
+        self.assertIsNone(fila.nro_fondo)
+
+    # --------------------------------------------------
+    def test_siif_numericos_coaccionan_a_texto(self) -> None:
+        """Enteros y floats enteros llegan como texto normalizado."""
+        fila = ControlOtrosGastosSiifReport(
+            **fila_siif(  # type: ignore[arg-type]
+                "00048/26",
+                "00048",
+                nro_expte=900008022026,  # type: ignore[arg-type]
+                nro_fondo=27.0,  # type: ignore[arg-type]
+                grupo=3.0,  # type: ignore[arg-type]
+                partida=333,  # type: ignore[arg-type]
+            )
+        )
+        self.assertEqual(fila.nro_expte, "900008022026")
+        self.assertEqual(fila.nro_fondo, "27")
+        self.assertEqual(fila.grupo, "3")
+        self.assertEqual(fila.partida, "333")
+
+    # --------------------------------------------------
+    def test_sgf_cuit_nan_queda_none(self) -> None:
+        """Los cuit nulos del SGF deben validar (antes se caían)."""
+        fila = ControlOtrosGastosSgfReport(
+            **fila_sgf("L-9", cuit=float("nan"))  # type: ignore[arg-type]
+        )
+        self.assertIsNone(fila.cuit)
+
+    # --------------------------------------------------
+    async def test_add_many_siif_persiste_filas_con_opcionales_nulos(
+        self,
+    ) -> None:
+        """Una fila tipo 'resto' con opcionales nulos sobrevive al POST."""
+        repositorio = RepositorioFalso()
+        servicio = construir_servicio_siif(
+            GastosFalso([]), repository=repositorio
+        )
+        resto = fila_siif(
+            "00048/26", "00048", clase_reg="CYO", nro_fondo=float("nan")  # type: ignore[arg-type]
+        )
+
+        resultado = await servicio.add_many([resto])  # type: ignore[arg-type]
+
+        self.assertEqual(resultado.added, 1)
+        self.assertEqual(len(repositorio.saved), 1)
 
 
 # --------------------------------------------------
