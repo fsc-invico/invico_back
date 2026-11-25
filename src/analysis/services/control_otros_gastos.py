@@ -158,6 +158,7 @@ COLUMNAS_SGF: List[str] = [
     "importe_neto",
 ]
 
+
 @dataclass
 # -------------------------------------------------
 class ControlOtrosGastosSiifService(
@@ -300,15 +301,23 @@ class ControlOtrosGastosSiifService(
         6. Haberes: cta. cte. 130832-04 sin las partidas 150/151
            (criterio de ``control_haberes``; se aplica sobre la cta_cte
            unificada porque el SIIF guarda "130832004" sin guiones).
-        7. Honorarios: criterio de ``get_siif_honorarios`` (grupo 3,
+        7. ART: ``clase_gto = "REM"`` con ``partida = "151"`` (no se
+           carga en SGF ni lo cubre ``control_haberes``).
+        8. Honorarios: criterio de ``get_siif_honorarios`` (grupo 3,
            sin partida 384, cuit INVICO, ctas 130832-05/07 y glosa
            HONOR/RECON/LOC con cta_cte unificada) más el
            ``nro_comprobante`` de Slave de ``control_honorarios``.
-        8. Viáticos: ``nro_comprobante``/``nro_expte`` de
+        9. Viáticos: ``nro_comprobante``/``nro_expte`` de
            ``control_viaticos`` (partidas 372/373).
-        9. Débitos bancarios: ``nro_comprobante`` de
-           ``control_debitos_bancarios`` (partida 355).
-        10. Escribanos NO se depura de SIIF (impactan como fondos, no
+        10. Débitos bancarios: ``nro_comprobante`` de
+            ``control_debitos_bancarios`` (partida 355).
+        11. Cajas chicas: ``clase_reg = "REG"`` con ``nro_fondo``
+            cargado (distinto de vacío, Null o 0) y ``cuit`` distinto
+            de INVICO. El CUIT de INVICO es el de fondos permanentes
+            (que SÍ se carga en SGF); el reintegro de caja chica se
+            rinde en otro sistema de bancos, no en SGF. Corre después
+            de PA6, viáticos y débitos para no capturar sus REG.
+        12. Escribanos NO se depura de SIIF (impactan como fondos, no
             como gastos).
 
         Args:
@@ -384,9 +393,7 @@ class ControlOtrosGastosSiifService(
         fondos_pa6 = {doc.nro_fondo for doc in pa6_docs or [] if doc.nro_fondo}
         if fondos_pa6:
             antes = len(df)
-            mask_fondos = (df["clase_reg"] == "REG") & df["nro_fondo"].isin(
-                fondos_pa6
-            )
+            mask_fondos = (df["clase_reg"] == "REG") & df["nro_fondo"].isin(fondos_pa6)
             df = df.loc[~mask_fondos]
             logger.info(
                 f"{etiqueta} → fondos PA6 (regularizados): {antes - len(df)} filas"
@@ -419,7 +426,16 @@ class ControlOtrosGastosSiifService(
         if df.empty:
             return []
 
-        # 7. Honorarios: criterio de get_siif_honorarios con cta_cte
+        # 7. ART: clase_gto REM con partida 151 — no se carga en SGF ni
+        #    lo cubre control_haberes (que excluye 150/151 de sus
+        #    haberes), por lo que quedaría como "otro gasto" sin ningún
+        #    control que lo respalde.
+        antes = len(df)
+        mask_art = (df["clase_gto"] == "REM") & (df["partida"] == "151")
+        df = df.loc[~mask_art]
+        logger.info(f"{etiqueta} → ART: {antes - len(df)} filas")
+
+        # 8. Honorarios: criterio de get_siif_honorarios con cta_cte
         #    unificada (grupo 3, sin 384, cuit INVICO, ctas -05/-07 y
         #    glosa HONOR/RECON/LOC) ∪ nro_comprobante de Slave de
         #    control_honorarios (casi 10% de la ejecución del gasto).
@@ -455,7 +471,7 @@ class ControlOtrosGastosSiifService(
         df = df.loc[~df["nro_comprobante"].isin(nros_honorarios)]
         logger.info(f"{etiqueta} → honorarios: {antes - len(df)} filas")
 
-        # 8. Viáticos: nro_comprobante y nro_expte de control_viaticos
+        # 9. Viáticos: nro_comprobante y nro_expte de control_viaticos
         #    (partidas 372/373). Los PA3/REV de rfondos04 pertenecen al
         #    subsistema de fondos y no aparecen en gto_rpa03g: no se
         #    cruzan para evitar colisiones de numeración.
@@ -476,18 +492,41 @@ class ControlOtrosGastosSiifService(
                 df = df.loc[~df["nro_expte"].isin(exptes)]
             logger.info(f"{etiqueta} → viáticos: {antes - len(df)} filas")
 
-        # 9. Débitos bancarios: nro_comprobante de control_debitos_
-        #    bancarios (partida 355).
+        # 10. Débitos bancarios: nro_comprobante de control_debitos_
+        #     bancarios (partida 355).
         debitos = await self.debitos_service.generate_siif_debitos(ejercicio=ejercicio)
-        if debitos is not None and not debitos.empty and (
-            "nro_comprobante" in debitos.columns
+        if (
+            debitos is not None
+            and not debitos.empty
+            and ("nro_comprobante" in debitos.columns)
         ):
             antes = len(df)
             nros_debitos = set(debitos["nro_comprobante"].dropna())
             df = df.loc[~df["nro_comprobante"].isin(nros_debitos)]
             logger.info(f"{etiqueta} → débitos bancarios: {antes - len(df)} filas")
 
-        # 10. Escribanos NO se depura de SIIF (ver docstring).
+        # 11. Cajas chicas: REG con nro_fondo cargado (≠ vacío, Null o
+        #     0) y cuit distinto de INVICO. El CUIT 30632351514 es el de
+        #     fondos permanentes (que SÍ se carga en SGF); el reintegro
+        #     de caja chica se rinde en otro sistema de bancos, no en
+        #     SGF. Se aplica DESPUÉS de PA6 (paso 4), viáticos y débitos
+        #     para no capturar sus REG con fondo por error. Solo
+        #     clase_reg = "REG": PA6 y demás no entran en la máscara.
+        if "nro_fondo" in df.columns:
+            fondo_txt = df["nro_fondo"].fillna("").astype(str).str.strip()
+            tiene_fondo = ~fondo_txt.isin(["", "0"])
+        else:
+            # Sin columna (ningún doc trae nro_fondo): nadie tiene fondo
+            # cargado, por lo que no hay cajas chicas que depurar.
+            tiene_fondo = pd.Series(False, index=df.index)
+        antes = len(df)
+        mask_cajas_chicas = (
+            (df["clase_reg"] == "REG") & tiene_fondo & (df["cuit"] != CUIT_INVICO)
+        )
+        df = df.loc[~mask_cajas_chicas]
+        logger.info(f"{etiqueta} → cajas chicas: {antes - len(df)} filas")
+
+        # 12. Escribanos NO se depura de SIIF (ver docstring).
 
         if df.empty:
             logger.info(f"{etiqueta}: sin registros después de depurar (0 de {total}).")
@@ -505,6 +544,7 @@ class ControlOtrosGastosSiifService(
 
         df = sanitize_dataframe_for_json_with_datetime(df)
         return df.replace({np.nan: None}).to_dict(orient="records")
+
 
 @dataclass
 # -------------------------------------------------
@@ -682,8 +722,7 @@ class ControlOtrosGastosSgfService(
 
         df = df.loc[~(mask_obras | mask_honorarios | mask_escribanos)]
         logger.info(
-            f"{etiqueta} → tras depurar obras/honorarios/escribanos: "
-            f"{len(df)} filas"
+            f"{etiqueta} → tras depurar obras/honorarios/escribanos: {len(df)} filas"
         )
 
         # Unifica cta_cte con el nexo sgf_cta_cte (salida canónica). Los
@@ -708,6 +747,7 @@ class ControlOtrosGastosSgfService(
         df = sanitize_dataframe_for_json_with_datetime(df)
         return df.replace({np.nan: None}).to_dict(orient="records")
 
+
 ControlOtrosGastosSiifServiceDependency = Annotated[
     ControlOtrosGastosSiifService, Depends()
 ]
@@ -731,9 +771,7 @@ class ControlOtrosGastosExportService:
     sgf_service: ControlOtrosGastosSgfServiceDependency
 
     # -------------------------------------------------
-    async def export(
-        self, params: ControlOtrosGastosExportFilter
-    ) -> dict[str, Any]:
+    async def export(self, params: ControlOtrosGastosExportFilter) -> dict[str, Any]:
         """Encola la exportación unificada y responde de inmediato.
 
         Args:
@@ -851,10 +889,3 @@ class ControlOtrosGastosExportService:
 ControlOtrosGastosExportServiceDependency = Annotated[
     ControlOtrosGastosExportService, Depends()
 ]
-
-
-
-
-
-
-

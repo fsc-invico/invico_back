@@ -168,6 +168,7 @@ def fila_siif(
     es_aprobado: Any = True,
     clase_mod: str = "NOR",
     clase_reg: str = "REG",
+    clase_gto: str = "REM",
     nro_expte: str = "EXP-0",
     nro_fondo: Optional[str] = None,
     cta_cte: str = "130101-01",
@@ -187,7 +188,7 @@ def fila_siif(
         "beneficiario": "PROVEEDOR SA",
         "clase_reg": clase_reg,
         "clase_mod": clase_mod,
-        "clase_gto": "REM",
+        "clase_gto": clase_gto,
         "es_comprometido": True,
         "es_verificado": True,
         "es_aprobado": es_aprobado,
@@ -285,6 +286,12 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
             fila_siif("00008/05", "00008"),  # viáticos (nro_comprobante)
             fila_siif("00102/05", "00102", nro_expte="EXP-100"),  # viáticos
             fila_siif("00009/05", "00009"),  # débitos bancarios
+            fila_siif(  # ART (REM + partida 151)
+                "00010/05", "00010", partida="151", grupo="1"
+            ),
+            fila_siif(  # caja chica (REG + fondo + cuit ≠ INVICO)
+                "00011/05", "00011", nro_fondo="77"
+            ),
         ]
         servicio = construir_servicio_siif(GastosFalso(base))
 
@@ -300,13 +307,22 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         """Solo los REG cuyo nro_fondo es de un PA6 del ejercicio salen."""
         base = [
             fila_siif("00020/05", "00020", nro_fondo="97"),  # fondo PA6
-            fila_siif("00021/05", "00021", nro_fondo="42"),  # otro fondo
+            fila_siif(  # otro fondo (cuit INVICO: fondos permanentes,
+                #              no caja chica → aisla el test del paso 11)
+                "00021/05",
+                "00021",
+                nro_fondo="42",
+                cuit="30632351514",
+            ),
             fila_siif(  # no REG: CYO con fondo PA6
                 "00022/05", "00022", nro_fondo="97", clase_reg="CYO"
             ),
             fila_siif("00023/05", "00023"),  # REG sin nro_fondo
             fila_siif(  # comparación literal: "00097" ≠ "97" → queda
-                "00024/05", "00024", nro_fondo="00097"
+                "00024/05",
+                "00024",
+                nro_fondo="00097",
+                cuit="30632351514",
             ),
         ]
         servicio = construir_servicio_siif(
@@ -321,6 +337,60 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         nros = [fila["nro_comprobante"] for fila in resultado]
         self.assertEqual(
             nros, ["00021/05", "00022/05", "00023/05", "00024/05"]
+        )
+
+    # --------------------------------------------------
+    async def test_depuracion_art(self) -> None:
+        """Sale solo REM con partida 151; 151 sin REM y 421 REM quedan."""
+        base = [
+            fila_siif(  # ART: clase_gto REM + partida 151
+                "00030/05", "00030", partida="151", grupo="1"
+            ),
+            fila_siif(  # 151 pero NO REM → queda
+                "00031/05",
+                "00031",
+                partida="151",
+                grupo="1",
+                clase_gto="PRE",
+            ),
+            fila_siif("00032/05", "00032"),  # 421 REM → queda
+        ]
+        servicio = construir_servicio_siif(GastosFalso(base))
+
+        resultado = await servicio.compute_otros_gastos_siif(
+            params=ControlOtrosGastosSiifFilter(ejercicio=2026, limit=None)
+        )
+
+        nros = [fila["nro_comprobante"] for fila in resultado]
+        self.assertEqual(nros, ["00031/05", "00032/05"])
+
+    # --------------------------------------------------
+    async def test_depuracion_cajas_chicas(self) -> None:
+        """Sale solo REG con nro_fondo cargado y cuit ≠ INVICO."""
+        base = [
+            fila_siif(  # caja chica: REG + fondo + cuit ≠ INVICO
+                "00040/05", "00040", nro_fondo="77"
+            ),
+            fila_siif(  # fondos permanentes (cuit INVICO) → queda
+                "00041/05", "00041", nro_fondo="77", cuit="30632351514"
+            ),
+            fila_siif("00042/05", "00042"),  # sin fondo cargado → queda
+            fila_siif(  # fondo en 0 → queda
+                "00043/05", "00043", nro_fondo="0"
+            ),
+            fila_siif(  # no es REG → queda
+                "00044/05", "00044", nro_fondo="77", clase_reg="CYO"
+            ),
+        ]
+        servicio = construir_servicio_siif(GastosFalso(base))
+
+        resultado = await servicio.compute_otros_gastos_siif(
+            params=ControlOtrosGastosSiifFilter(ejercicio=2026, limit=None)
+        )
+
+        nros = [fila["nro_comprobante"] for fila in resultado]
+        self.assertEqual(
+            nros, ["00041/05", "00042/05", "00043/05", "00044/05"]
         )
 
     # --------------------------------------------------
