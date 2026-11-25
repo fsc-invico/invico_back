@@ -79,6 +79,10 @@ from .control_viaticos import ControlViaticosServiceDependency
 
 # CUIT de INVICO (beneficiario de los comprobantes de honorarios)
 CUIT_INVICO: str = "30632351514"
+# En SGF este cuit liquida UN libramiento que AGREGA varios SIIF del
+# mismo día: la Capa 1 agrupa esos SIIF por fecha y compara la SUMA
+# contra el libramiento antes del pareo 1:1 normal.
+CUIT_PAGOS_AGRUPADOS: str = "30500049460"
 
 # Partidas excluidas de haberes por control_haberes (aportes 150/151)
 PARTIDAS_HABERES_EXCLUIDAS: List[str] = ["150", "151"]
@@ -1126,7 +1130,13 @@ class ControlOtrosGastosCruceService:
         Capa 1 - ``pareos``: pareo 1:1 greedy (y determinístico: orden
         por fecha/nro_comprobante) del resto de SIIF (todo lo que NO es
         fondo permanente) contra SGF: ``cuit`` + importe ±``importe_tol``
-        + fecha ±``ventana_dias``. Estados: ``PAREADO``,
+        + fecha ±``ventana_dias``. Antes del 1:1 corre un pre-paso de
+        pagos agrupados: los SIIF del cuit ``CUIT_PAGOS_AGRUPADOS``
+        (que en SGF liquida un solo libramiento agregado) se agrupan
+        por día y su SUMA se compara con el libramiento usando las
+        MISMAS tolerancias; si matchea, todas las filas del grupo
+        quedan ``PAREADAS`` al mismo libramiento y ``dif`` refleja el
+        residuo de la suma. Estados: ``PAREADO``,
         ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF`` (SGF no usado cuyo cuit
         aparece en el resto SIIF: dominio de pagos directos).
 
@@ -1203,7 +1213,84 @@ class ControlOtrosGastosCruceService:
         orden = resto.sort_values(
             ["fecha", "nro_comprobante"], na_position="last"
         ).index
+
+        # Pre-paso: pagos agrupados. El CUIT_PAGOS_AGRUPADOS liquida
+        # en SGF UN libramiento que agrega varios SIIF del mismo día:
+        # se suman las filas de ese cuit con idéntica fecha y la SUMA
+        # se compara contra el libramiento (mismas tolerancias de
+        # importe y ventana). Si matchea, todas las filas del grupo
+        # quedan PAREADAS al mismo libramiento y ``dif`` es el
+        # residuo de la suma (igual en cada fila del grupo). Si el
+        # grupo no matchea, sus filas siguen al 1:1 normal de abajo.
+        pareadas_agrupadas: set = set()
+        fecha_valida = resto["fecha"].fillna("").astype(str).str.strip().ne("")
+        siif_agrupados = resto.loc[
+            (resto["cuit_n"] == CUIT_PAGOS_AGRUPADOS) & fecha_valida
+        ]
+        grupos_agrupados: int = 0
+        for fecha_txt, grupo in siif_agrupados.groupby("fecha", sort=True):
+            if len(grupo) < 2:
+                continue  # 1 sola fila del día: la resuelve el 1:1 normal
+            importes = pd.to_numeric(grupo["importe"], errors="coerce")
+            if importes.isna().any():
+                # Sin importe no se puede validar la suma: al 1:1.
+                continue
+            suma_grupo = float(importes.sum())
+            candidatos = df_sgf.loc[
+                (~df_sgf["_usado"])
+                & (df_sgf["cuit_n"] == CUIT_PAGOS_AGRUPADOS)
+            ]
+            candidatos = candidatos.loc[
+                (candidatos["importe_bruto"] - suma_grupo).abs()
+                <= abs(suma_grupo) * importe_tol
+            ]
+            fecha_grupo = pd.to_datetime(fecha_txt, dayfirst=True, errors="coerce")
+            if ventana_dias > 0:
+                if pd.isna(fecha_grupo):
+                    # Sin fecha no se puede aplicar la ventana: al 1:1.
+                    candidatos = candidatos.iloc[0:0]
+                else:
+                    candidatos = candidatos.loc[candidatos["fecha_d"].notna()]
+                    candidatos = candidatos.loc[
+                        (candidatos["fecha_d"] - fecha_grupo).abs()
+                        <= pd.Timedelta(days=ventana_dias)
+                    ]
+            if candidatos.empty:
+                continue
+
+            comparacion = candidatos.assign(
+                _dif=(candidatos["importe_bruto"] - suma_grupo).abs(),
+                _dias=(candidatos["fecha_d"] - fecha_grupo).abs(),
+            ).sort_values(["_dias", "_dif"])
+            indice_sgf = comparacion.index[0]
+            fila_sgf_agr = df_sgf.loc[indice_sgf]
+            df_sgf.loc[indice_sgf, "_usado"] = True
+            dias_dif = None
+            if pd.notna(fecha_grupo) and pd.notna(fila_sgf_agr["fecha_d"]):
+                dias_dif = int((fila_sgf_agr["fecha_d"] - fecha_grupo).days)
+            for indice_fila in grupo.index:
+                pareadas_agrupadas.add(indice_fila)
+                pareos.append(
+                    {
+                        **_lado_siif(
+                            ejercicio, ESTADO_PAREADO, resto.loc[indice_fila]
+                        ),
+                        **_lado_sgf(ejercicio, ESTADO_PAREADO, fila_sgf_agr),
+                        "dias_dif": dias_dif,
+                        "dif": suma_grupo - float(fila_sgf_agr["importe_bruto"]),
+                    }
+                )
+            grupos_agrupados += 1
+        if grupos_agrupados:
+            logger.info(
+                f"{etiqueta} → pagos agrupados ({CUIT_PAGOS_AGRUPADOS}): "
+                f"{grupos_agrupados} grupos / {len(pareadas_agrupadas)} "
+                "filas SIIF"
+            )
+
         for indice in orden:
+            if indice in pareadas_agrupadas:
+                continue  # ya pareada en el pre-paso de agrupados
             fila = resto.loc[indice]
             importe_siif = fila.get("importe")
             candidatos = df_sgf.loc[

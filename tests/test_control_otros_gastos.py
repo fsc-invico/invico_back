@@ -971,6 +971,103 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
 
 
     # --------------------------------------------------
+    async def test_cruce_pagos_agrupados_mismo_dia(self) -> None:
+        """Cuit de pago agregado (30500049460): 3 SIIF del mismo día
+        suman el libramiento SGF → los 3 quedan PAREADOS al MISMO
+        libramiento con el residuo de la suma en ``dif``."""
+        cuit_agrupado = "30500049460"
+        siif_filas = [
+            fila_siif(
+                "00030/05", "00030", cuit=cuit_agrupado, importe=100.0,
+                fecha="05/05/2026",
+            ),
+            fila_siif(
+                "00031/05", "00031", cuit=cuit_agrupado, importe=200.0,
+                fecha="05/05/2026",
+            ),
+            fila_siif(
+                "00032/05", "00032", cuit=cuit_agrupado, importe=300.0,
+                fecha="05/05/2026",
+            ),
+            fila_siif(  # otro día sin contraparte → cae al 1:1 normal
+                "00033/05", "00033", cuit=cuit_agrupado, importe=50.0,
+                fecha="06/05/2026",
+            ),
+        ]
+        sgf_filas = [
+            # 603 vs suma 600: 0.5% de tolerancia sobre la SUMA
+            fila_sgf(
+                "L-AGR", cuit=cuit_agrupado, importe=603.0, fecha="05/05/2026"
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 3)
+        nros = sorted(fila["siif_nro_comprobante"] for fila in pareados)
+        self.assertEqual(nros, ["00030/05", "00031/05", "00032/05"])
+        for fila in pareados:
+            self.assertEqual(fila["sgf_libramiento"], "L-AGR")
+            self.assertEqual(fila["sgf_importe_bruto"], 603.0)
+            self.assertEqual(fila["dias_dif"], 0)
+            # residuo de la SUMA del grupo (600 - 603), no fila - SGF
+            self.assertEqual(fila["dif"], -3.0)
+
+        sin_sgf = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SIIF_SIN_SGF
+        ]
+        self.assertEqual(len(sin_sgf), 1)
+        self.assertEqual(sin_sgf[0]["siif_nro_comprobante"], "00033/05")
+
+        # El libramiento quedó usado: no puede quedar huérfano
+        huerfanas = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SGF_SIN_SIIF
+        ]
+        self.assertEqual(huerfanas, [])
+
+    # --------------------------------------------------
+    async def test_cruce_pagos_agrupados_sin_match_falla_al_1a1(self) -> None:
+        """Si la suma del grupo no matchea al libramiento, las filas
+        vuelven al pareo 1:1 normal (y aquí ninguna calza)."""
+        cuit_agrupado = "30500049460"
+        siif_filas = [
+            fila_siif(
+                "00040/05", "00040", cuit=cuit_agrupado, importe=100.0,
+                fecha="05/05/2026",
+            ),
+            fila_siif(
+                "00041/05", "00041", cuit=cuit_agrupado, importe=200.0,
+                fecha="05/05/2026",
+            ),
+        ]
+        sgf_filas = [
+            # suma 300 ≠ 600 (fuera de tolerancia) → el grupo no matchea
+            fila_sgf(
+                "L-NO", cuit=cuit_agrupado, importe=600.0, fecha="05/05/2026"
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertNotIn(ESTADO_PAREADO, estados)
+        self.assertEqual(estados.count(ESTADO_SIIF_SIN_SGF), 2)
+        self.assertEqual(estados.count(ESTADO_SGF_SIN_SIIF), 1)
+
+    # --------------------------------------------------
     async def test_cruce_tolerancia_importe(self) -> None:
         """Fuera de tolerancia → sin pareo; con tolerancia → parea."""
         siif_filas = [
