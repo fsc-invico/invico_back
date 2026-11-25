@@ -375,14 +375,13 @@ class ControlOtrosGastosSiifService(
            ``control_viaticos`` (partidas 372/373).
         10. Débitos bancarios: ``nro_comprobante`` de
             ``control_debitos_bancarios`` (partida 355).
-        11. Cajas chicas: ``clase_reg = "REG"`` con ``nro_fondo``
-            cargado (distinto de vacío, Null o 0) y ``cuit`` distinto
-            de INVICO. El CUIT de INVICO es el de fondos permanentes
-            (que SÍ se carga en SGF); el reintegro de caja chica se
-            rinde en otro sistema de bancos, no en SGF. Corre después
-            de PA6, viáticos y débitos para no capturar sus REG.
-        12. Escribanos NO se depura de SIIF (impactan como fondos, no
+        11. Escribanos NO se depura de SIIF (impactan como fondos, no
             como gastos).
+        12. Cajas chicas NO se depuran (criterio corregido): el
+            reintegro de caja chica SÍ se carga en SGF, por lo que sus
+            filas se conservan en SIIF y se parean uno a uno con el
+            SGF en la Capa 1. El CUIT 30632351514 sigue distinguiendo
+            los fondos permanentes (Capa 2, cruce mensual).
 
         Args:
             params: Filtro con el ``ejercicio`` a depurar.
@@ -569,28 +568,9 @@ class ControlOtrosGastosSiifService(
             df = df.loc[~df["nro_comprobante"].isin(nros_debitos)]
             logger.info(f"{etiqueta} → débitos bancarios: {antes - len(df)} filas")
 
-        # 11. Cajas chicas: REG con nro_fondo cargado (≠ vacío, Null o
-        #     0) y cuit distinto de INVICO. El CUIT 30632351514 es el de
-        #     fondos permanentes (que SÍ se carga en SGF); el reintegro
-        #     de caja chica se rinde en otro sistema de bancos, no en
-        #     SGF. Se aplica DESPUÉS de PA6 (paso 4), viáticos y débitos
-        #     para no capturar sus REG con fondo por error. Solo
-        #     clase_reg = "REG": PA6 y demás no entran en la máscara.
-        if "nro_fondo" in df.columns:
-            fondo_txt = df["nro_fondo"].fillna("").astype(str).str.strip()
-            tiene_fondo = ~fondo_txt.isin(["", "0"])
-        else:
-            # Sin columna (ningún doc trae nro_fondo): nadie tiene fondo
-            # cargado, por lo que no hay cajas chicas que depurar.
-            tiene_fondo = pd.Series(False, index=df.index)
-        antes = len(df)
-        mask_cajas_chicas = (
-            (df["clase_reg"] == "REG") & tiene_fondo & (df["cuit"] != CUIT_INVICO)
-        )
-        df = df.loc[~mask_cajas_chicas]
-        logger.info(f"{etiqueta} → cajas chicas: {antes - len(df)} filas")
-
-        # 12. Escribanos NO se depura de SIIF (ver docstring).
+        # 11-12. Escribanos y cajas chicas NO se depuran (ver
+        #     docstring): las cajas chicas SÍ se cargan en SGF, por lo
+        #     que se conservan para el pareo 1:1 de la Capa 1.
 
         if df.empty:
             logger.info(f"{etiqueta}: sin registros después de depurar (0 de {total}).")

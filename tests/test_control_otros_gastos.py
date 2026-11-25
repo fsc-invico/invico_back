@@ -298,7 +298,8 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
 
     # --------------------------------------------------
     async def test_depuracion_completa(self) -> None:
-        """Cada paso descuenta su conjunto y solo queda la fila 'ok'."""
+        """Cada paso descuenta su conjunto; quedan la fila 'ok' y la
+        caja chica (que ya NO se depura: se cruza 1:1 con SGF)."""
         base = [
             fila_siif("00001/05", "00001"),  # sobrevive
             fila_siif("00100/05", "00100", es_aprobado=False),  # no aprobado
@@ -322,7 +323,7 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
             fila_siif(  # ART (REM + partida 151)
                 "00010/05", "00010", partida="151", grupo="1"
             ),
-            fila_siif(  # caja chica (REG + fondo + cuit ≠ INVICO)
+            fila_siif(  # caja chica (REG + fondo + cuit ≠ INVICO): se queda
                 "00011/05", "00011", nro_fondo="77"
             ),
         ]
@@ -333,15 +334,15 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         )
 
         nros = [fila["nro_comprobante"] for fila in resultado]
-        self.assertEqual(nros, ["00001/05"])
+        self.assertEqual(nros, ["00001/05", "00011/05"])
 
     # --------------------------------------------------
     async def test_depuracion_fondos_pa6(self) -> None:
         """Solo los REG cuyo nro_fondo es de un PA6 del ejercicio salen."""
         base = [
             fila_siif("00020/05", "00020", nro_fondo="97"),  # fondo PA6
-            fila_siif(  # otro fondo (cuit INVICO: fondos permanentes,
-                #              no caja chica → aisla el test del paso 11)
+            fila_siif(  # otro fondo (cuit INVICO: fondos permanentes);
+                #              42 no está en PA6 → aisla el paso 4)
                 "00021/05",
                 "00021",
                 nro_fondo="42",
@@ -398,10 +399,11 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nros, ["00031/05", "00032/05"])
 
     # --------------------------------------------------
-    async def test_depuracion_cajas_chicas(self) -> None:
-        """Sale solo REG con nro_fondo cargado y cuit ≠ INVICO."""
+    async def test_cajas_chicas_no_se_depuran(self) -> None:
+        """Las cajas chicas se conservan: SÍ están en SGF y se cruzan
+        uno a uno en la Capa 1 (criterio corregido; antes se removían)."""
         base = [
-            fila_siif(  # caja chica: REG + fondo + cuit ≠ INVICO
+            fila_siif(  # caja chica: REG + fondo + cuit ≠ INVICO → queda
                 "00040/05", "00040", nro_fondo="77"
             ),
             fila_siif(  # fondos permanentes (cuit INVICO) → queda
@@ -423,7 +425,7 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
 
         nros = [fila["nro_comprobante"] for fila in resultado]
         self.assertEqual(
-            nros, ["00041/05", "00042/05", "00043/05", "00044/05"]
+            nros, ["00040/05", "00041/05", "00042/05", "00043/05", "00044/05"]
         )
 
     # --------------------------------------------------
