@@ -3,13 +3,15 @@ __all__ = [
     "ControlOtrosGastosSiifServiceDependency",
     "ControlOtrosGastosSgfService",
     "ControlOtrosGastosSgfServiceDependency",
+    "ControlOtrosGastosCruceService",
+    "ControlOtrosGastosCruceServiceDependency",
     "ControlOtrosGastosExportService",
     "ControlOtrosGastosExportServiceDependency",
 ]
 
 import asyncio
 from dataclasses import dataclass
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -42,11 +44,23 @@ from ...utils import (
     validate_and_extract_data_from_list,
 )
 from ..repositories import (
+    ControlOtrosGastosCruceMensualRepositoryDependency,
+    ControlOtrosGastosCruceRepositoryDependency,
     ControlOtrosGastosSgfRepositoryDependency,
     ControlOtrosGastosSiifRepositoryDependency,
 )
 from ..schemas import (
+    ESTADO_PAREADO,
+    ESTADO_SGF_SIN_SIIF,
+    ESTADO_SIIF_SIN_SGF,
     ControlHonorariosFullFilter,
+    ControlOtrosGastosCruceFilter,
+    ControlOtrosGastosCruceGenerateFilter,
+    ControlOtrosGastosCruceLiteFilter,
+    ControlOtrosGastosCruceMensualFilter,
+    ControlOtrosGastosCruceMensualReport,
+    ControlOtrosGastosCruceReport,
+    ControlOtrosGastosCruceSnapshot,
     ControlOtrosGastosExportFilter,
     ControlOtrosGastosGenerateFilter,
     ControlOtrosGastosSgfDocument,
@@ -78,9 +92,47 @@ SPREADSHEET_KEY_CONTROL_OTROS_GASTOS: str = (
     "1EBzBz17mtVzBmpAFznDyJf2RAJNspQyJQJaRD_WI5dE"
 )
 
-# Hojas del Google Sheet unificado (una por sistema depurado).
+# Hojas del Google Sheet unificado (una por tabla del control).
 HOJA_SIIF: str = "otros_gastos_siif"
 HOJA_SGF: str = "otros_gastos_sgf"
+# Capa 1: pareo 1:1 del resto (no fondos permanentes)
+HOJA_CRUCE_RESTO: str = "otros_gastos_cruce_resto"
+# Capa 2: control mensual de fondos permanentes
+HOJA_CRUCE_FONDOS_PERM: str = "otros_gastos_cruce_fondos_perm"
+
+# Orden de columnas de las tablas del cruce.
+COLUMNAS_PAREOS: List[str] = [
+    "ejercicio",
+    "estado",
+    "siif_nro_comprobante",
+    "siif_fecha",
+    "siif_mes",
+    "siif_cuit",
+    "siif_beneficiario",
+    "siif_cta_cte",
+    "siif_partida",
+    "siif_importe",
+    "sgf_libramiento",
+    "sgf_fecha",
+    "sgf_mes",
+    "sgf_cuit",
+    "sgf_beneficiario",
+    "sgf_cta_cte",
+    "sgf_importe_bruto",
+    "dias_dif",
+    "dif",
+]
+COLUMNAS_MENSUAL: List[str] = [
+    "ejercicio",
+    "mes",
+    "siif_rendido",
+    "sgf_pagado",
+    "dif_mes",
+    "siif_acum",
+    "sgf_acum",
+    "dif_acum",
+    "dif_pct",
+]
 
 # Serializa las exportaciones para que dos tareas simultáneas no
 # intercaleen sus chunks dentro de la misma hoja.
@@ -756,12 +808,522 @@ ControlOtrosGastosSgfServiceDependency = Annotated[
 ]
 
 
+# --------------------------------------------------
+# Helpers del cruce SIIF <-> SGF
+# --------------------------------------------------
+def _normalizar_cuit(valores: pd.Series) -> pd.Series:
+    """cuit como texto limpio: numéricos sin decimales (3.0632e10 →
+    '30632351514') y None cuando falta."""
+
+    def _texto(valor: Any) -> Any:
+        if pd.isna(valor):
+            return None
+        if isinstance(valor, float):
+            return str(int(valor))
+        return str(valor).strip()
+
+    return valores.map(_texto)
+
+
+def _clave_mes(mes: Any) -> int:
+    """Ordena 'MM/YYYY' cronológicamente (0 si está mal formado)."""
+    try:
+        mes_num, anio = str(mes).split("/")
+        return int(anio) * 100 + int(mes_num)
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _a_registros(df: pd.DataFrame, columnas: List[str]) -> List[dict]:
+    """Selección de columnas + sanitización JSON (patrón del módulo)."""
+    if df.empty:
+        return []
+    df = df.loc[:, [col for col in columnas if col in df.columns]]
+    df = sanitize_dataframe_for_json_with_datetime(df)
+    return df.replace({np.nan: None}).to_dict(orient="records")
+
+
+def _lado_siif(ejercicio: int, estado: str, fila: Any) -> dict:
+    """Lado SIIF de una fila del pareo (``fila``: Series o dict vacío)."""
+    get = fila.get if hasattr(fila, "get") else lambda *_: None
+    return {
+        "ejercicio": ejercicio,
+        "estado": estado,
+        "siif_nro_comprobante": get("nro_comprobante"),
+        "siif_fecha": get("fecha"),
+        "siif_mes": get("mes"),
+        "siif_cuit": get("cuit_n"),
+        "siif_beneficiario": get("beneficiario"),
+        "siif_cta_cte": get("cta_cte"),
+        "siif_partida": get("partida"),
+        "siif_importe": get("importe"),
+    }
+
+
+def _lado_sgf(ejercicio: int, estado: str, fila: Any) -> dict:
+    """Lado SGF de una fila del pareo (``fila``: Series o dict vacío)."""
+    get = fila.get if hasattr(fila, "get") else lambda *_: None
+    return {
+        "ejercicio": ejercicio,
+        "estado": estado,
+        "sgf_libramiento": get("libramiento"),
+        "sgf_fecha": get("fecha"),
+        "sgf_mes": get("mes"),
+        "sgf_cuit": get("cuit_n"),
+        "sgf_beneficiario": get("beneficiario"),
+        "sgf_cta_cte": get("cta_cte"),
+        "sgf_importe_bruto": get("importe_bruto"),
+    }
+
+
+@dataclass
+# -------------------------------------------------
+class ControlOtrosGastosCruceService:
+    """Cruce SIIF <-> SGF en dos capas sobre las tablas depuradas.
+
+    Capa 1 (``pareos``): pareo 1:1 del "resto" de SIIF (todo lo que NO
+    es fondo permanente) contra SGF, con estados ``PAREADO``,
+    ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF``.
+
+    Capa 2 (``mensual``): fondos permanentes de SIIF (``clase_reg =
+    "REG"`` con cuit INVICO) contra el SGF que quedó fuera de la
+    Capa 1, mes a mes, con acumulados.
+    """
+
+    cruce_repository: ControlOtrosGastosCruceRepositoryDependency
+    cruce_mensual_repository: ControlOtrosGastosCruceMensualRepositoryDependency
+    siif_service: ControlOtrosGastosSiifServiceDependency
+    sgf_service: ControlOtrosGastosSgfServiceDependency
+
+    # -------------------------------------------------
+    async def generate(
+        self, params: ControlOtrosGastosCruceGenerateFilter
+    ) -> dict:
+        """Cruce on-demand (sin persistir; el snapshot lo congela el
+        POST posterior).
+
+        Args:
+            params: ``ejercicio`` + tolerancias del pareo.
+
+        Returns:
+            ``{"ejercicio", "pareos": [...], "mensual": [...]}``.
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+        compute_params = ControlOtrosGastosCruceFilter(
+            ejercicio=params.ejercicio,
+            limit=None,
+        )
+        return await self.compute_cruce(
+            params=compute_params,
+            importe_tol=params.importe_tol,
+            ventana_dias=params.ventana_dias,
+        )
+
+    # -------------------------------------------------
+    async def get_snapshot(self, params: ControlOtrosGastosCruceFilter) -> dict:
+        """Lee los snapshots de AMBAS colecciones del cruce."""
+        search_pareos = ControlOtrosGastosCruceFilter(
+            ejercicio=params.ejercicio,
+            limit=None,
+        )
+        search_mensual = ControlOtrosGastosCruceMensualFilter(
+            ejercicio=params.ejercicio,
+            limit=None,
+        )
+        pareos = await self.cruce_repository.find_with_filter_params(
+            params=search_pareos
+        )
+        mensual = await self.cruce_mensual_repository.find_with_filter_params(
+            params=search_mensual
+        )
+        return {
+            "ejercicio": params.ejercicio,
+            "pareos": [
+                doc.model_dump(mode="json", exclude={"id"}) for doc in pareos
+            ],
+            "mensual": [
+                doc.model_dump(mode="json", exclude={"id"}) for doc in mensual
+            ],
+        }
+
+    # -------------------------------------------------
+    async def add_many(
+        self, data: ControlOtrosGastosCruceSnapshot
+    ) -> RouteReturnSchema:
+        """Persiste AMBAS tablas del cruce con borrado idempotente por
+        ``ejercicio`` (contraparte del GET /cruce/generate).
+
+        Args:
+            data: Snapshot con las filas ``pareos`` y ``mensual``.
+
+        Returns:
+            ``RouteReturnSchema`` combinando las 2 colecciones.
+
+        Raises:
+            HTTPException: 400 si el snapshot está vacío o ninguna fila
+                es válida.
+        """
+        if not data.pareos and not data.mensual:
+            raise HTTPException(
+                status_code=400,
+                detail="El snapshot del cruce está vacío (pareos y mensual).",
+            )
+        try:
+            validacion_pareos = validate_and_extract_data_from_list(
+                data_list=data.pareos,
+                model=ControlOtrosGastosCruceReport,
+                field_id=["ejercicio", "estado", "siif_nro_comprobante"],
+            )
+            validacion_mensual = validate_and_extract_data_from_list(
+                data_list=data.mensual,
+                model=ControlOtrosGastosCruceMensualReport,
+                field_id=["ejercicio", "mes"],
+            )
+            if (data.pareos and not validacion_pareos.validated) or (
+                data.mensual and not validacion_mensual.validated
+            ):
+                errores = list(validacion_pareos.errors) + list(
+                    validacion_mensual.errors
+                )
+                detalle = "No se encontraron registros válidos para procesar."
+                if errores:
+                    detalle += f" Errores detectados: {errores[:2]}"
+                raise HTTPException(status_code=400, detail=detalle)
+
+            resultado = RouteReturnSchema(
+                title="Sincronización Otros Gastos Cruce"
+            )
+            delete_filter = {"ejercicio": data.ejercicio}
+            for validacion, repositorio, etiqueta_lado in (
+                (
+                    validacion_pareos,
+                    self.cruce_repository,
+                    "Otros Gastos Cruce Pareos",
+                ),
+                (
+                    validacion_mensual,
+                    self.cruce_mensual_repository,
+                    "Otros Gastos Cruce Mensual",
+                ),
+            ):
+                parcial = await sync_validated_to_repository(
+                    repository=repositorio,
+                    validation=validacion,
+                    delete_filter=delete_filter,
+                    title="Sincronización Otros Gastos Cruce",
+                    label=etiqueta_lado,
+                    logger=logger,
+                )
+                resultado.added += parcial.added
+                resultado.deleted += parcial.deleted
+                resultado.errors += parcial.errors
+            return resultado
+
+        except HTTPException:
+            # Respeta los 400 de "snapshot vacío" / "sin válidos"
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error durante el proceso de add_many del cruce: {e}"
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error sincronizando el cruce de Otros Gastos: {e}",
+            )
+
+    # -------------------------------------------------
+    async def delete_many(
+        self, params: ControlOtrosGastosCruceLiteFilter
+    ) -> dict:
+        """Borra AMBAS colecciones del cruce por ``ejercicio``.
+
+        Args:
+            params: Filtro con el ``ejercicio`` a borrar.
+
+        Returns:
+            Resumen ``RouteReturnSchema`` (deleted = filas de las 2
+            colecciones).
+
+        Raises:
+            HTTPException: 400 si falta ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El parámetro 'ejercicio' es obligatorio para borrar.",
+            )
+        filtro = {"ejercicio": params.ejercicio}
+        borrados_pareos = await self.cruce_repository.delete_by_fields(filtro)
+        borrados_mensual = await self.cruce_mensual_repository.delete_by_fields(
+            filtro
+        )
+        return {
+            "title": "Eliminación Otros Gastos Cruce",
+            "added": 0,
+            "deleted": borrados_pareos + borrados_mensual,
+            "errors": [],
+        }
+
+    # -------------------------------------------------
+    async def _cargar_tablas_depuradas(
+        self, ejercicio: int
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Tablas depuradas SIIF y SGF: snapshot con fallback al
+        cómputo on-demand (mismo patrón que el export unificado)."""
+        search_siif = ControlOtrosGastosSiifFilter(
+            ejercicio=ejercicio,
+            limit=None,
+        )
+        snapshot_siif = await self.siif_service.get_all(params=search_siif)
+        if snapshot_siif:
+            df_siif = pd.DataFrame(
+                [doc.model_dump() for doc in snapshot_siif]
+            )
+        else:
+            df_siif = pd.DataFrame(
+                await self.siif_service.compute_otros_gastos_siif(
+                    params=search_siif
+                )
+            )
+
+        search_sgf = ControlOtrosGastosSgfFilter(
+            ejercicio=ejercicio,
+            limit=None,
+        )
+        snapshot_sgf = await self.sgf_service.get_all(params=search_sgf)
+        if snapshot_sgf:
+            df_sgf = pd.DataFrame(
+                [doc.model_dump() for doc in snapshot_sgf]
+            )
+        else:
+            df_sgf = pd.DataFrame(
+                await self.sgf_service.compute_otros_gastos_sgf(
+                    params=search_sgf
+                )
+            )
+
+        for marco in (df_siif, df_sgf):
+            marco.drop(columns=["id", "_id"], errors="ignore", inplace=True)
+        return df_siif, df_sgf
+
+    # -------------------------------------------------
+    async def compute_cruce(
+        self,
+        params: ControlOtrosGastosCruceFilter,
+        importe_tol: float = 0.005,
+        ventana_dias: int = 30,
+    ) -> dict:
+        """Cruce SIIF <-> SGF en dos capas (on-demand).
+
+        Capa 1 - ``pareos``: pareo 1:1 greedy (y determinístico: orden
+        por fecha/nro_comprobante) del resto de SIIF (todo lo que NO es
+        fondo permanente) contra SGF: ``cuit`` + importe ±``importe_tol``
+        + fecha ±``ventana_dias``. Estados: ``PAREADO``,
+        ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF`` (SGF no usado cuyo cuit
+        aparece en el resto SIIF: dominio de pagos directos).
+
+        Capa 2 - ``mensual``: fondos permanentes de SIIF (``clase_reg =
+        "REG"`` con cuit INVICO) contra el SGF que quedó fuera de la
+        Capa 1, mes a mes, con acumulados y ``dif_pct`` (% sobre el
+        SGF acumulado).
+
+        Args:
+            params: Filtro con el ``ejercicio``.
+            importe_tol: Tolerancia relativa del pareo (0.005 = 0.5%).
+            ventana_dias: Ventana máxima en días entre fechas (0 = sin
+                ventana).
+
+        Returns:
+            ``{"ejercicio", "pareos": [...], "mensual": [...]}``.
+
+        Raises:
+            ValueError: Si falta el parámetro ``ejercicio``.
+        """
+        if params.ejercicio is None:
+            raise ValueError("El parámetro 'ejercicio' es obligatorio.")
+
+        ejercicio: int = params.ejercicio
+        etiqueta: str = f"Otros Gastos Cruce {ejercicio}"
+
+        df_siif, df_sgf = await self._cargar_tablas_depuradas(ejercicio)
+        if df_siif.empty:
+            logger.info(f"{etiqueta}: sin tabla SIIF depurada; cruce vacío.")
+            return {"ejercicio": ejercicio, "pareos": [], "mensual": []}
+
+        df_siif = df_siif.copy()
+        df_siif["cuit_n"] = _normalizar_cuit(df_siif["cuit"])
+        df_siif["fecha_d"] = pd.to_datetime(
+            df_siif["fecha"], dayfirst=True, errors="coerce"
+        )
+
+        if df_sgf.empty:
+            # Marco vacío con las columnas que el resto del método usa.
+            df_sgf = pd.DataFrame(
+                columns=[
+                    "libramiento",
+                    "fecha",
+                    "mes",
+                    "cuit",
+                    "cuit_n",
+                    "beneficiario",
+                    "cta_cte",
+                    "importe_bruto",
+                    "fecha_d",
+                    "_usado",
+                ]
+            )
+        else:
+            df_sgf = df_sgf.copy()
+            df_sgf["cuit_n"] = _normalizar_cuit(df_sgf["cuit"])
+            df_sgf["fecha_d"] = pd.to_datetime(
+                df_sgf["fecha"], dayfirst=True, errors="coerce"
+            )
+            df_sgf["_usado"] = False
+
+        es_fondo_permanente = (df_siif["clase_reg"] == "REG") & (
+            df_siif["cuit_n"] == CUIT_INVICO
+        )
+        perm = df_siif.loc[es_fondo_permanente]
+        resto = df_siif.loc[~es_fondo_permanente]
+        logger.info(
+            f"{etiqueta} → fondos permanentes: {len(perm)} filas | "
+            f"resto: {len(resto)} filas"
+        )
+
+        # ---- Capa 1: pareo 1:1 del resto -------------------------
+        pareos: List[dict] = []
+        orden = resto.sort_values(
+            ["fecha", "nro_comprobante"], na_position="last"
+        ).index
+        for indice in orden:
+            fila = resto.loc[indice]
+            importe_siif = fila.get("importe")
+            candidatos = df_sgf.loc[
+                (~df_sgf["_usado"]) & (df_sgf["cuit_n"] == fila["cuit_n"])
+            ]
+            if pd.isna(importe_siif):
+                candidatos = candidatos.iloc[0:0]
+            else:
+                candidatos = candidatos.loc[
+                    (candidatos["importe_bruto"] - float(importe_siif)).abs()
+                    <= abs(float(importe_siif)) * importe_tol
+                ]
+                if ventana_dias > 0:
+                    candidatos = candidatos.loc[candidatos["fecha_d"].notna()]
+                    if pd.notna(fila["fecha_d"]):
+                        candidatos = candidatos.loc[
+                            (candidatos["fecha_d"] - fila["fecha_d"]).abs()
+                            <= pd.Timedelta(days=ventana_dias)
+                        ]
+
+            if candidatos.empty:
+                pareos.append(_lado_siif(ejercicio, ESTADO_SIIF_SIN_SGF, fila))
+                continue
+
+            comparacion = candidatos.assign(
+                _dif=(candidatos["importe_bruto"] - float(importe_siif)).abs(),
+                _dias=(candidatos["fecha_d"] - fila["fecha_d"]).abs(),
+            ).sort_values(["_dias", "_dif"])
+            indice_sgf = comparacion.index[0]
+            fila_sgf = df_sgf.loc[indice_sgf]
+            df_sgf.loc[indice_sgf, "_usado"] = True
+            dias_dif = None
+            if pd.notna(fila["fecha_d"]) and pd.notna(fila_sgf["fecha_d"]):
+                dias_dif = int((fila_sgf["fecha_d"] - fila["fecha_d"]).days)
+            pareos.append(
+                {
+                    **_lado_siif(ejercicio, ESTADO_PAREADO, fila),
+                    **_lado_sgf(ejercicio, ESTADO_PAREADO, fila_sgf),
+                    "dias_dif": dias_dif,
+                    "dif": float(importe_siif)
+                    - float(fila_sgf["importe_bruto"]),
+                }
+            )
+
+        # SGF no usado dentro del dominio del resto (cuit presentes en
+        # el resto SIIF, matcheado o no) → huérfanos del lado SGF.
+        cuits_resto = set(resto["cuit_n"].dropna())
+        sin_usar = df_sgf.loc[~df_sgf["_usado"]]
+        huerfanas_sgf = sin_usar.loc[sin_usar["cuit_n"].isin(cuits_resto)]
+        for indice in huerfanas_sgf.index:
+            pareos.append(
+                _lado_sgf(ejercicio, ESTADO_SGF_SIN_SIIF, df_sgf.loc[indice])
+            )
+        logger.info(
+            f"{etiqueta} → pareos: {len(pareos)} filas "
+            f"(SGF huérfanas del resto: {len(huerfanas_sgf)})"
+        )
+
+        # ---- Capa 2: fondos permanentes mes a mes -----------------
+        # SGF fuera de la Capa 1 y fuera del dominio del resto: pagos
+        # con fondo permanente.
+        sgf_fondo = df_sgf.loc[
+            (~df_sgf["_usado"]) & (~df_sgf["cuit_n"].isin(cuits_resto))
+        ]
+        siif_rendido = perm.groupby("mes")["importe"].sum()
+        sgf_pagado = sgf_fondo.groupby("mes")["importe_bruto"].sum()
+
+        meses = sorted(
+            set(siif_rendido.index) | set(sgf_pagado.index), key=_clave_mes
+        )
+        filas_mensual: List[dict] = []
+        acum_siif: float = 0.0
+        acum_sgf: float = 0.0
+        for mes in meses:
+            rendido = float(siif_rendido.get(mes, 0.0))
+            pagado = float(sgf_pagado.get(mes, 0.0))
+            acum_siif += rendido
+            acum_sgf += pagado
+            dif_acum = acum_siif - acum_sgf
+            filas_mensual.append(
+                {
+                    "ejercicio": ejercicio,
+                    "mes": mes,
+                    "siif_rendido": rendido,
+                    "sgf_pagado": pagado,
+                    "dif_mes": rendido - pagado,
+                    "siif_acum": acum_siif,
+                    "sgf_acum": acum_sgf,
+                    "dif_acum": dif_acum,
+                    "dif_pct": (100.0 * dif_acum / acum_sgf)
+                    if acum_sgf
+                    else None,
+                }
+            )
+        logger.info(
+            f"{etiqueta} → mensual: {len(filas_mensual)} meses | "
+            f"SIIF rendido {acum_siif:,.0f} | SGF pagado {acum_sgf:,.0f} | "
+            f"dif acum {acum_siif - acum_sgf:,.0f}"
+        )
+
+        return {
+            "ejercicio": ejercicio,
+            "pareos": _a_registros(pd.DataFrame(pareos), COLUMNAS_PAREOS),
+            "mensual": _a_registros(
+                pd.DataFrame(filas_mensual), COLUMNAS_MENSUAL
+            ),
+        }
+
+
+ControlOtrosGastosCruceServiceDependency = Annotated[
+    ControlOtrosGastosCruceService, Depends()
+]
+
+
+
+
+
+
 @dataclass
 # -------------------------------------------------
 class ControlOtrosGastosExportService:
     """Export UNIFICADO de Otros Gastos: una sola ruta
     (``GET /control/otrosGastos/export``) sube un único Google Sheet
-    con las 2 hojas de detalle (SIIF y SGF).
+    con las 4 hojas (SIIF, SGF y los 2 cruces).
 
     Prioriza el snapshot persistido de cada tabla (POST posterior a
     ``/generate``) y cae al cómputo on-demand si el snapshot está vacío.
@@ -769,6 +1331,7 @@ class ControlOtrosGastosExportService:
 
     siif_service: ControlOtrosGastosSiifServiceDependency
     sgf_service: ControlOtrosGastosSgfServiceDependency
+    cruce_service: ControlOtrosGastosCruceServiceDependency
 
     # -------------------------------------------------
     async def export(self, params: ControlOtrosGastosExportFilter) -> dict[str, Any]:
@@ -804,7 +1367,8 @@ class ControlOtrosGastosExportService:
             "title": "Exportación a Google Sheets iniciada",
             "detail": (
                 "El Google Sheet se actualizará en segundo plano con las "
-                f"hojas: {HOJA_SIIF} y {HOJA_SGF}."
+                f"hojas: {HOJA_SIIF}, {HOJA_SGF}, {HOJA_CRUCE_RESTO} y "
+                f"{HOJA_CRUCE_FONDOS_PERM}."
             ),
             "spreadsheet_key": SPREADSHEET_KEY_CONTROL_OTROS_GASTOS,
         }
@@ -813,7 +1377,7 @@ class ControlOtrosGastosExportService:
     async def _export_to_google_sheets(
         self, params: ControlOtrosGastosExportFilter
     ) -> None:
-        """Tarea de fondo: sube las 2 hojas a UN único Google Sheet.
+        """Tarea de fondo: sube las 4 hojas a UN único Google Sheet.
 
         En background no hay respuesta HTTP que retornar: cualquier
         error (incluido el 404 de "sin crudos SGF" del cómputo) se
@@ -853,13 +1417,34 @@ class ControlOtrosGastosExportService:
                     )
                     df_sgf = pd.DataFrame(filas)
 
-                # 2. Una sola suba: ambas hojas al mismo key,
+                # Cruce (Capa 1: pareos + Capa 2: mensual): snapshot
+                # con fallback al cómputo on-demand.
+                bloque = await self.cruce_service.get_snapshot(
+                    params=ControlOtrosGastosCruceFilter(
+                        ejercicio=params.ejercicio,
+                        limit=None,
+                    )
+                )
+                if not bloque["pareos"] and not bloque["mensual"]:
+                    bloque = await self.cruce_service.generate(
+                        params=ControlOtrosGastosCruceGenerateFilter(
+                            ejercicio=params.ejercicio
+                        )
+                    )
+                df_pareos = pd.DataFrame(bloque["pareos"])
+                df_mensual = pd.DataFrame(bloque["mensual"])
+
+                # 2. Una sola suba: las 4 hojas al mismo key,
                 #    descartando las hojas vacías
                 sheets = []
                 if not df_siif.empty:
                     sheets.append((df_siif, HOJA_SIIF))
                 if not df_sgf.empty:
                     sheets.append((df_sgf, HOJA_SGF))
+                if not df_pareos.empty:
+                    sheets.append((df_pareos, HOJA_CRUCE_RESTO))
+                if not df_mensual.empty:
+                    sheets.append((df_mensual, HOJA_CRUCE_FONDOS_PERM))
 
                 if not sheets:
                     logger.warning(

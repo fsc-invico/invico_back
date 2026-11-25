@@ -9,9 +9,22 @@ __all__ = [
     "ControlOtrosGastosSgfLiteFilter",
     "ControlOtrosGastosGenerateFilter",
     "ControlOtrosGastosExportFilter",
+    "ControlOtrosGastosCruceReport",
+    "ControlOtrosGastosCruceDocument",
+    "ControlOtrosGastosCruceFilter",
+    "ControlOtrosGastosCruceLiteFilter",
+    "ControlOtrosGastosCruceMensualReport",
+    "ControlOtrosGastosCruceMensualDocument",
+    "ControlOtrosGastosCruceMensualFilter",
+    "ControlOtrosGastosCruceMensualLiteFilter",
+    "ControlOtrosGastosCruceGenerateFilter",
+    "ControlOtrosGastosCruceSnapshot",
+    "ESTADO_PAREADO",
+    "ESTADO_SIIF_SIN_SGF",
+    "ESTADO_SGF_SIN_SIIF",
 ]
 
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_mongo import PydanticObjectId
@@ -124,7 +137,120 @@ class ControlOtrosGastosGenerateFilter(CamelModel):
 
 
 # Filtro del /export unificado: una sola ruta sube un único Google
-# Sheet con las 2 hojas (SIIF y SGF)
+# Sheet con las 4 hojas (SIIF, SGF y los 2 cruces)
 # -------------------------------------------------
 class ControlOtrosGastosExportFilter(CamelModel):
     ejercicio: int
+
+
+# -------------------------------------------------
+# CRUCE SIIF <-> SGF
+# -------------------------------------------------
+
+# Estados del pareo 1:1 de la Capa 1 (resto: no fondos permanentes)
+ESTADO_PAREADO: str = "PAREADO"
+ESTADO_SIIF_SIN_SGF: str = "SIIF_SIN_SGF"
+ESTADO_SGF_SIN_SIIF: str = "SGF_SIN_SIIF"
+
+
+# Fila del pareo 1:1 (Capa 1). Cada fila trae el lado SIIF, el lado
+# SGF, o ambos; los lados no usados quedan en None.
+# -------------------------------------------------
+class ControlOtrosGastosCruceReport(BaseModel):
+    ejercicio: int
+    estado: str
+    # lado SIIF (None si la fila es SGF_SIN_SIIF)
+    siif_nro_comprobante: Optional[str] = None
+    siif_fecha: Optional[str] = None
+    siif_mes: Optional[str] = None
+    siif_cuit: Optional[str] = None
+    siif_beneficiario: Optional[str] = None
+    siif_cta_cte: Optional[str] = None
+    siif_partida: Optional[str] = None
+    siif_importe: Optional[float] = None
+    # lado SGF (None si la fila es SIIF_SIN_SGF)
+    sgf_libramiento: Optional[str] = None
+    sgf_fecha: Optional[str] = None
+    sgf_mes: Optional[str] = None
+    sgf_cuit: Optional[str] = None
+    sgf_beneficiario: Optional[str] = None
+    sgf_cta_cte: Optional[str] = None
+    sgf_importe_bruto: Optional[float] = None
+    # solo PAREADO
+    dias_dif: Optional[int] = None
+    dif: Optional[float] = None
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceDocument(ControlOtrosGastosCruceReport):
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+
+
+# Fila de la Capa 2: control mensual de fondos permanentes
+# (SIIF rendido vs SGF pagado, con acumulados)
+# -------------------------------------------------
+class ControlOtrosGastosCruceMensualReport(BaseModel):
+    ejercicio: int
+    mes: str
+    siif_rendido: float
+    sgf_pagado: float
+    dif_mes: float
+    siif_acum: float
+    sgf_acum: float
+    dif_acum: float
+    dif_pct: Optional[float] = None
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceMensualDocument(ControlOtrosGastosCruceMensualReport):
+    id: PydanticObjectId = Field(validation_alias=AliasChoices("_id", "id"))
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceMensualFilter(BaseFilterParams):
+    ejercicio: Optional[int] = None
+
+
+# -------------------------------------------------
+class ControlOtrosGastosCruceMensualLiteFilter(CamelModel):
+    query_filter: str = ""
+    ejercicio: Optional[int] = None
+
+
+# Filtro del /cruce/generate: tolerancias del pareo 1:1
+# -------------------------------------------------
+class ControlOtrosGastosCruceGenerateFilter(CamelModel):
+    ejercicio: int
+    importe_tol: float = Field(
+        default=0.005,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Tolerancia relativa del pareo por importe (0.005 = 0.5%)."
+        ),
+    )
+    ventana_dias: int = Field(
+        default=30,
+        ge=0,
+        description="Ventana máxima en días entre fechas SIIF y SGF (0 = sin ventana).",
+    )
+
+
+# Cuerpo del POST /cruce: snapshot de AMBAS tablas del cruce en un solo
+# envío (colecciones control_otros_gastos_cruce y ..._mensual).
+# -------------------------------------------------
+class ControlOtrosGastosCruceSnapshot(BaseModel):
+    ejercicio: int
+    pareos: List[Dict] = []
+    mensual: List[Dict] = []

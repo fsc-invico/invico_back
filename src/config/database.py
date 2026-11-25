@@ -68,6 +68,8 @@ COLLECTIONS = [
     "control_debitos_bancarios",
     "control_otros_gastos_siif",
     "control_otros_gastos_sgf",
+    "control_otros_gastos_cruce",
+    "control_otros_gastos_cruce_mensual",
     "control_viaticos",
     "control_banco_cruzado",
     "control_banco_siif",

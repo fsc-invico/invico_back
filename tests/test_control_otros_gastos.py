@@ -17,7 +17,10 @@ Cubre:
   y UNA sola ruta de export unificada (``/otrosGastos/export``): los
   ``/export`` por lado del factory no existen.
 - ``export`` unificado: 400 mientras la key del Google Sheet esté vacía
-  y subida de las 2 hojas al MISMO key (snapshot + fallback).
+  y subida de las 4 hojas al MISMO key (snapshot + fallback).
+- ``compute_cruce`` (Capa 1 pareo 1:1 + Capa 2 mensual de fondos
+  permanentes), ``add_many``/``delete_many``/``get_snapshot`` sobre las
+  2 colecciones del cruce y la superficie de rutas ``/otrosGastos/cruce``.
 
 Ejecutar desde la raíz del proyecto:
 
@@ -33,35 +36,57 @@ import pandas as pd
 from fastapi import HTTPException
 
 from src.analysis.routes.control_otros_gastos import (
+    control_otros_gastos_cruce_router,
     control_otros_gastos_router,
     control_otros_gastos_sgf_router,
     control_otros_gastos_siif_router,
 )
 from src.analysis.schemas import (
+    ESTADO_PAREADO,
+    ESTADO_SGF_SIN_SIIF,
+    ESTADO_SIIF_SIN_SGF,
+    ControlOtrosGastosCruceFilter,
+    ControlOtrosGastosCruceGenerateFilter,
+    ControlOtrosGastosCruceLiteFilter,
+    ControlOtrosGastosCruceReport,
+    ControlOtrosGastosCruceSnapshot,
     ControlOtrosGastosExportFilter,
     ControlOtrosGastosGenerateFilter,
-    ControlOtrosGastosSgfReport,
     ControlOtrosGastosSgfFilter,
+    ControlOtrosGastosSgfReport,
     ControlOtrosGastosSiifFilter,
     ControlOtrosGastosSiifReport,
 )
 from src.analysis.services import (
+    ControlOtrosGastosCruceService,
     ControlOtrosGastosExportService,
     ControlOtrosGastosSgfService,
     ControlOtrosGastosSiifService,
 )
-from src.analysis.services.control_otros_gastos import HOJA_SGF, HOJA_SIIF
+from src.analysis.services.control_otros_gastos import (
+    HOJA_CRUCE_FONDOS_PERM,
+    HOJA_CRUCE_RESTO,
+    HOJA_SGF,
+    HOJA_SIIF,
+)
 
 
 # -------------------------------------------------
 class RepositorioFalso:
     """Repositorio en memoria que registra las operaciones de add_many."""
 
-    def __init__(self, filas_previas: int = 4) -> None:
+    def __init__(
+        self, filas_previas: int = 4, documentos: Optional[List[Any]] = None
+    ) -> None:
         self.filas_previas = filas_previas
         self.deleted_filters: List[dict] = []
         self.deleted_all_llamado = False
         self.saved: List[Any] = []
+        self.documentos: List[Any] = documentos or []
+
+    # --------------------------------------------------
+    async def find_with_filter_params(self, params: Any) -> List[Any]:
+        return list(self.documentos)
 
     # --------------------------------------------------
     async def count_by_fields(self, filters: dict) -> int:
@@ -176,13 +201,16 @@ def fila_siif(
     grupo: str = "4",
     partida: str = "421",
     glosa: str = "",
+    fecha: str = "01/05/2026",
+    mes: str = "05/2026",
+    importe: float = 100.0,
 ) -> dict:
     return {
         "ejercicio": 2026,
-        "mes": "05/2026",
-        "fecha": "01/05/2026",
+        "mes": mes,
+        "fecha": fecha,
         "nro_comprobante": nro_comprobante,
-        "importe": 100.0,
+        "importe": importe,
         "cta_cte": cta_cte,
         "cuit": cuit,
         "beneficiario": "PROVEEDOR SA",
@@ -208,18 +236,22 @@ def fila_sgf(
     origen: str = "FUNCIONAMIENTO",
     destino: str = "PROVEEDORES - FUNCIONAMIENTO",
     cta_cte: str = "130101-01",
+    cuit: str = "20223334445",
+    fecha: str = "01/05/2026",
+    mes: str = "05/2026",
+    importe: float = 100.0,
 ) -> dict:
     return {
         "origen": origen,
         "ejercicio": 2026,
-        "mes": "05/2026",
-        "fecha": "01/05/2026",
+        "mes": mes,
+        "fecha": fecha,
         "beneficiario": "PROVEEDOR SA",
         "destino": destino,
         "libramiento": libramiento,
         "movimiento": "CHEQUE",
         "cta_cte": cta_cte,
-        "importe_bruto": 100.0,
+        "importe_bruto": importe,
         "gcias": 0.0,
         "sellos": 0.0,
         "iibb": 0.0,
@@ -230,8 +262,8 @@ def fila_sgf(
         "mutual": 0.0,
         "otras": 0.0,
         "retenciones": 0.0,
-        "importe_neto": 100.0,
-        "cuit": "20223334445",
+        "importe_neto": importe,
+        "cuit": cuit,
     }
 
 
@@ -582,14 +614,39 @@ class TestRutasOtrosGastos(unittest.TestCase):
         self.assertNotIn("/otrosGastos/sgf/export", rutas)
 
     # --------------------------------------------------
+    def test_conjunto_cruce(self) -> None:
+        """Cruce: snapshot (GET/POST/DELETE) + /generate, sin export."""
+        rutas = {ruta.path for ruta in control_otros_gastos_cruce_router.routes}
+        self.assertEqual(
+            rutas, {"/otrosGastos/cruce", "/otrosGastos/cruce/generate"}
+        )
+
+    # --------------------------------------------------
     def test_export_unificado_unico(self) -> None:
         rutas = {ruta.path for ruta in control_otros_gastos_router.routes}
         self.assertEqual(rutas, {"/otrosGastos/export"})
 
 
 # --------------------------------------------------
+def _cruce_falso(
+    pareos: Optional[List[dict]] = None,
+    mensual: Optional[List[dict]] = None,
+) -> SimpleNamespace:
+    """Servicio de cruce simulado para el export (snapshot + generate)."""
+    bloque = {
+        "ejercicio": 2026,
+        "pareos": pareos if pareos is not None else [],
+        "mensual": mensual if mensual is not None else [],
+    }
+    return SimpleNamespace(
+        get_snapshot=mock.AsyncMock(return_value=bloque),
+        generate=mock.AsyncMock(return_value=bloque),
+    )
+
+
+# --------------------------------------------------
 class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
-    """Export unificado: 1 ruta → 1 Google Sheet con 2 hojas."""
+    """Export unificado: 1 ruta → 1 Google Sheet con 4 hojas."""
 
     # --------------------------------------------------
     async def test_export_sin_key_lanza_400(self) -> None:
@@ -597,6 +654,7 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
         servicio = ControlOtrosGastosExportService(
             siif_service=SimpleNamespace(),
             sgf_service=SimpleNamespace(),
+            cruce_service=_cruce_falso(),
         )
         with mock.patch(
             "src.analysis.services.control_otros_gastos."
@@ -610,8 +668,8 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(contexto.exception.status_code, 400)
 
     # --------------------------------------------------
-    async def test_export_sube_2_hojas_al_mismo_key(self) -> None:
-        """Las 2 tablas (snapshot) suben al MISMO Google Sheet."""
+    async def test_export_sube_4_hojas_al_mismo_key(self) -> None:
+        """Las 4 tablas (2 depuradas + 2 del cruce) suben al MISMO Sheet."""
         servicio = ControlOtrosGastosExportService(
             siif_service=SimpleNamespace(
                 get_all=mock.AsyncMock(
@@ -626,6 +684,10 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
                     return_value=[ControlOtrosGastosSgfReport(**fila_sgf("L-1"))]
                 ),
                 compute_otros_gastos_sgf=mock.AsyncMock(return_value=[]),
+            ),
+            cruce_service=_cruce_falso(
+                pareos=[{"ejercicio": 2026, "estado": ESTADO_PAREADO}],
+                mensual=[{"ejercicio": 2026, "mes": "05/2026"}],
             ),
         )
 
@@ -644,7 +706,8 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
         upload_mock.assert_called_once()
         sheets = upload_mock.call_args.args[0]
         self.assertEqual(
-            [nombre for _, nombre in sheets], [HOJA_SIIF, HOJA_SGF]
+            [nombre for _, nombre in sheets],
+            [HOJA_SIIF, HOJA_SGF, HOJA_CRUCE_RESTO, HOJA_CRUCE_FONDOS_PERM],
         )
         self.assertEqual(
             upload_mock.call_args.kwargs["spreadsheet_key"], "clave-del-sheet"
@@ -666,6 +729,21 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
                     return_value=[fila_sgf("L-1")]
                 ),
             ),
+            cruce_service=SimpleNamespace(
+                # snapshot vacío → el export debe caer al /generate
+                get_snapshot=mock.AsyncMock(
+                    return_value={"ejercicio": 2026, "pareos": [], "mensual": []}
+                ),
+                generate=mock.AsyncMock(
+                    return_value={
+                        "ejercicio": 2026,
+                        "pareos": [
+                            {"ejercicio": 2026, "estado": ESTADO_PAREADO}
+                        ],
+                        "mensual": [{"ejercicio": 2026, "mes": "05/2026"}],
+                    }
+                ),
+            ),
         )
 
         with mock.patch(
@@ -681,10 +759,305 @@ class TestExportOtrosGastos(unittest.IsolatedAsyncioTestCase):
             )
 
         upload_mock.assert_called_once()
+        # Snapshot del cruce vacío → fallback al /generate
+        servicio.cruce_service.generate.assert_awaited_once()
         sheets = upload_mock.call_args.args[0]
         self.assertEqual(
-            [nombre for _, nombre in sheets], [HOJA_SIIF, HOJA_SGF]
+            [nombre for _, nombre in sheets],
+            [HOJA_SIIF, HOJA_SGF, HOJA_CRUCE_RESTO, HOJA_CRUCE_FONDOS_PERM],
         )
+
+
+# --------------------------------------------------
+class SiifDepuradoFalso:
+    """Snapshot vacío; devuelve las filas del cómputo SIIF simulado."""
+
+    def __init__(self, filas: List[dict]) -> None:
+        self.filas = filas
+
+    # --------------------------------------------------
+    async def get_all(self, params: Any) -> List[Any]:
+        return []
+
+    # --------------------------------------------------
+    async def compute_otros_gastos_siif(self, params: Any) -> List[dict]:
+        return self.filas
+
+
+# --------------------------------------------------
+class SgfDepuradoFalso:
+    """Snapshot vacío; devuelve las filas del cómputo SGF simulado."""
+
+    def __init__(self, filas: List[dict]) -> None:
+        self.filas = filas
+
+    # --------------------------------------------------
+    async def get_all(self, params: Any) -> List[Any]:
+        return []
+
+    # --------------------------------------------------
+    async def compute_otros_gastos_sgf(self, params: Any) -> List[dict]:
+        return self.filas
+
+
+# --------------------------------------------------
+def construir_servicio_cruce(
+    siif_filas: List[dict],
+    sgf_filas: List[dict],
+    repositorio: Optional[RepositorioFalso] = None,
+    repositorio_mensual: Optional[RepositorioFalso] = None,
+) -> ControlOtrosGastosCruceService:
+    """Instancia el servicio de cruce con dependencias simuladas."""
+    return ControlOtrosGastosCruceService(
+        cruce_repository=repositorio or RepositorioFalso(),
+        cruce_mensual_repository=repositorio_mensual or RepositorioFalso(),
+        siif_service=SiifDepuradoFalso(siif_filas),
+        sgf_service=SgfDepuradoFalso(sgf_filas),
+    )
+
+
+# --------------------------------------------------
+class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
+    """compute_cruce: Capa 1 (pareo 1:1) + Capa 2 (mensual)."""
+
+    # --------------------------------------------------
+    async def test_cruce_dos_capas(self) -> None:
+        """Pareo, huérfanos de ambos lados y mensual de fondos perm."""
+        siif_filas = [
+            fila_siif(
+                "00001/05", "00001", cuit="20111111111", importe=1000.0
+            ),
+            fila_siif(
+                "00002/05", "00002", cuit="20222222222", importe=2000.0
+            ),
+            fila_siif(  # fondo permanente: REG + cuit INVICO
+                "00003/05", "00003", cuit="30632351514", importe=5000.0
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf("L-1", cuit="20111111111", importe=1000.0),  # pareo
+            fila_sgf("L-2", cuit="20222222222", importe=3000.0),  # huérfana
+            fila_sgf("L-3", cuit="20333333333", importe=4500.0),  # con fondo
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(
+            estados,
+            [ESTADO_PAREADO, ESTADO_SIIF_SIN_SGF, ESTADO_SGF_SIN_SIIF],
+        )
+
+        pareado = bloque["pareos"][0]
+        self.assertEqual(pareado["siif_nro_comprobante"], "00001/05")
+        self.assertEqual(pareado["sgf_libramiento"], "L-1")
+        self.assertEqual(pareado["dias_dif"], 0)
+        self.assertEqual(pareado["dif"], 0.0)
+
+        sin_sgf = bloque["pareos"][1]
+        self.assertEqual(sin_sgf["siif_nro_comprobante"], "00002/05")
+        self.assertIsNone(sin_sgf["sgf_libramiento"])
+
+        huerfana = bloque["pareos"][2]
+        self.assertEqual(huerfana["sgf_libramiento"], "L-2")
+        self.assertIsNone(huerfana["siif_nro_comprobante"])
+
+        # Capa 2: solo el fondo permanente de SIIF y el SGF fuera del
+        # dominio del resto (L-3) forman el mensual.
+        self.assertEqual(len(bloque["mensual"]), 1)
+        mensual = bloque["mensual"][0]
+        self.assertEqual(mensual["mes"], "05/2026")
+        self.assertEqual(mensual["siif_rendido"], 5000.0)
+        self.assertEqual(mensual["sgf_pagado"], 4500.0)
+        self.assertEqual(mensual["dif_mes"], 500.0)
+        self.assertEqual(mensual["siif_acum"], 5000.0)
+        self.assertEqual(mensual["sgf_acum"], 4500.0)
+        self.assertEqual(mensual["dif_acum"], 500.0)
+        self.assertAlmostEqual(mensual["dif_pct"], 100 * 500 / 4500)
+
+
+    # --------------------------------------------------
+    async def test_cruce_tolerancia_importe(self) -> None:
+        """Fuera de tolerancia → sin pareo; con tolerancia → parea."""
+        siif_filas = [
+            fila_siif(
+                "00010/05", "00010", cuit="20111111111", importe=1000.0
+            )
+        ]
+        sgf_filas = [
+            # 0.6% de diferencia > 0.5% por defecto
+            fila_sgf("L-10", cuit="20111111111", importe=1006.0)
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+        params = ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+
+        bloque = await servicio.compute_cruce(params=params)
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(estados, [ESTADO_SIIF_SIN_SGF, ESTADO_SGF_SIN_SIIF])
+
+        bloque = await servicio.compute_cruce(params=params, importe_tol=0.01)
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(estados, [ESTADO_PAREADO])
+
+    # --------------------------------------------------
+    async def test_cruce_ventana_fecha(self) -> None:
+        """Fuera de la ventana → sin pareo; ampliando la ventana → parea."""
+        siif_filas = [
+            fila_siif(
+                "00020/05",
+                "00020",
+                cuit="20111111111",
+                importe=1000.0,
+                fecha="01/05/2026",
+            )
+        ]
+        sgf_filas = [
+            fila_sgf(
+                "L-20",
+                cuit="20111111111",
+                importe=1000.0,
+                fecha="20/06/2026",
+            )
+        ]  # 50 días
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+        params = ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+
+        bloque = await servicio.compute_cruce(params=params)
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(estados, [ESTADO_SIIF_SIN_SGF, ESTADO_SGF_SIN_SIIF])
+
+        bloque = await servicio.compute_cruce(params=params, ventana_dias=60)
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(estados, [ESTADO_PAREADO])
+
+    # --------------------------------------------------
+    async def test_generate_delega_en_compute(self) -> None:
+        """generate llama a compute con ejercicio y tolerancias."""
+        servicio = construir_servicio_cruce([], [])
+        bloque_esperado = {"ejercicio": 2026, "pareos": [], "mensual": []}
+
+        with mock.patch.object(
+            servicio,
+            "compute_cruce",
+            new=mock.AsyncMock(return_value=bloque_esperado),
+        ) as compute_mock:
+            resultado = await servicio.generate(
+                ControlOtrosGastosCruceGenerateFilter(
+                    ejercicio=2026, importe_tol=0.01, ventana_dias=60
+                )
+            )
+
+        self.assertEqual(resultado, bloque_esperado)
+        compute_mock.assert_awaited_once()
+        self.assertEqual(compute_mock.await_args.kwargs["importe_tol"], 0.01)
+        self.assertEqual(compute_mock.await_args.kwargs["ventana_dias"], 60)
+
+
+# --------------------------------------------------
+class TestSnapshotCruce(unittest.IsolatedAsyncioTestCase):
+    """add_many/delete_many/get_snapshot sobre AMBAS colecciones."""
+
+    # --------------------------------------------------
+    async def test_add_many_persiste_ambas_colecciones(self) -> None:
+        repositorio = RepositorioFalso()
+        repositorio_mensual = RepositorioFalso()
+        servicio = construir_servicio_cruce(
+            [],
+            [],
+            repositorio=repositorio,
+            repositorio_mensual=repositorio_mensual,
+        )
+        snapshot = ControlOtrosGastosCruceSnapshot(
+            ejercicio=2026,
+            pareos=[
+                {
+                    "ejercicio": 2026,
+                    "estado": ESTADO_PAREADO,
+                    "siif_nro_comprobante": "00001/05",
+                }
+            ],
+            mensual=[
+                {
+                    "ejercicio": 2026,
+                    "mes": "05/2026",
+                    "siif_rendido": 1.0,
+                    "sgf_pagado": 1.0,
+                    "dif_mes": 0.0,
+                    "siif_acum": 1.0,
+                    "sgf_acum": 1.0,
+                    "dif_acum": 0.0,
+                    "dif_pct": 0.0,
+                }
+            ],
+        )
+
+        resultado = await servicio.add_many(snapshot)
+
+        self.assertEqual(repositorio.deleted_filters, [{"ejercicio": 2026}])
+        self.assertEqual(
+            repositorio_mensual.deleted_filters, [{"ejercicio": 2026}]
+        )
+        self.assertEqual(len(repositorio.saved), 1)
+        self.assertEqual(len(repositorio_mensual.saved), 1)
+        self.assertEqual(resultado.added, 2)
+
+    # --------------------------------------------------
+    async def test_add_many_vacio_lanza_400(self) -> None:
+        servicio = construir_servicio_cruce([], [])
+        with self.assertRaises(HTTPException) as contexto:
+            await servicio.add_many(
+                ControlOtrosGastosCruceSnapshot(ejercicio=2026)
+            )
+        self.assertEqual(contexto.exception.status_code, 400)
+
+    # --------------------------------------------------
+    async def test_delete_many_borra_ambas_colecciones(self) -> None:
+        repositorio = RepositorioFalso(filas_previas=3)
+        repositorio_mensual = RepositorioFalso(filas_previas=2)
+        servicio = construir_servicio_cruce(
+            [],
+            [],
+            repositorio=repositorio,
+            repositorio_mensual=repositorio_mensual,
+        )
+
+        resultado = await servicio.delete_many(
+            ControlOtrosGastosCruceLiteFilter(ejercicio=2026)
+        )
+
+        self.assertEqual(repositorio.deleted_filters, [{"ejercicio": 2026}])
+        self.assertEqual(
+            repositorio_mensual.deleted_filters, [{"ejercicio": 2026}]
+        )
+        self.assertEqual(resultado["deleted"], 5)
+
+    # --------------------------------------------------
+    async def test_get_snapshot_lee_ambas_colecciones(self) -> None:
+        documento = ControlOtrosGastosCruceReport(
+            ejercicio=2026,
+            estado=ESTADO_PAREADO,
+            siif_nro_comprobante="00001/05",
+        )
+        repositorio = RepositorioFalso(documentos=[documento])
+        repositorio_mensual = RepositorioFalso()
+        servicio = construir_servicio_cruce(
+            [],
+            [],
+            repositorio=repositorio,
+            repositorio_mensual=repositorio_mensual,
+        )
+
+        bloque = await servicio.get_snapshot(
+            ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        self.assertEqual(bloque["ejercicio"], 2026)
+        self.assertEqual(len(bloque["pareos"]), 1)
+        self.assertEqual(bloque["pareos"][0]["estado"], ESTADO_PAREADO)
+        self.assertEqual(bloque["mensual"], [])
 
 
 # --------------------------------------------------

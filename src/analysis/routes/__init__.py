@@ -17,6 +17,7 @@ from .control_icaro_comprobantes import control_icaro_comprobantes_router
 from .control_icaro_pa6 import control_icaro_pa6_router
 from .control_obras import control_obras_router
 from .control_otros_gastos import (
+    control_otros_gastos_cruce_router,
     control_otros_gastos_router,
     control_otros_gastos_sgf_router,
     control_otros_gastos_siif_router,
@@ -43,6 +44,7 @@ control_router.include_router(control_debitos_bancarios_router)
 control_router.include_router(control_escribanos_router)
 control_router.include_router(control_otros_gastos_siif_router)
 control_router.include_router(control_otros_gastos_sgf_router)
+control_router.include_router(control_otros_gastos_cruce_router)
 control_router.include_router(control_otros_gastos_router)
 control_router.include_router(control_banco_cruzado_router)
 control_router.include_router(control_banco_siif_router)

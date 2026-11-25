@@ -3,8 +3,13 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends
 
 from ...auth.services import AuthorizationDependency
+from ...utils import RouteReturnSchema
 from ...utils.router_factory import GenericRouterFactory
 from ..schemas import (
+    ControlOtrosGastosCruceFilter,
+    ControlOtrosGastosCruceGenerateFilter,
+    ControlOtrosGastosCruceLiteFilter,
+    ControlOtrosGastosCruceSnapshot,
     ControlOtrosGastosExportFilter,
     ControlOtrosGastosGenerateFilter,
     ControlOtrosGastosSgfDocument,
@@ -17,6 +22,7 @@ from ..schemas import (
     ControlOtrosGastosSiifReport,
 )
 from ..services import (
+    ControlOtrosGastosCruceServiceDependency,
     ControlOtrosGastosExportServiceDependency,
     ControlOtrosGastosSgfService,
     ControlOtrosGastosSgfServiceDependency,
@@ -119,8 +125,9 @@ control_otros_gastos_router = APIRouter(
     "/export",
     description=(
         "Export UNIFICADO de Otros Gastos: una sola ruta sube un único "
-        "Google Sheet con las hojas otros_gastos_siif y otros_gastos_sgf "
-        "en background"
+        "Google Sheet con las hojas otros_gastos_siif, otros_gastos_sgf, "
+        "otros_gastos_cruce_resto y otros_gastos_cruce_fondos_perm en "
+        "background"
     ),
 )
 async def export(
@@ -130,3 +137,83 @@ async def export(
 ):
     security.is_admin_or_user_or_raise()
     return await service.export(params=params)
+
+
+# Bloque del cruce SIIF <-> SGF: 2 colecciones (pareos y mensual) en un
+# solo conjunto de rutas. Patrón generate -> POST de los demás controles.
+control_otros_gastos_cruce_router = APIRouter(
+    prefix="/otrosGastos/cruce",
+    tags=["Otros Gastos"],
+)
+
+
+# -------------------------------------------------
+@control_otros_gastos_cruce_router.get(
+    "/generate",
+    description=(
+        "Cruce SIIF <-> SGF on-demand en dos capas: pareo 1:1 del resto "
+        "(PAREADO / SIIF_SIN_SGF / SGF_SIN_SIIF) y control mensual de "
+        "fondos permanentes. Devuelve {pareos, mensual}; el snapshot lo "
+        "congela el POST"
+    ),
+)
+async def generate_cruce(
+    params: Annotated[ControlOtrosGastosCruceGenerateFilter, Depends()],
+    service: ControlOtrosGastosCruceServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.generate(params=params)
+
+
+# -------------------------------------------------
+@control_otros_gastos_cruce_router.get(
+    "",
+    name="Get Snapshot Cruce",
+    description="Snapshot de AMBAS tablas del cruce (pareos y mensual)",
+)
+async def get_snapshot_cruce(
+    params: Annotated[ControlOtrosGastosCruceFilter, Depends()],
+    service: ControlOtrosGastosCruceServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.get_snapshot(params=params)
+
+
+# -------------------------------------------------
+@control_otros_gastos_cruce_router.post(
+    "",
+    name="Add Many Cruce",
+    description=(
+        "Congela el snapshot de AMBAS tablas del cruce con borrado "
+        "idempotente por ejercicio"
+    ),
+    response_model=RouteReturnSchema,
+    responses={
+        400: {"description": "Error en la validación de los datos"},
+    },
+)
+async def add_many_cruce(
+    data: ControlOtrosGastosCruceSnapshot,
+    service: ControlOtrosGastosCruceServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.add_many(data=data)
+
+
+# -------------------------------------------------
+@control_otros_gastos_cruce_router.delete(
+    "",
+    name="Delete Many Cruce",
+    description="Borra AMBAS tablas del cruce por ejercicio",
+    response_model=RouteReturnSchema,
+)
+async def delete_cruce(
+    params: Annotated[ControlOtrosGastosCruceLiteFilter, Depends()],
+    service: ControlOtrosGastosCruceServiceDependency,
+    security: AuthorizationDependency,
+):
+    security.is_admin_or_user_or_raise()
+    return await service.delete_many(params=params)
