@@ -1068,6 +1068,86 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(estados.count(ESTADO_SGF_SIN_SIIF), 1)
 
     # --------------------------------------------------
+    async def test_cruce_comprobante_multi_imputacion(self) -> None:
+        """Un comprobante con 3 imputaciones (distinta partida) se
+        agrupa: su suma matchea el libramiento SGF y las 3 filas
+        quedan PAREADAS al MISMO libramiento."""
+        siif_filas = [
+            fila_siif(
+                "00050/05", "00050", cuit="20444444444",
+                importe=100.0, partida="211", grupo="2",
+            ),
+            fila_siif(
+                "00050/05", "00050", cuit="20444444444",
+                importe=200.0, partida="314", grupo="3",
+            ),
+            fila_siif(
+                "00050/05", "00050", cuit="20444444444",
+                importe=300.0, partida="421", grupo="4",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf("L-MI", cuit="20444444444", importe=600.0),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 3)
+        partidas = sorted(fila["siif_partida"] for fila in pareados)
+        self.assertEqual(partidas, ["211", "314", "421"])
+        for fila in pareados:
+            self.assertEqual(fila["siif_nro_comprobante"], "00050/05")
+            self.assertEqual(fila["sgf_libramiento"], "L-MI")
+            self.assertEqual(fila["sgf_importe_bruto"], 600.0)
+            self.assertEqual(fila["dif"], 0.0)
+            self.assertEqual(fila["dias_dif"], 0)
+        # El libramiento quedó usado: no queda huérfano SGF
+        huerfanas = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SGF_SIN_SIIF
+        ]
+        self.assertEqual(huerfanas, [])
+
+    # --------------------------------------------------
+    async def test_cruce_fondos_permanentes_no_se_agrupan(self) -> None:
+        """Los fondos permanentes (REG + cuit INVICO + nro_fondo) no se
+        agrupan ni entran al pareo: alimentan el mensual (Capa 2)."""
+        invico = "30632351514"
+        siif_filas = [
+            fila_siif(  # mismo nro_comprobante que su par, con fondo
+                "00060/05", "00060", cuit=invico,
+                importe=100.0, nro_fondo="27",
+            ),
+            fila_siif(
+                "00060/05", "00060", cuit=invico,
+                importe=200.0, nro_fondo="27",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf("L-FP", cuit=invico, importe=300.0),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        # Ni pareos agrupados ni huérfanas: todo va al mensual
+        self.assertEqual(bloque["pareos"], [])
+        self.assertEqual(len(bloque["mensual"]), 1)
+        mensual = bloque["mensual"][0]
+        self.assertEqual(mensual["siif_rendido"], 300.0)
+        self.assertEqual(mensual["sgf_pagado"], 300.0)
+        self.assertEqual(mensual["dif_mes"], 0.0)
+
+    # --------------------------------------------------
     async def test_cruce_tolerancia_importe(self) -> None:
         """Fuera de tolerancia → sin pareo; con tolerancia → parea."""
         siif_filas = [
