@@ -925,9 +925,7 @@ def _parear_grupo(
         return False
     suma_grupo = float(importes.sum())
     cuit_grupo = grupo["cuit_n"].iloc[0]
-    candidatos = df_sgf.loc[
-        (~df_sgf["_usado"]) & (df_sgf["cuit_n"] == cuit_grupo)
-    ]
+    candidatos = df_sgf.loc[(~df_sgf["_usado"]) & (df_sgf["cuit_n"] == cuit_grupo)]
     candidatos = candidatos.loc[
         (candidatos["importe_bruto"] - suma_grupo).abs()
         <= abs(suma_grupo) * importe_tol
@@ -990,9 +988,7 @@ class ControlOtrosGastosCruceService:
     sgf_service: ControlOtrosGastosSgfServiceDependency
 
     # -------------------------------------------------
-    async def generate(
-        self, params: ControlOtrosGastosCruceGenerateFilter
-    ) -> dict:
+    async def generate(self, params: ControlOtrosGastosCruceGenerateFilter) -> dict:
         """Cruce on-demand (sin persistir; el snapshot lo congela el
         POST posterior).
 
@@ -1036,12 +1032,8 @@ class ControlOtrosGastosCruceService:
         )
         return {
             "ejercicio": params.ejercicio,
-            "pareos": [
-                doc.model_dump(mode="json", exclude={"id"}) for doc in pareos
-            ],
-            "mensual": [
-                doc.model_dump(mode="json", exclude={"id"}) for doc in mensual
-            ],
+            "pareos": [doc.model_dump(mode="json", exclude={"id"}) for doc in pareos],
+            "mensual": [doc.model_dump(mode="json", exclude={"id"}) for doc in mensual],
         }
 
     # -------------------------------------------------
@@ -1088,9 +1080,7 @@ class ControlOtrosGastosCruceService:
                     detalle += f" Errores detectados: {errores[:2]}"
                 raise HTTPException(status_code=400, detail=detalle)
 
-            resultado = RouteReturnSchema(
-                title="Sincronización Otros Gastos Cruce"
-            )
+            resultado = RouteReturnSchema(title="Sincronización Otros Gastos Cruce")
             delete_filter = {"ejercicio": data.ejercicio}
             for validacion, repositorio, etiqueta_lado in (
                 (
@@ -1121,18 +1111,14 @@ class ControlOtrosGastosCruceService:
             # Respeta los 400 de "snapshot vacío" / "sin válidos"
             raise
         except Exception as e:
-            logger.error(
-                f"Error durante el proceso de add_many del cruce: {e}"
-            )
+            logger.error(f"Error durante el proceso de add_many del cruce: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Error sincronizando el cruce de Otros Gastos: {e}",
             )
 
     # -------------------------------------------------
-    async def delete_many(
-        self, params: ControlOtrosGastosCruceLiteFilter
-    ) -> dict:
+    async def delete_many(self, params: ControlOtrosGastosCruceLiteFilter) -> dict:
         """Borra AMBAS colecciones del cruce por ``ejercicio``.
 
         Args:
@@ -1152,9 +1138,7 @@ class ControlOtrosGastosCruceService:
             )
         filtro = {"ejercicio": params.ejercicio}
         borrados_pareos = await self.cruce_repository.delete_by_fields(filtro)
-        borrados_mensual = await self.cruce_mensual_repository.delete_by_fields(
-            filtro
-        )
+        borrados_mensual = await self.cruce_mensual_repository.delete_by_fields(filtro)
         return {
             "title": "Eliminación Otros Gastos Cruce",
             "added": 0,
@@ -1174,14 +1158,10 @@ class ControlOtrosGastosCruceService:
         )
         snapshot_siif = await self.siif_service.get_all(params=search_siif)
         if snapshot_siif:
-            df_siif = pd.DataFrame(
-                [doc.model_dump() for doc in snapshot_siif]
-            )
+            df_siif = pd.DataFrame([doc.model_dump() for doc in snapshot_siif])
         else:
             df_siif = pd.DataFrame(
-                await self.siif_service.compute_otros_gastos_siif(
-                    params=search_siif
-                )
+                await self.siif_service.compute_otros_gastos_siif(params=search_siif)
             )
 
         search_sgf = ControlOtrosGastosSgfFilter(
@@ -1190,14 +1170,10 @@ class ControlOtrosGastosCruceService:
         )
         snapshot_sgf = await self.sgf_service.get_all(params=search_sgf)
         if snapshot_sgf:
-            df_sgf = pd.DataFrame(
-                [doc.model_dump() for doc in snapshot_sgf]
-            )
+            df_sgf = pd.DataFrame([doc.model_dump() for doc in snapshot_sgf])
         else:
             df_sgf = pd.DataFrame(
-                await self.sgf_service.compute_otros_gastos_sgf(
-                    params=search_sgf
-                )
+                await self.sgf_service.compute_otros_gastos_sgf(params=search_sgf)
             )
 
         for marco in (df_siif, df_sgf):
@@ -1208,7 +1184,7 @@ class ControlOtrosGastosCruceService:
     async def compute_cruce(
         self,
         params: ControlOtrosGastosCruceFilter,
-        importe_tol: float = 0.005,
+        importe_tol: float = 0.001,
         ventana_dias: int = 30,
     ) -> dict:
         """Cruce SIIF <-> SGF en dos capas (on-demand).
@@ -1247,7 +1223,7 @@ class ControlOtrosGastosCruceService:
 
         Args:
             params: Filtro con el ``ejercicio``.
-            importe_tol: Tolerancia relativa del pareo (0.005 = 0.5%).
+            importe_tol: Tolerancia relativa del pareo (0.001 = 0.1%).
             ventana_dias: Ventana máxima en días entre fechas (0 = sin
                 ventana).
 
@@ -1349,9 +1325,7 @@ class ControlOtrosGastosCruceService:
         pendientes = resto.loc[~resto.index.isin(pareadas_agrupadas)]
         grupos_comp: int = 0
         filas_comp: int = 0
-        for _nro_comprobante, grupo in pendientes.groupby(
-            "nro_comprobante", sort=True
-        ):
+        for _nro_comprobante, grupo in pendientes.groupby("nro_comprobante", sort=True):
             if len(grupo) < 2:
                 continue  # imputación única: la resuelve el 1:1 normal
             if _parear_grupo(
@@ -1382,9 +1356,7 @@ class ControlOtrosGastosCruceService:
         agrupables_dia = pendientes_dia.loc[fecha_valida_dia]
         grupos_dia: int = 0
         filas_dia: int = 0
-        for _llave, grupo in agrupables_dia.groupby(
-            ["cuit_n", "fecha"], sort=True
-        ):
+        for _llave, grupo in agrupables_dia.groupby(["cuit_n", "fecha"], sort=True):
             if grupo["nro_comprobante"].nunique() < 2:
                 continue  # 1 solo comprobante: lo intentó el pre-paso 2
             if _parear_grupo(
@@ -1441,8 +1413,7 @@ class ControlOtrosGastosCruceService:
                     **_lado_siif(ejercicio, ESTADO_PAREADO, fila),
                     **_lado_sgf(ejercicio, ESTADO_PAREADO, fila_sgf),
                     "dias_dif": dias_dif,
-                    "dif": float(importe_siif)
-                    - float(fila_sgf["importe_bruto"]),
+                    "dif": float(importe_siif) - float(fila_sgf["importe_bruto"]),
                 }
             )
 
@@ -1452,9 +1423,7 @@ class ControlOtrosGastosCruceService:
         sin_usar = df_sgf.loc[~df_sgf["_usado"]]
         huerfanas_sgf = sin_usar.loc[sin_usar["cuit_n"].isin(cuits_resto)]
         for indice in huerfanas_sgf.index:
-            pareos.append(
-                _lado_sgf(ejercicio, ESTADO_SGF_SIN_SIIF, df_sgf.loc[indice])
-            )
+            pareos.append(_lado_sgf(ejercicio, ESTADO_SGF_SIN_SIIF, df_sgf.loc[indice]))
         logger.info(
             f"{etiqueta} → pareos: {len(pareos)} filas "
             f"(SGF huérfanas del resto: {len(huerfanas_sgf)})"
@@ -1469,9 +1438,7 @@ class ControlOtrosGastosCruceService:
         siif_rendido = perm.groupby("mes")["importe"].sum()
         sgf_pagado = sgf_fondo.groupby("mes")["importe_bruto"].sum()
 
-        meses = sorted(
-            set(siif_rendido.index) | set(sgf_pagado.index), key=_clave_mes
-        )
+        meses = sorted(set(siif_rendido.index) | set(sgf_pagado.index), key=_clave_mes)
         filas_mensual: List[dict] = []
         acum_siif: float = 0.0
         acum_sgf: float = 0.0
@@ -1491,9 +1458,7 @@ class ControlOtrosGastosCruceService:
                     "siif_acum": acum_siif,
                     "sgf_acum": acum_sgf,
                     "dif_acum": dif_acum,
-                    "dif_pct": (100.0 * dif_acum / acum_sgf)
-                    if acum_sgf
-                    else None,
+                    "dif_pct": (100.0 * dif_acum / acum_sgf) if acum_sgf else None,
                 }
             )
         logger.info(
@@ -1505,19 +1470,13 @@ class ControlOtrosGastosCruceService:
         return {
             "ejercicio": ejercicio,
             "pareos": _a_registros(pd.DataFrame(pareos), COLUMNAS_PAREOS),
-            "mensual": _a_registros(
-                pd.DataFrame(filas_mensual), COLUMNAS_MENSUAL
-            ),
+            "mensual": _a_registros(pd.DataFrame(filas_mensual), COLUMNAS_MENSUAL),
         }
 
 
 ControlOtrosGastosCruceServiceDependency = Annotated[
     ControlOtrosGastosCruceService, Depends()
 ]
-
-
-
-
 
 
 @dataclass
