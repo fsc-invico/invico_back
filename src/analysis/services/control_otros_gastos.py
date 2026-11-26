@@ -900,7 +900,8 @@ def _parear_grupo(
     comprobante con varias imputaciones (una fila por partida). La
     SUMA de los importes del grupo se compara contra los libramientos
     no usados del MISMO cuit con las tolerancias del cruce
-    (±``importe_tol`` sobre la suma y fecha ±``ventana_dias``).
+    (|diferencia| ≤ ``importe_tol`` en pesos sobre la suma y fecha
+    ±``ventana_dias``).
 
     Si matchea: marca el libramiento como usado (queda fuera de la
     Capa 2), agrega una fila ``PAREADO`` por cada fila del grupo —con
@@ -913,7 +914,8 @@ def _parear_grupo(
         ejercicio: Ejercicio del bloque.
         grupo: Filas de SIIF a agrupar (subconjunto de ``resto``).
         df_sgf: Tabla SGF con la columna ``_usado`` (se marca en ella).
-        importe_tol: Tolerancia relativa sobre la suma.
+        importe_tol: Tolerancia ABSOLUTA en pesos sobre la suma
+            (0.05 = 5 centavos).
         ventana_dias: Ventana máxima en días entre fechas (0 = sin).
         pareos: Lista de salida; se le agregan las filas del pareo.
 
@@ -927,8 +929,7 @@ def _parear_grupo(
     cuit_grupo = grupo["cuit_n"].iloc[0]
     candidatos = df_sgf.loc[(~df_sgf["_usado"]) & (df_sgf["cuit_n"] == cuit_grupo)]
     candidatos = candidatos.loc[
-        (candidatos["importe_bruto"] - suma_grupo).abs()
-        <= abs(suma_grupo) * importe_tol
+        (candidatos["importe_bruto"] - suma_grupo).abs() <= importe_tol
     ]
     # Misma fecha para todo el grupo (agrupado por día); con
     # comprobantes multi-imputación puede haber NaT si todas las
@@ -1184,15 +1185,17 @@ class ControlOtrosGastosCruceService:
     async def compute_cruce(
         self,
         params: ControlOtrosGastosCruceFilter,
-        importe_tol: float = 0.001,
+        importe_tol: float = 0.05,
         ventana_dias: int = 30,
     ) -> dict:
         """Cruce SIIF <-> SGF en dos capas (on-demand).
 
         Capa 1 - ``pareos``: pareo 1:1 greedy (y determinístico: orden
         por fecha/nro_comprobante) del resto de SIIF (todo lo que NO es
-        fondo permanente) contra SGF: ``cuit`` + importe ±``importe_tol``
-        + fecha ±``ventana_dias``. Antes del 1:1 corren dos pre-pasos
+        fondo permanente) contra SGF: ``cuit`` + |diferencia de
+        importe| ≤ ``importe_tol`` (tolerancia ABSOLUTA en pesos, no
+        porcentual) + fecha ±``ventana_dias``. Antes del 1:1 corren dos
+        pre-pasos
         que agrupan filas de SIIF y comparan la SUMA contra UN
         libramiento con las MISMAS tolerancias (``dif`` = residuo de la
         suma; si el grupo no matchea, sus filas siguen a los pasos
@@ -1223,7 +1226,8 @@ class ControlOtrosGastosCruceService:
 
         Args:
             params: Filtro con el ``ejercicio``.
-            importe_tol: Tolerancia relativa del pareo (0.001 = 0.1%).
+            importe_tol: Tolerancia ABSOLUTA del pareo por importe, en
+            pesos (0.05 = 5 centavos por defecto).
             ventana_dias: Ventana máxima en días entre fechas (0 = sin
                 ventana).
 
@@ -1384,7 +1388,7 @@ class ControlOtrosGastosCruceService:
             else:
                 candidatos = candidatos.loc[
                     (candidatos["importe_bruto"] - float(importe_siif)).abs()
-                    <= abs(float(importe_siif)) * importe_tol
+                    <= importe_tol
                 ]
                 if ventana_dias > 0:
                     candidatos = candidatos.loc[candidatos["fecha_d"].notna()]

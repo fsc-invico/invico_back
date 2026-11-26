@@ -306,11 +306,12 @@ class ControlOtrosGastosCruceMensualLiteFilter(CamelModel):
 class ControlOtrosGastosCruceGenerateFilter(CamelModel):
     ejercicio: int
     importe_tol: float = Field(
-        default=0.005,
+        default=0.05,
         ge=0.0,
-        le=1.0,
+        le=1_000_000.0,
         description=(
-            "Tolerancia relativa del pareo por importe (0.005 = 0.5%)."
+            "Tolerancia ABSOLUTA del pareo por importe, en pesos "
+            "(0.05 = 5 centavos por defecto)."
         ),
     )
     ventana_dias: int = Field(

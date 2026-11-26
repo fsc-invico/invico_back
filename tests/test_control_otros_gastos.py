@@ -995,9 +995,9 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
             ),
         ]
         sgf_filas = [
-            # 603 vs suma 600: 0.5% de tolerancia sobre la SUMA
+            # 600.02 vs suma 600: $0.02 ≤ tolerancia absoluta $0.05
             fila_sgf(
-                "L-AGR", cuit=cuit_agrupado, importe=603.0, fecha="05/05/2026"
+                "L-AGR", cuit=cuit_agrupado, importe=600.02, fecha="05/05/2026"
             ),
         ]
         servicio = construir_servicio_cruce(siif_filas, sgf_filas)
@@ -1014,10 +1014,10 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nros, ["00030/05", "00031/05", "00032/05"])
         for fila in pareados:
             self.assertEqual(fila["sgf_libramiento"], "L-AGR")
-            self.assertEqual(fila["sgf_importe_bruto"], 603.0)
+            self.assertEqual(fila["sgf_importe_bruto"], 600.02)
             self.assertEqual(fila["dias_dif"], 0)
-            # residuo de la SUMA del grupo (600 - 603), no fila - SGF
-            self.assertEqual(fila["dif"], -3.0)
+            # residuo de la SUMA del grupo (600 - 600.02), no fila - SGF
+            self.assertAlmostEqual(fila["dif"], -0.02, places=2)
 
         sin_sgf = [
             fila
@@ -1202,7 +1202,7 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
             )
         ]
         sgf_filas = [
-            # 0.6% de diferencia > 0.5% por defecto
+            # $6 de diferencia > $0.05 (tolerancia absoluta por defecto)
             fila_sgf("L-10", cuit="20111111111", importe=1006.0)
         ]
         servicio = construir_servicio_cruce(siif_filas, sgf_filas)
@@ -1212,7 +1212,7 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         estados = [fila["estado"] for fila in bloque["pareos"]]
         self.assertEqual(estados, [ESTADO_SIIF_SIN_SGF, ESTADO_SGF_SIN_SIIF])
 
-        bloque = await servicio.compute_cruce(params=params, importe_tol=0.01)
+        bloque = await servicio.compute_cruce(params=params, importe_tol=10.0)
         estados = [fila["estado"] for fila in bloque["pareos"]]
         self.assertEqual(estados, [ESTADO_PAREADO])
 
