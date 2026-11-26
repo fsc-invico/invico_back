@@ -980,8 +980,8 @@ class ControlOtrosGastosCruceService:
     ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF``.
 
     Capa 2 (``mensual``): fondos permanentes de SIIF (``clase_reg =
-    "REG"`` con cuit INVICO) contra el SGF que quedó fuera de la
-    Capa 1, mes a mes, con acumulados.
+    "REG"`` con cuit INVICO) contra TODO el SGF no pareado en la
+    Capa 1 (incluidas las huérfanas), mes a mes, con acumulados.
     """
 
     cruce_repository: ControlOtrosGastosCruceRepositoryDependency
@@ -1230,9 +1230,10 @@ class ControlOtrosGastosCruceService:
         directos).
 
         Capa 2 - ``mensual``: fondos permanentes de SIIF (``clase_reg =
-        "REG"`` con cuit INVICO) contra el SGF que quedó fuera de la
-        Capa 1, mes a mes, con acumulados y ``dif_pct`` (% sobre el
-        SGF acumulado).
+        "REG"`` con cuit INVICO) contra TODO el SGF no pareado en la
+        Capa 1 —incluidas las huérfanas ``SGF_SIN_SIIF``, que también
+        podrían ser pagos de fondo— mes a mes, con acumulados y
+        ``dif_pct`` (% sobre el SGF acumulado).
 
         Args:
             params: Filtro con el ``ejercicio``.
@@ -1571,11 +1572,12 @@ class ControlOtrosGastosCruceService:
         )
 
         # ---- Capa 2: fondos permanentes mes a mes -----------------
-        # SGF fuera de la Capa 1 y fuera del dominio del resto: pagos
-        # con fondo permanente.
-        sgf_fondo = df_sgf.loc[
-            (~df_sgf["_usado"]) & (~df_sgf["cuit_n"].isin(cuits_resto))
-        ]
+        # TODO el SGF no pareado en la Capa 1, incluidas las huérfanas
+        # SGF_SIN_SIIF: un pago con cuit del dominio del resto también
+        # podría ser de fondo permanente (su cuit es de un proveedor
+        # que además figura en pagos directos). Las huérfanas siguen
+        # siendo filas de la Capa 1; acá solo cuentan sus importes.
+        sgf_fondo = df_sgf.loc[~df_sgf["_usado"]]
         siif_rendido = perm.groupby("mes")["importe"].sum()
         sgf_pagado = sgf_fondo.groupby("mes")["importe_bruto"].sum()
 

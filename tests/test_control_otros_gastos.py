@@ -957,18 +957,19 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(huerfana["sgf_libramiento"], "L-2")
         self.assertIsNone(huerfana["siif_nro_comprobante"])
 
-        # Capa 2: solo el fondo permanente de SIIF y el SGF fuera del
-        # dominio del resto (L-3) forman el mensual.
+        # Capa 2: el fondo permanente de SIIF contra TODO el SGF no
+        # pareado — L-3 (fuera del dominio) + L-2 (huérfana de la
+        # Capa 1, también podría ser de fondo) = 7500.
         self.assertEqual(len(bloque["mensual"]), 1)
         mensual = bloque["mensual"][0]
         self.assertEqual(mensual["mes"], "05/2026")
         self.assertEqual(mensual["siif_rendido"], 5000.0)
-        self.assertEqual(mensual["sgf_pagado"], 4500.0)
-        self.assertEqual(mensual["dif_mes"], 500.0)
+        self.assertEqual(mensual["sgf_pagado"], 7500.0)
+        self.assertEqual(mensual["dif_mes"], -2500.0)
         self.assertEqual(mensual["siif_acum"], 5000.0)
-        self.assertEqual(mensual["sgf_acum"], 4500.0)
-        self.assertEqual(mensual["dif_acum"], 500.0)
-        self.assertAlmostEqual(mensual["dif_pct"], 100 * 500 / 4500)
+        self.assertEqual(mensual["sgf_acum"], 7500.0)
+        self.assertEqual(mensual["dif_acum"], -2500.0)
+        self.assertAlmostEqual(mensual["dif_pct"], 100 * -2500 / 7500)
 
 
     # --------------------------------------------------
