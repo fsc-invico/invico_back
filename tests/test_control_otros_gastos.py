@@ -1148,6 +1148,52 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mensual["dif_mes"], 0.0)
 
     # --------------------------------------------------
+    async def test_cruce_varios_comprobantes_mismo_dia(self) -> None:
+        """Dos comprobantes DISTINTOS del mismo cuit y día con una
+        imputación cada uno: SGF agrega en un solo libramiento → los
+        2 quedan PAREADOS (patrón 00435/26 + 00436/26 ↔ 31628)."""
+        cuit = "27364818748"
+        siif_filas = [
+            fila_siif(
+                "00435/05", "00435", cuit=cuit,
+                importe=74840.0, fecha="19/03/2026",
+            ),
+            fila_siif(
+                "00436/05", "00436", cuit=cuit,
+                importe=137000.0, fecha="19/03/2026",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf(
+                "31628", cuit=cuit, importe=211840.0, fecha="25/03/2026"
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 2)
+        nros = sorted(fila["siif_nro_comprobante"] for fila in pareados)
+        self.assertEqual(nros, ["00435/05", "00436/05"])
+        for fila in pareados:
+            self.assertEqual(fila["sgf_libramiento"], "31628")
+            self.assertEqual(fila["sgf_importe_bruto"], 211840.0)
+            self.assertEqual(fila["dif"], 0.0)
+            self.assertEqual(fila["dias_dif"], 6)
+        # Sin huérfanas: el libramiento quedó usado
+        huerfanas = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SGF_SIN_SIIF
+        ]
+        self.assertEqual(huerfanas, [])
+
+    # --------------------------------------------------
     async def test_cruce_tolerancia_importe(self) -> None:
         """Fuera de tolerancia → sin pareo; con tolerancia → parea."""
         siif_filas = [

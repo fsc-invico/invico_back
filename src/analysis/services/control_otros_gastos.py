@@ -1230,6 +1230,11 @@ class ControlOtrosGastosCruceService:
            su suma se cruza con el libramiento. Los fondos permanentes
            (REG + cuit INVICO + nro_fondo) no llegan acá: el ``resto``
            ya los excluye.
+        3. Varios comprobantes del mismo cuit y día: SGF agrega
+           comprobantes distintos de un mismo beneficiario en un
+           libramiento (p.ej. 00435/26 + 00436/26 ↔ 31628): se
+           agrupan por (cuit, fecha) los pendientes con más de un
+           comprobante distinto y su suma se cruza con el libramiento.
 
         Estados: ``PAREADO``, ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF`` (SGF
         no usado cuyo cuit aparece en el resto SIIF: dominio de pagos
@@ -1359,6 +1364,39 @@ class ControlOtrosGastosCruceService:
             logger.info(
                 f"{etiqueta} → comprobantes multi-imputación: "
                 f"{grupos_comp} grupos / {filas_comp} filas SIIF"
+            )
+
+        # Pre-paso 3: varios comprobantes del MISMO cuit en el MISMO
+        # día. Algunos libramientos de SGF agregan varios comprobantes
+        # de un mismo beneficiario (no solo el cuit de pago agregado
+        # del pre-paso 1): p.ej. 00435/26 + 00436/26 = 211.840 ↔
+        # libramiento 31628. Se agrupan por (cuit, fecha) las filas
+        # pendientes con más de un comprobante distinto y la SUMA se
+        # compara con el libramiento (_parear_grupo). Los grupos con un
+        # solo comprobante ya los intentó el pre-paso 2; lo que no
+        # matchea acá cae al pareo 1:1 normal.
+        pendientes_dia = resto.loc[~resto.index.isin(pareadas_agrupadas)]
+        fecha_valida_dia = (
+            pendientes_dia["fecha"].fillna("").astype(str).str.strip().ne("")
+        )
+        agrupables_dia = pendientes_dia.loc[fecha_valida_dia]
+        grupos_dia: int = 0
+        filas_dia: int = 0
+        for _llave, grupo in agrupables_dia.groupby(
+            ["cuit_n", "fecha"], sort=True
+        ):
+            if grupo["nro_comprobante"].nunique() < 2:
+                continue  # 1 solo comprobante: lo intentó el pre-paso 2
+            if _parear_grupo(
+                ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
+            ):
+                grupos_dia += 1
+                filas_dia += len(grupo)
+                pareadas_agrupadas.update(grupo.index)
+        if grupos_dia:
+            logger.info(
+                f"{etiqueta} → varios comprobantes del mismo día: "
+                f"{grupos_dia} grupos / {filas_dia} filas SIIF"
             )
 
         for indice in orden:
