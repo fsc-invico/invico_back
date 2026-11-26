@@ -34,6 +34,7 @@ from unittest import mock
 
 import pandas as pd
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from src.analysis.routes.control_otros_gastos import (
     control_otros_gastos_cruce_router,
@@ -1260,7 +1261,10 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         ) as compute_mock:
             resultado = await servicio.generate(
                 ControlOtrosGastosCruceGenerateFilter(
-                    ejercicio=2026, importe_tol=0.01, ventana_dias=60
+                    ejercicio=2026,
+                    importe_tol=0.01,
+                    ventana_dias=60,
+                    ventana_agrupacion_dias=20,
                 )
             )
 
@@ -1268,6 +1272,178 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         compute_mock.assert_awaited_once()
         self.assertEqual(compute_mock.await_args.kwargs["importe_tol"], 0.01)
         self.assertEqual(compute_mock.await_args.kwargs["ventana_dias"], 60)
+        self.assertEqual(
+            compute_mock.await_args.kwargs["ventana_agrupacion_dias"], 20
+        )
+
+    # --------------------------------------------------
+    def test_filtro_generate_ventana_agrupacion(self) -> None:
+        """Schema: ``ventana_agrupacion_dias`` default 10 con ge=0/le=365."""
+        filtro = ControlOtrosGastosCruceGenerateFilter(ejercicio=2026)
+        self.assertEqual(filtro.ventana_agrupacion_dias, 10)
+        with self.assertRaises(ValidationError):
+            ControlOtrosGastosCruceGenerateFilter(
+                ejercicio=2026, ventana_agrupacion_dias=-1
+            )
+        with self.assertRaises(ValidationError):
+            ControlOtrosGastosCruceGenerateFilter(
+                ejercicio=2026, ventana_agrupacion_dias=366
+            )
+
+    # --------------------------------------------------
+    async def test_cruce_ventana_agrupacion_multi_dia(self) -> None:
+        """Pre-paso 3: dos comprobantes del mismo cuit en días distintos
+        (span ≤ ``ventana_agrupacion_dias``) suman UN libramiento → los 2
+        quedan PAREADOS con ``dif`` igual al residuo de la suma."""
+        cuit = "20555555555"
+        siif_filas = [
+            fila_siif(
+                "00387/05", "00387", cuit=cuit,
+                importe=100.0, fecha="18/03/2026", mes="03/2026",
+            ),
+            fila_siif(
+                "00451/05", "00451", cuit=cuit,
+                importe=200.0, fecha="20/03/2026", mes="03/2026",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf(
+                "31700", cuit=cuit, importe=300.0, fecha="22/03/2026",
+                mes="03/2026",
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 2)
+        for fila in pareados:
+            self.assertEqual(fila["sgf_libramiento"], "31700")
+            self.assertEqual(fila["sgf_importe_bruto"], 300.0)
+            self.assertEqual(fila["dif"], 0.0)
+            # fecha mínima del grupo (18/03) contra el libramiento (22/03)
+            self.assertEqual(fila["dias_dif"], 4)
+        huerfanas = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SGF_SIN_SIIF
+        ]
+        self.assertEqual(huerfanas, [])
+
+    # --------------------------------------------------
+    async def test_cruce_ventana_agrupacion_cero_no_agrupa(self) -> None:
+        """Con ``ventana_agrupacion_dias=0`` solo se agrupa el mismo día:
+        comprobantes de días distintos caen al 1:1 (y aquí no calzan)."""
+        cuit = "20555555555"
+        siif_filas = [
+            fila_siif(
+                "00387/05", "00387", cuit=cuit,
+                importe=100.0, fecha="18/03/2026", mes="03/2026",
+            ),
+            fila_siif(
+                "00451/05", "00451", cuit=cuit,
+                importe=200.0, fecha="20/03/2026", mes="03/2026",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf(
+                "31700", cuit=cuit, importe=300.0, fecha="22/03/2026",
+                mes="03/2026",
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None),
+            ventana_agrupacion_dias=0,
+        )
+
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertNotIn(ESTADO_PAREADO, estados)
+        self.assertEqual(estados.count(ESTADO_SIIF_SIN_SGF), 2)
+        self.assertEqual(estados.count(ESTADO_SGF_SIN_SIIF), 1)
+
+    # --------------------------------------------------
+    async def test_cruce_ventana_agrupacion_configurable(self) -> None:
+        """Un span de 14 días no matchea con la ventana default (10) pero
+        sí con ``ventana_agrupacion_dias=20`` (parámetro de compute)."""
+        cuit = "20666666666"
+        siif_filas = [
+            fila_siif(
+                "00011/05", "00011", cuit=cuit,
+                importe=100.0, fecha="01/05/2026",
+            ),
+            fila_siif(
+                "00012/05", "00012", cuit=cuit,
+                importe=200.0, fecha="15/05/2026",
+            ),
+        ]
+        sgf_filas = [
+            # 20/05 está a 19 días de la fecha mínima ≤ ventana_dias (30)
+            fila_sgf("31710", cuit=cuit, importe=300.0, fecha="20/05/2026"),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+        params = ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+
+        bloque = await servicio.compute_cruce(params=params)
+        estados = [fila["estado"] for fila in bloque["pareos"]]
+        self.assertEqual(estados.count(ESTADO_PAREADO), 0)
+
+        bloque = await servicio.compute_cruce(
+            params=params, ventana_agrupacion_dias=20
+        )
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 2)
+        self.assertEqual({fila["sgf_libramiento"] for fila in pareados}, {"31710"})
+
+    # --------------------------------------------------
+    async def test_cruce_pagos_agrupados_red_de_seguridad(self) -> None:
+        """Pre-paso 4 (último): el cuit de pago agregado agrupa por día
+        aunque el ``nro_comprobante`` falte — único paso que cubre ese
+        caso (los pre-pasos 1-3 agrupan por comprobante)."""
+        cuit_agrupado = "30500049460"
+        siif_filas = [
+            fila_siif(
+                None, None, cuit=cuit_agrupado, importe=100.0,
+                fecha="05/05/2026",
+            ),
+            fila_siif(
+                None, None, cuit=cuit_agrupado, importe=200.0,
+                fecha="05/05/2026",
+            ),
+        ]
+        sgf_filas = [
+            fila_sgf(
+                "L-RDS", cuit=cuit_agrupado, importe=300.0, fecha="05/05/2026"
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 2)
+        for fila in pareados:
+            self.assertEqual(fila["sgf_libramiento"], "L-RDS")
+            self.assertIsNone(fila["siif_nro_comprobante"])
+            self.assertEqual(fila["dif"], 0.0)
+        huerfanas = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SGF_SIN_SIIF
+        ]
+        self.assertEqual(huerfanas, [])
 
 
 # --------------------------------------------------

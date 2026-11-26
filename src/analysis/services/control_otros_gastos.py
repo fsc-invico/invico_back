@@ -896,8 +896,9 @@ def _parear_grupo(
     """Parea un grupo de filas de SIIF contra UN libramiento de SGF.
 
     Los pre-pasos de la Capa 1 agrupan filas que en SGF se liquidan en
-    un solo libramiento: el cuit de pago agregado por día y el
-    comprobante con varias imputaciones (una fila por partida). La
+    un solo libramiento: el comprobante con varias imputaciones (una
+    fila por partida), los comprobantes del mismo cuit en el mismo día
+    o en una ventana de días, y el cuit de pago agregado por día. La
     SUMA de los importes del grupo se compara contra los libramientos
     no usados del MISMO cuit con las tolerancias del cruce
     (|diferencia| ≤ ``importe_tol`` en pesos sobre la suma y fecha
@@ -1012,6 +1013,7 @@ class ControlOtrosGastosCruceService:
             params=compute_params,
             importe_tol=params.importe_tol,
             ventana_dias=params.ventana_dias,
+            ventana_agrupacion_dias=params.ventana_agrupacion_dias,
         )
 
     # -------------------------------------------------
@@ -1187,6 +1189,7 @@ class ControlOtrosGastosCruceService:
         params: ControlOtrosGastosCruceFilter,
         importe_tol: float = 0.05,
         ventana_dias: int = 30,
+        ventana_agrupacion_dias: int = 10,
     ) -> dict:
         """Cruce SIIF <-> SGF en dos capas (on-demand).
 
@@ -1194,26 +1197,33 @@ class ControlOtrosGastosCruceService:
         por fecha/nro_comprobante) del resto de SIIF (todo lo que NO es
         fondo permanente) contra SGF: ``cuit`` + |diferencia de
         importe| ≤ ``importe_tol`` (tolerancia ABSOLUTA en pesos, no
-        porcentual) + fecha ±``ventana_dias``. Antes del 1:1 corren dos
-        pre-pasos
-        que agrupan filas de SIIF y comparan la SUMA contra UN
-        libramiento con las MISMAS tolerancias (``dif`` = residuo de la
-        suma; si el grupo no matchea, sus filas siguen a los pasos
-        siguientes y al 1:1):
+        porcentual) + fecha ±``ventana_dias``. Antes del 1:1 corren
+        CUATRO pre-pasos (orden estricto-primero) que agrupan filas de
+        SIIF y comparan la SUMA contra UN libramiento con las MISMAS
+        tolerancias (``dif`` = residuo de la suma; si el grupo no
+        matchea, sus filas siguen a los pasos siguientes y al 1:1):
 
-        1. Pagos agrupados: los SIIF del cuit
-           ``CUIT_PAGOS_AGRUPADOS`` (SGF liquida un libramiento que
-           agrega los SIIF del mismo día) se agrupan por fecha.
-        2. Comprobantes multi-imputación: un ``nro_comprobante`` con
-           varias filas (UNA POR PARTIDA) se agrupa por comprobante y
-           su suma se cruza con el libramiento. Los fondos permanentes
-           (REG + cuit INVICO + nro_fondo) no llegan acá: el ``resto``
-           ya los excluye.
-        3. Varios comprobantes del mismo cuit y día: SGF agrega
+        1. Comprobantes multi-imputación: un ``nro_comprobante`` del
+           mismo cuit con varias filas (UNA POR PARTIDA) se agrupa por
+           (cuit, comprobante) y su suma se cruza con el libramiento.
+           Los fondos permanentes (REG + cuit INVICO + nro_fondo) no
+           llegan acá: el ``resto`` ya los excluye.
+        2. Varios comprobantes del mismo cuit y día: SGF agrega
            comprobantes distintos de un mismo beneficiario en un
            libramiento (p.ej. 00435/26 + 00436/26 ↔ 31628): se
            agrupan por (cuit, fecha) los pendientes con más de un
            comprobante distinto y su suma se cruza con el libramiento.
+        3. Comprobantes del mismo cuit en una ventana de días
+           (``ventana_agrupacion_dias``, 10 por defecto; 0 = solo mismo
+           día): la unidad de agrupación es el COMPROBANTE completo y
+           se agrupan los que caen dentro de la ventana (p.ej.
+           00451/26 + 00387/26 en 18-20/03 ↔ un libramiento que
+           abarca ambos días). Generaliza el pre-paso 4 a todos los
+           cuits.
+        4. Pagos agrupados por día: los SIIF del cuit
+           ``CUIT_PAGOS_AGRUPADOS`` se agrupan por fecha exacta. Es la
+           red de seguridad del pre-paso 3: si la fusión por ventana
+           no matcheó donde el día exacto sí, lo resuelve acá.
 
         Estados: ``PAREADO``, ``SIIF_SIN_SGF`` y ``SGF_SIN_SIIF`` (SGF
         no usado cuyo cuit aparece en el resto SIIF: dominio de pagos
@@ -1230,6 +1240,9 @@ class ControlOtrosGastosCruceService:
             pesos (0.05 = 5 centavos por defecto).
             ventana_dias: Ventana máxima en días entre fechas (0 = sin
                 ventana).
+            ventana_agrupacion_dias: Ventana máxima en días para
+                agrupar comprobantes del mismo cuit en el pre-paso 3
+                (0 = solo mismo día; 10 = por defecto).
 
         Returns:
             ``{"ejercicio", "pareos": [...], "mensual": [...]}``.
@@ -1294,42 +1307,27 @@ class ControlOtrosGastosCruceService:
             ["fecha", "nro_comprobante"], na_position="last"
         ).index
 
-        # Pre-paso 1: pagos agrupados por día. El CUIT_PAGOS_AGRUPADOS
-        # liquida en SGF UN libramiento que agrega varios SIIF del
-        # mismo día (la suma se compara en _parear_grupo). Si el grupo
-        # no matchea, sus filas siguen a los pasos siguientes.
+        # Capa 1: pre-pasos de agrupación en orden estricto-primero +
+        # greedy. Todos agrupan filas de SIIF y comparan la SUMA contra
+        # UN libramiento con _parear_grupo; si el grupo no matchea, sus
+        # filas quedan pendientes para los pasos siguientes.
         pareadas_agrupadas: set = set()
-        fecha_valida = resto["fecha"].fillna("").astype(str).str.strip().ne("")
-        siif_agrupados = resto.loc[
-            (resto["cuit_n"] == CUIT_PAGOS_AGRUPADOS) & fecha_valida
-        ]
-        grupos_cuit: int = 0
-        for _fecha_txt, grupo in siif_agrupados.groupby("fecha", sort=True):
-            if len(grupo) < 2:
-                continue  # 1 sola fila del día: la resuelve el 1:1 normal
-            if _parear_grupo(
-                ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
-            ):
-                grupos_cuit += 1
-                pareadas_agrupadas.update(grupo.index)
-        if grupos_cuit:
-            logger.info(
-                f"{etiqueta} → pagos agrupados ({CUIT_PAGOS_AGRUPADOS}): "
-                f"{grupos_cuit} grupos / {len(pareadas_agrupadas)} filas SIIF"
-            )
 
-        # Pre-paso 2: comprobantes con varias imputaciones. Un mismo
+        # Pre-paso 1: comprobantes con varias imputaciones. Un mismo
         # nro_comprobante en SIIF tiene UNA FILA POR PARTIDA y SGF
-        # liquida UN importe por comprobante: se agrupan por
-        # nro_comprobante las filas del resto aún sin parear y la SUMA
-        # se compara con el libramiento (_parear_grupo). Los fondos
-        # permanentes (REG + cuit INVICO + nro_fondo) no llegan acá: ya
-        # están fuera del ``resto``. Los grupos que no matchean caen al
-        # pareo 1:1 normal.
+        # liquida UN importe por comprobante: se agrupan por (cuit,
+        # nro_comprobante) —agrupar también por cuit evita sumar
+        # imputaciones de cuits distintos con el mismo número— y la
+        # SUMA se compara con el libramiento (_parear_grupo). Los
+        # fondos permanentes (REG + cuit INVICO + nro_fondo) no llegan
+        # acá: ya están fuera del ``resto``. Los grupos que no matchean
+        # caen a los pasos siguientes.
         pendientes = resto.loc[~resto.index.isin(pareadas_agrupadas)]
         grupos_comp: int = 0
         filas_comp: int = 0
-        for _nro_comprobante, grupo in pendientes.groupby("nro_comprobante", sort=True):
+        for _llave, grupo in pendientes.groupby(
+            ["cuit_n", "nro_comprobante"], sort=True
+        ):
             if len(grupo) < 2:
                 continue  # imputación única: la resuelve el 1:1 normal
             if _parear_grupo(
@@ -1344,15 +1342,14 @@ class ControlOtrosGastosCruceService:
                 f"{grupos_comp} grupos / {filas_comp} filas SIIF"
             )
 
-        # Pre-paso 3: varios comprobantes del MISMO cuit en el MISMO
+        # Pre-paso 2: varios comprobantes del MISMO cuit en el MISMO
         # día. Algunos libramientos de SGF agregan varios comprobantes
-        # de un mismo beneficiario (no solo el cuit de pago agregado
-        # del pre-paso 1): p.ej. 00435/26 + 00436/26 = 211.840 ↔
-        # libramiento 31628. Se agrupan por (cuit, fecha) las filas
+        # de un mismo beneficiario: p.ej. 00435/26 + 00436/26 = 211.840
+        # ↔ libramiento 31628. Se agrupan por (cuit, fecha) los
         # pendientes con más de un comprobante distinto y la SUMA se
         # compara con el libramiento (_parear_grupo). Los grupos con un
-        # solo comprobante ya los intentó el pre-paso 2; lo que no
-        # matchea acá cae al pareo 1:1 normal.
+        # solo comprobante ya los intentó el pre-paso 1; lo que no
+        # matchea acá cae a los pasos siguientes y al pareo 1:1.
         pendientes_dia = resto.loc[~resto.index.isin(pareadas_agrupadas)]
         fecha_valida_dia = (
             pendientes_dia["fecha"].fillna("").astype(str).str.strip().ne("")
@@ -1362,7 +1359,7 @@ class ControlOtrosGastosCruceService:
         filas_dia: int = 0
         for _llave, grupo in agrupables_dia.groupby(["cuit_n", "fecha"], sort=True):
             if grupo["nro_comprobante"].nunique() < 2:
-                continue  # 1 solo comprobante: lo intentó el pre-paso 2
+                continue  # 1 solo comprobante: lo intentó el pre-paso 1
             if _parear_grupo(
                 ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
             ):
@@ -1375,9 +1372,110 @@ class ControlOtrosGastosCruceService:
                 f"{grupos_dia} grupos / {filas_dia} filas SIIF"
             )
 
+        # Pre-paso 3: comprobantes del mismo cuit dentro de una ventana
+        # de días (``ventana_agrupacion_dias``). Generaliza el pre-paso
+        # 4 a TODOS los cuits: la unidad de agrupación es el
+        # COMPROBANTE completo (agrupación primaria por nro_comprobante)
+        # y se agrupan los que caen dentro de la ventana (distancia
+        # entre la fecha mínima y la máxima del grupo ≤ N días). Ej.:
+        # 00451/26 + 00452/26 (20/03) con 00387/26 (18/03) ↔ un
+        # libramiento que abarca ambos días. Ventana 0 = solo mismo día
+        # (equivale al pre-paso 2). Lo que no matchea acá cae a los
+        # pasos siguientes y al pareo 1:1.
+        pendientes_ventana = resto.loc[~resto.index.isin(pareadas_agrupadas)]
+        fecha_valida_ventana = (
+            pendientes_ventana["fecha"].fillna("").astype(str).str.strip().ne("")
+        )
+        agrupables_ventana = pendientes_ventana.loc[
+            fecha_valida_ventana & pendientes_ventana["fecha_d"].notna()
+        ]
+        grupos_ventana: int = 0
+        filas_ventana: int = 0
+
+        def _probar_ventana(unidades: List[pd.DataFrame]) -> None:
+            """Suma ``unidades`` (comprobantes) y la enfrenta a UN
+            libramiento; si matchea, agrega sus filas al pareo."""
+            nonlocal grupos_ventana, filas_ventana
+            if not unidades:
+                return
+            grupo = pd.concat(unidades)
+            # Al menos 2 comprobantes distintos: un comprobante con
+            # varias filas ya lo intentó el pre-paso 1.
+            comparables = grupo["nro_comprobante"].map(
+                lambda valor: "__SIN__" if pd.isna(valor) else str(valor).strip()
+            )
+            if comparables.nunique() < 2:
+                return
+            if _parear_grupo(
+                ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
+            ):
+                grupos_ventana += 1
+                filas_ventana += len(grupo)
+                pareadas_agrupadas.update(grupo.index)
+
+        for _cuit, subgrupo in agrupables_ventana.groupby("cuit_n", sort=True):
+            subgrupo = subgrupo.sort_values(
+                ["fecha_d", "nro_comprobante"], na_position="last"
+            )
+            claves = subgrupo["nro_comprobante"].map(
+                lambda valor: "__SIN__" if pd.isna(valor) else str(valor).strip()
+            )
+            unidades_fecha: List[tuple] = []
+            for _comprobante, unidad in subgrupo.groupby(claves, sort=False):
+                unidades_fecha.append((unidad["fecha_d"].min(), _comprobante, unidad))
+            unidades_fecha.sort(key=lambda item: (item[0], item[1]))
+            unidades_ventana: List[pd.DataFrame] = []
+            inicio = None
+            for fecha_unidad, _clave_unidad, unidad in unidades_fecha:
+                if inicio is None or (
+                    fecha_unidad - inicio
+                ) <= pd.Timedelta(days=ventana_agrupacion_dias):
+                    unidades_ventana.append(unidad)
+                    if inicio is None:
+                        inicio = fecha_unidad
+                else:
+                    _probar_ventana(unidades_ventana)
+                    unidades_ventana = [unidad]
+                    inicio = fecha_unidad
+            _probar_ventana(unidades_ventana)
+        if grupos_ventana:
+            logger.info(
+                f"{etiqueta} → comprobantes en ventana de "
+                f"{ventana_agrupacion_dias} días: {grupos_ventana} grupos / "
+                f"{filas_ventana} filas SIIF"
+            )
+
+        # Pre-paso 4 (antes pre-paso 1): pagos agrupados por día. El
+        # CUIT_PAGOS_AGRUPADOS liquida en SGF UN libramiento que agrega
+        # varios SIIF del mismo día. Queda el ÚLTIMO como red de
+        # seguridad: si el pre-paso 3 fusionó días que matchean por
+        # separado, acá se reintenta con el día exacto.
+        fecha_valida = resto["fecha"].fillna("").astype(str).str.strip().ne("")
+        siif_agrupados = resto.loc[
+            (resto["cuit_n"] == CUIT_PAGOS_AGRUPADOS)
+            & fecha_valida
+            & ~resto.index.isin(pareadas_agrupadas)
+        ]
+        grupos_cuit: int = 0
+        filas_cuit: int = 0
+        for _fecha_txt, grupo in siif_agrupados.groupby("fecha", sort=True):
+            if len(grupo) < 2:
+                continue  # 1 sola fila del día: la resuelve el 1:1 normal
+            if _parear_grupo(
+                ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
+            ):
+                grupos_cuit += 1
+                filas_cuit += len(grupo)
+                pareadas_agrupadas.update(grupo.index)
+        if grupos_cuit:
+            logger.info(
+                f"{etiqueta} → pagos agrupados ({CUIT_PAGOS_AGRUPADOS}): "
+                f"{grupos_cuit} grupos / {filas_cuit} filas SIIF"
+            )
+
         for indice in orden:
             if indice in pareadas_agrupadas:
-                continue  # ya pareada en el pre-paso de agrupados
+                continue  # ya pareada en un pre-paso de agrupación
             fila = resto.loc[indice]
             importe_siif = fila.get("importe")
             candidatos = df_sgf.loc[

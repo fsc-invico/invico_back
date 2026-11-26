@@ -319,6 +319,16 @@ class ControlOtrosGastosCruceGenerateFilter(CamelModel):
         ge=0,
         description="Ventana máxima en días entre fechas SIIF y SGF (0 = sin ventana).",
     )
+    ventana_agrupacion_dias: int = Field(
+        default=10,
+        ge=0,
+        le=365,
+        description=(
+            "Ventana máxima en días para agrupar comprobantes del mismo "
+            "cuit en el pre-paso agrupado del cruce (0 = solo mismo día; "
+            "10 = por defecto)."
+        ),
+    )
 
 
 # Cuerpo del POST /cruce: snapshot de AMBAS tablas del cruce en un solo
