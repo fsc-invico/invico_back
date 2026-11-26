@@ -1213,13 +1213,13 @@ class ControlOtrosGastosCruceService:
            libramiento (p.ej. 00435/26 + 00436/26 ↔ 31628): se
            agrupan por (cuit, fecha) los pendientes con más de un
            comprobante distinto y su suma se cruza con el libramiento.
-        3. Comprobantes del mismo cuit en una ventana de días
+        3. Ventanas de comprobantes del mismo cuit
            (``ventana_agrupacion_dias``, 10 por defecto; 0 = solo mismo
            día): la unidad de agrupación es el COMPROBANTE completo y
-           se agrupan los que caen dentro de la ventana (p.ej.
-           00451/26 + 00387/26 en 18-20/03 ↔ un libramiento que
-           abarca ambos días). Generaliza el pre-paso 4 a todos los
-           cuits.
+           se prueban todas las ventanas contiguas con span ≤ N días
+           (p.ej. 00835/26 + 00891..00895/26 ↔ 31826, o 00451/26 +
+           00387/26 en 18-20/03 ↔ un libramiento que abarca ambos
+           días). Generaliza el pre-paso 4 a todos los cuits.
         4. Pagos agrupados por día: los SIIF del cuit
            ``CUIT_PAGOS_AGRUPADOS`` se agrupan por fecha exacta. Es la
            red de seguridad del pre-paso 3: si la fusión por ventana
@@ -1372,16 +1372,18 @@ class ControlOtrosGastosCruceService:
                 f"{grupos_dia} grupos / {filas_dia} filas SIIF"
             )
 
-        # Pre-paso 3: comprobantes del mismo cuit dentro de una ventana
-        # de días (``ventana_agrupacion_dias``). Generaliza el pre-paso
-        # 4 a TODOS los cuits: la unidad de agrupación es el
-        # COMPROBANTE completo (agrupación primaria por nro_comprobante)
-        # y se agrupan los que caen dentro de la ventana (distancia
-        # entre la fecha mínima y la máxima del grupo ≤ N días). Ej.:
-        # 00451/26 + 00452/26 (20/03) con 00387/26 (18/03) ↔ un
-        # libramiento que abarca ambos días. Ventana 0 = solo mismo día
-        # (equivale al pre-paso 2). Lo que no matchea acá cae a los
-        # pasos siguientes y al pareo 1:1.
+        # Pre-paso 3: ventanas deslizantes de comprobantes del mismo
+        # cuit (``ventana_agrupacion_dias``). Generaliza el pre-paso 4 a
+        # TODOS los cuits: la unidad de agrupación es el COMPROBANTE
+        # completo (agrupación primaria por nro_comprobante) y se
+        # prueban TODAS las ventanas contiguas [i..j] con span ≤ N días
+        # en orden de fecha — no un corte fijo, que puede partir el
+        # grupo justo donde no calza. Ej.: 00835/26 (29/04) +
+        # 00891+00893+00894+00895 (05/05) = 2.794.117,89 ↔ 31826, o
+        # 00451/26 + 00387/26 (18-20/03) ↔ un libramiento que abarca
+        # ambos días. Ventana 0 = solo mismo día (equivale al pre-paso
+        # 2). Lo que no matchea acá cae a los pasos siguientes y al
+        # pareo 1:1.
         pendientes_ventana = resto.loc[~resto.index.isin(pareadas_agrupadas)]
         fecha_valida_ventana = (
             pendientes_ventana["fecha"].fillna("").astype(str).str.strip().ne("")
@@ -1392,27 +1394,32 @@ class ControlOtrosGastosCruceService:
         grupos_ventana: int = 0
         filas_ventana: int = 0
 
-        def _probar_ventana(unidades: List[pd.DataFrame]) -> None:
+        def _probar_ventana(unidades: List[pd.DataFrame]) -> bool:
             """Suma ``unidades`` (comprobantes) y la enfrenta a UN
             libramiento; si matchea, agrega sus filas al pareo."""
             nonlocal grupos_ventana, filas_ventana
             if not unidades:
-                return
+                return False
             grupo = pd.concat(unidades)
-            # Al menos 2 comprobantes distintos: un comprobante con
-            # varias filas ya lo intentó el pre-paso 1.
-            comparables = grupo["nro_comprobante"].map(
-                lambda valor: "__SIN__" if pd.isna(valor) else str(valor).strip()
-            )
-            if comparables.nunique() < 2:
-                return
-            if _parear_grupo(
+            if not _parear_grupo(
                 ejercicio, grupo, df_sgf, importe_tol, ventana_dias, pareos
             ):
-                grupos_ventana += 1
-                filas_ventana += len(grupo)
-                pareadas_agrupadas.update(grupo.index)
+                return False
+            grupos_ventana += 1
+            filas_ventana += len(grupo)
+            pareadas_agrupadas.update(grupo.index)
+            return True
 
+        # Ventanas DESLIZANTES: en vez de partir las unidades en
+        # clústeres fijos (los cortes pueden dejar afuera el subconjunto
+        # que calza, p.ej. 00835/26 (29/04) + 00891+00893+00894+00895
+        # (05/05) = 2.794.117,89 ↔ 31826), se prueban TODAS las
+        # ventanas contiguas [i..j] con span ≤ ``ventana_agrupacion_dias``
+        # en orden de fecha. La suma se prefiltra contra los importes de
+        # los libramientos sin usar del cuit y recién entonces se
+        # enfrenta a _parear_grupo (que valida además la ventana de
+        # fechas y marca el libramiento como usado). Unidades ya
+        # pareadas se saltean: la ventana solo suma filas pendientes.
         for _cuit, subgrupo in agrupables_ventana.groupby("cuit_n", sort=True):
             subgrupo = subgrupo.sort_values(
                 ["fecha_d", "nro_comprobante"], na_position="last"
@@ -1420,24 +1427,56 @@ class ControlOtrosGastosCruceService:
             claves = subgrupo["nro_comprobante"].map(
                 lambda valor: "__SIN__" if pd.isna(valor) else str(valor).strip()
             )
-            unidades_fecha: List[tuple] = []
-            for _comprobante, unidad in subgrupo.groupby(claves, sort=False):
-                unidades_fecha.append((unidad["fecha_d"].min(), _comprobante, unidad))
-            unidades_fecha.sort(key=lambda item: (item[0], item[1]))
-            unidades_ventana: List[pd.DataFrame] = []
-            inicio = None
-            for fecha_unidad, _clave_unidad, unidad in unidades_fecha:
-                if inicio is None or (
-                    fecha_unidad - inicio
-                ) <= pd.Timedelta(days=ventana_agrupacion_dias):
-                    unidades_ventana.append(unidad)
-                    if inicio is None:
-                        inicio = fecha_unidad
-                else:
-                    _probar_ventana(unidades_ventana)
-                    unidades_ventana = [unidad]
-                    inicio = fecha_unidad
-            _probar_ventana(unidades_ventana)
+            unidades: List[dict] = []
+            for clave, filas in subgrupo.groupby(claves, sort=False):
+                unidades.append(
+                    {
+                        "fecha": filas["fecha_d"].min(),
+                        "clave": clave,
+                        "filas": filas,
+                        "suma": float(
+                            pd.to_numeric(filas["importe"], errors="coerce").sum()
+                        ),
+                        "comps": {clave},
+                    }
+                )
+            unidades.sort(key=lambda unidad: (unidad["fecha"], unidad["clave"]))
+            brutos = df_sgf.loc[
+                (~df_sgf["_usado"]) & (df_sgf["cuit_n"] == _cuit), "importe_bruto"
+            ].to_numpy(dtype=float)
+            pendiente = [True] * len(unidades)
+            inicio = 0
+            while inicio < len(unidades):
+                if not pendiente[inicio]:
+                    inicio += 1
+                    continue
+                acum: List[pd.DataFrame] = []
+                suma = 0.0
+                comps: set = set()
+                indice = inicio
+                while (
+                    indice < len(unidades)
+                    and unidades[indice]["fecha"] - unidades[inicio]["fecha"]
+                    <= pd.Timedelta(days=ventana_agrupacion_dias)
+                ):
+                    if pendiente[indice]:
+                        acum.append(unidades[indice]["filas"])
+                        suma += unidades[indice]["suma"]
+                        comps |= unidades[indice]["comps"]
+                    # Al menos 2 comprobantes: un comprobante con varias
+                    # filas ya lo intentó el pre-paso 1.
+                    if (
+                        len(acum) >= 2
+                        and len(comps) >= 2
+                        and np.isfinite(suma)
+                        and (np.abs(brutos - suma) <= importe_tol).any()
+                        and _probar_ventana(acum)
+                    ):
+                        for rango in range(inicio, indice + 1):
+                            pendiente[rango] = False
+                        break
+                    indice += 1
+                inicio += 1
         if grupos_ventana:
             logger.info(
                 f"{etiqueta} → comprobantes en ventana de "

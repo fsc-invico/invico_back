@@ -1404,6 +1404,62 @@ class TestCruceOtrosGastos(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({fila["sgf_libramiento"] for fila in pareados}, {"31710"})
 
     # --------------------------------------------------
+    async def test_cruce_ventana_subconjunto_no_fijo(self) -> None:
+        """Ventanas deslizantes: el corte fijo agruparía 00740+00750
+        (22-29/04) y dejaría 00750+00760+00761 fuera de la suma que
+        calza; deslizando sí se prueba el subconjunto [29/04..05/05] =
+        900 ↔ el libramiento (patrón 00835+00891..00895 ↔ 31826)."""
+        cuit = "20777777777"
+        siif_filas = [
+            fila_siif(
+                "00740/05", "00740", cuit=cuit,
+                importe=100.0, fecha="22/04/2026", mes="04/2026",
+            ),
+            fila_siif(
+                "00750/05", "00750", cuit=cuit,
+                importe=200.0, fecha="29/04/2026", mes="04/2026",
+            ),
+            fila_siif(
+                "00760/05", "00760", cuit=cuit,
+                importe=300.0, fecha="05/05/2026", mes="05/2026",
+            ),
+            fila_siif(
+                "00761/05", "00761", cuit=cuit,
+                importe=400.0, fecha="05/05/2026", mes="05/2026",
+            ),
+        ]
+        sgf_filas = [
+            # 200+300+400 = 900 (29/04..05/05, span 6d ≤ 10); 00740
+            # queda fuera y cae al 1:1 (donde no calza).
+            fila_sgf(
+                "31826T", cuit=cuit, importe=900.0, fecha="08/05/2026",
+                mes="05/2026",
+            ),
+        ]
+        servicio = construir_servicio_cruce(siif_filas, sgf_filas)
+
+        bloque = await servicio.compute_cruce(
+            params=ControlOtrosGastosCruceFilter(ejercicio=2026, limit=None)
+        )
+
+        pareados = [
+            fila for fila in bloque["pareos"] if fila["estado"] == ESTADO_PAREADO
+        ]
+        self.assertEqual(len(pareados), 3)
+        nros = sorted(fila["siif_nro_comprobante"] for fila in pareados)
+        self.assertEqual(nros, ["00750/05", "00760/05", "00761/05"])
+        for fila in pareados:
+            self.assertEqual(fila["sgf_libramiento"], "31826T")
+            self.assertEqual(fila["dif"], 0.0)
+        sin_sgf = [
+            fila
+            for fila in bloque["pareos"]
+            if fila["estado"] == ESTADO_SIIF_SIN_SGF
+        ]
+        self.assertEqual(len(sin_sgf), 1)
+        self.assertEqual(sin_sgf[0]["siif_nro_comprobante"], "00740/05")
+
+    # --------------------------------------------------
     async def test_cruce_pagos_agrupados_red_de_seguridad(self) -> None:
         """Pre-paso 4 (último): el cuit de pago agregado agrupa por día
         aunque el ``nro_comprobante`` falte — único paso que cubre ese
