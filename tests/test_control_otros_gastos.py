@@ -28,6 +28,7 @@ Ejecutar desde la raíz del proyecto:
 """
 
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, List, Optional
 from unittest import mock
@@ -129,6 +130,16 @@ class Rcg01Falso:
 
     # --------------------------------------------------
     async def get_all(self, params: Any) -> List[Any]:
+        extra = getattr(params, "_extra_filter", None) or {}
+        filtro_nro_fondo = extra.get("nro_fondo")
+        if isinstance(filtro_nro_fondo, dict) and "$in" in filtro_nro_fondo:
+            # Cruce FAP: devolver solo los fondos pedidos.
+            permitidos = filtro_nro_fondo["$in"]
+            return [
+                fila
+                for fila in self.mapas
+                if getattr(fila, "nro_fondo", None) in permitidos
+            ]
         return self.mapas
 
 
@@ -145,6 +156,18 @@ class CargaFalso:
 # --------------------------------------------------
 class Rfondo07tpFalso:
     """Devuelve los comprobantes PA6 de siif_rfondo07tp."""
+
+    def __init__(self, documentos: List[Any]) -> None:
+        self.documentos = documentos
+
+    # --------------------------------------------------
+    async def get_all(self, params: Any) -> List[Any]:
+        return self.documentos
+
+
+# --------------------------------------------------
+class Rfondos04Falso:
+    """Devuelve las aperturas FAP de siif_rfondos04."""
 
     def __init__(self, documentos: List[Any]) -> None:
         self.documentos = documentos
@@ -274,15 +297,19 @@ def construir_servicio_siif(
     gastos: GastosFalso,
     repository: Optional[RepositorioFalso] = None,
     rfondo07tp: Optional[Rfondo07tpFalso] = None,
+    rcg01: Optional[Rcg01Falso] = None,
+    rfondos04: Optional[Rfondos04Falso] = None,
 ) -> ControlOtrosGastosSiifService:
     """Instancia el servicio SIIF con dependencias simuladas (dataclass)."""
     return ControlOtrosGastosSiifService(
         repository=repository or RepositorioFalso(),
         gastos_service=gastos,
-        rcg01_service=Rcg01Falso(
+        rcg01_service=rcg01
+        or Rcg01Falso(
             [SimpleNamespace(nro_comprobante="00003/05", nro_origen="00004")]
         ),
         rfondo07tp_service=rfondo07tp or Rfondo07tpFalso([]),
+        rfondos04_service=rfondos04 or Rfondos04Falso([]),
         icaro_carga_service=CargaFalso(
             [SimpleNamespace(nro_comprobante="00002/05")]
         ),
@@ -428,6 +455,99 @@ class TestComputeOtrosGastosSiif(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             nros, ["00040/05", "00041/05", "00042/05", "00043/05", "00044/05"]
         )
+
+    # --------------------------------------------------
+    async def test_fap_agrega_aperturas_de_cajas_chicas(self) -> None:
+        """Los FAP de rfondos04 se AGREGAN con clase_reg="FAP" (campos
+        desde rcg01 cruzando nro_fondo = nro_fondo) y el fondo
+        permanente se descarta por su glosa."""
+        base = [fila_siif("00001/05", "00001")]
+        fap_docs = [
+            SimpleNamespace(  # fondo permanente → se descarta
+                ejercicio=2026,
+                mes="02/2026",
+                fecha=datetime(2026, 2, 3),
+                tipo_comprobante="FAP",
+                nro_comprobante="00027/26",
+                nro_fondo="27",
+                glosa="APERTURA FONDO PERMANENTE 2026",
+                importe=24_000_000.0,
+            ),
+            SimpleNamespace(  # caja chica con contraparte en rcg01
+                ejercicio=2026,
+                mes="02/2026",
+                fecha=datetime(2026, 2, 24),
+                tipo_comprobante="FAP",
+                nro_comprobante="00073/26",
+                nro_fondo="73",
+                glosa="APERTURA DE CAJA CHICA 2026 - INTERVENCION",
+                importe=500_000.0,
+            ),
+            SimpleNamespace(  # caja chica SIN contraparte → fallback
+                ejercicio=2026,
+                mes="07/2026",
+                fecha=datetime(2026, 7, 8),
+                tipo_comprobante="FAP",
+                nro_comprobante="00572/26",
+                nro_fondo="572",
+                glosa="APERTURA DE CAJA CHICA 2026 - GCIA DE ASUNTOS",
+                importe=300_000.0,
+            ),
+        ]
+        rcg_ref = SimpleNamespace(
+            nro_fondo="73",
+            nro_comprobante="01363/26",
+            nro_origen="1363",
+            cta_cte="130832005",
+            cuit="20233930912",
+            beneficiario="GONZALEZLIZARDO GERMAN",
+            fuente="11",
+            nro_expte="900005272026",
+            clase_mod="NOR",
+            clase_gto="OGA",
+            es_comprometido=True,
+            es_verificado=True,
+            es_aprobado=True,
+            es_pagado=True,
+        )
+        servicio = construir_servicio_siif(
+            GastosFalso(base),
+            rcg01=Rcg01Falso([rcg_ref]),
+            rfondos04=Rfondos04Falso(fap_docs),
+        )
+
+        # El fondo 572 no tiene registros en rcg01 → warning (visibilidad)
+        with self.assertLogs(logger_pruebas, level="WARNING"):
+            resultado = await servicio.compute_otros_gastos_siif(
+                params=ControlOtrosGastosSiifFilter(ejercicio=2026, limit=None)
+            )
+
+        nros = [fila["nro_comprobante"] for fila in resultado]
+        # base + 2 aperturas; el fondo permanente quedó fuera
+        self.assertEqual(nros, ["00001/05", "00073/26", "00572/26"])
+
+        fap73 = resultado[1]
+        self.assertEqual(fap73["clase_reg"], "FAP")
+        self.assertEqual(fap73["nro_fondo"], "73")
+        self.assertEqual(fap73["importe"], 500_000.0)
+        self.assertEqual(fap73["fecha"], "24/02/2026")
+        # campos desde rcg01 vía cruce nro_fondo = nro_fondo
+        self.assertEqual(fap73["cuit"], "20233930912")
+        self.assertEqual(fap73["beneficiario"], "GONZALEZLIZARDO GERMAN")
+        self.assertEqual(fap73["cta_cte"], "130832005")  # unifier passthrough
+        self.assertEqual(fap73["clase_mod"], "NOR")
+        self.assertEqual(fap73["nro_expte"], "900005272026")
+        self.assertTrue(fap73["es_aprobado"])
+
+        fap572 = resultado[2]
+        self.assertEqual(fap572["clase_reg"], "FAP")
+        self.assertEqual(fap572["cuit"], "")
+        self.assertEqual(
+            fap572["beneficiario"],
+            "APERTURA DE CAJA CHICA 2026 - GCIA DE ASUNTOS",
+        )
+        # el fondo permanente NUNCA entra a la tabla
+        self.assertNotIn("00027/26", nros)
 
     # --------------------------------------------------
     async def test_sin_datos_devuelve_vacio(self) -> None:

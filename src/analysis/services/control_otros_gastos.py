@@ -28,11 +28,13 @@ from ...siif.schemas import (
     GtoRpa03gFullFilter,
     Rcg01UejpFullFilter,
     Rfondo07tpFullFilter,
+    Rfondos04FullFilter,
 )
 from ...siif.services import (
     GtoRpa03gServiceDependency,
     Rcg01UejpServiceDependency,
     Rfondo07tpServiceDependency,
+    Rfondos04ServiceDependency,
 )
 from ...sscc.services import CtasCtesServiceDependency
 from ...utils import (
@@ -152,6 +154,9 @@ TIPOS_ICARO_OBRAS: List[str] = ["REG", "CYO"]
 # cuyo fondo ya fue regularizado en el mismo ejercicio (paso 4 de
 # compute_otros_gastos_siif).
 TIPO_COMPROBANTE_PA6: str = "PA6"
+# Apertura de fondos en siif_rfondos04: las aperturas de caja chica se
+# agregan a la tabla SIIF (ver ControlOtrosGastosSiifService._agregar_aperturas_fap).
+TIPO_COMPROBANTE_FAP: str = "FAP"
 
 # Espejo de get_sgf_honorarios (control_honorarios): destinos y cuentas
 # corrientes de honorarios que ya cubre ese control.
@@ -233,6 +238,7 @@ class ControlOtrosGastosSiifService(
     gastos_service: GtoRpa03gServiceDependency
     rcg01_service: Rcg01UejpServiceDependency
     rfondo07tp_service: Rfondo07tpServiceDependency
+    rfondos04_service: Rfondos04ServiceDependency
     icaro_carga_service: CargaServiceDependency
     honorarios_service: ControlHonorariosServiceDependency
     viaticos_service: ControlViaticosServiceDependency
@@ -346,6 +352,121 @@ class ControlOtrosGastosSiifService(
         )
 
     # -------------------------------------------------
+    async def _agregar_aperturas_fap(
+        self, df: pd.DataFrame, ejercicio: int, etiqueta: str
+    ) -> pd.DataFrame:
+        """Agrega las aperturas de caja chica (FAP) a la tabla SIIF.
+
+        Las aperturas de fondos (``siif_rfondos04``,
+        ``tipo_comprobante = "FAP"``) NO forman parte de la ejecución
+        del gasto en SIIF, pero sí son movimientos de fondos
+        registrados en SGF, por lo que se agregan a la tabla:
+
+        1. Se descarta el fondo permanente (glosa con
+           ``"FONDO PERM..."`` —cubre el typo "PERMAMENTE"— e importe
+           mayor). Si ninguna glosa lo identifica, se descarta el de
+           mayor importe (regla de negocio).
+        2. Las aperturas restantes se agregan con
+           ``clase_reg = "FAP"`` y el resto de los campos surgen de
+           cruzar ``nro_fondo = nro_fondo`` contra ``rcg01_uejp``
+           (puede haber más de un registro regularizado: se toma el
+           primero, porque cuit/beneficiario/cta_cte son constantes
+           por fondo). Sin contraparte, los campos requeridos quedan
+           vacíos y el ``beneficiario`` usa la glosa de la apertura
+           (la fila queda visible como ``SIIF_SIN_SGF`` en el cruce).
+
+        Args:
+            df: Tabla SIIF ya depurada (se le concatenan las filas).
+            ejercicio: Ejercicio a procesar.
+            etiqueta: Prefijo de los mensajes de log.
+
+        Returns:
+            La tabla con las aperturas de caja chica agregadas.
+        """
+        fap_params = Rfondos04FullFilter(
+            tipo_comprobante=TIPO_COMPROBANTE_FAP,
+            ejercicio=str(ejercicio),
+            limit=None,
+        )
+        fap_docs = await self.rfondos04_service.get_all(params=fap_params)
+        if not fap_docs:
+            return df
+
+        def _es_fondo_permanente(glosa: Any) -> bool:
+            return "FONDO PERM" in str(glosa or "").upper()
+
+        aperturas = [
+            doc for doc in fap_docs if not _es_fondo_permanente(doc.glosa)
+        ]
+        descartadas: int = len(fap_docs) - len(aperturas)
+        if not aperturas:
+            # Ninguna glosa identificó al permanente: se descarta el de
+            # mayor importe (regla de negocio: es el fondo permanente).
+            mayor = max(fap_docs, key=lambda doc: doc.importe)
+            aperturas = [doc for doc in fap_docs if doc is not mayor]
+            descartadas = 1
+
+        # Cruce nro_fondo = nro_fondo contra rcg01_uejp: solo se piden
+        # los fondos aperturados, sin traer toda la colección.
+        nros = sorted({doc.nro_fondo for doc in aperturas if doc.nro_fondo})
+        ref_por_fondo: dict = {}
+        if nros:
+            rcg_params = Rcg01UejpFullFilter(ejercicio=str(ejercicio), limit=None)
+            rcg_params.set_extra_filter({"nro_fondo": {"$in": nros}})
+            referencias = await self.rcg01_service.get_all(params=rcg_params)
+            for doc in referencias:
+                ref_por_fondo.setdefault(doc.nro_fondo, doc)
+
+        filas: List[dict] = []
+        for doc in aperturas:
+            ref = ref_por_fondo.get(doc.nro_fondo)
+            if ref is None:
+                logger.warning(
+                    f"{etiqueta}: FAP nro_fondo {doc.nro_fondo} sin "
+                    "registros en rcg01_uejp; se completa con la glosa "
+                    "de la apertura."
+                )
+            filas.append(
+                {
+                    "ejercicio": doc.ejercicio,
+                    "mes": doc.mes,
+                    "fecha": doc.fecha,
+                    "nro_comprobante": doc.nro_comprobante,
+                    "importe": doc.importe,
+                    "glosa": doc.glosa,
+                    "nro_fondo": doc.nro_fondo,
+                    "clase_reg": "FAP",
+                    "cta_cte": ref.cta_cte if ref else "",
+                    "cuit": ref.cuit if ref else "",
+                    "beneficiario": ref.beneficiario
+                    if ref
+                    else (doc.glosa or ""),
+                    "fuente": getattr(ref, "fuente", None) if ref else None,
+                    "nro_expte": ref.nro_expte if ref else None,
+                    "clase_mod": ref.clase_mod if ref else "NOR",
+                    "clase_gto": ref.clase_gto if ref else "OGA",
+                    "es_comprometido": bool(ref.es_comprometido)
+                    if ref
+                    else True,
+                    "es_verificado": bool(ref.es_verificado) if ref else True,
+                    "es_aprobado": bool(ref.es_aprobado) if ref else True,
+                    "es_pagado": bool(ref.es_pagado) if ref else True,
+                }
+            )
+
+        df_fap = pd.DataFrame(filas)
+        # Unifica cta_cte: rcg01 la guarda sin guiones ("130832005").
+        df_fap = await self.cta_cte_service.cta_cte_unifier(
+            df_fap, "siif_gastos_cta_cte"
+        )
+        df = pd.concat([df, df_fap], ignore_index=True, sort=False)
+        logger.info(
+            f"{etiqueta} → aperturas de caja chica (FAP): {len(df_fap)} "
+            f"filas agregadas ({descartadas} fondo permanente descartado)"
+        )
+        return df
+
+    # -------------------------------------------------
     async def compute_otros_gastos_siif(
         self, params: ControlOtrosGastosSiifFilter
     ) -> list[dict]:
@@ -386,6 +507,16 @@ class ControlOtrosGastosSiifService(
             filas se conservan en SIIF y se parean uno a uno con el
             SGF en la Capa 1. El CUIT 30632351514 sigue distinguiendo
             los fondos permanentes (Capa 2, cruce mensual).
+        13. Aperturas de caja chica (FAP): se AGREGAN filas (no se
+            depuran). ``siif_rfondos04`` con
+            ``tipo_comprobante = "FAP"``; se descarta el fondo
+            permanente (glosa con "FONDO PERM...") y el resto —las
+            aperturas de cajas chicas, que NO forman parte de la
+            ejecución del gasto en SIIF pero SÍ son movimientos de
+            fondos registrados en SGF— se agregan con
+            ``clase_reg = "FAP"``, completando el resto de los campos
+            cruzando ``nro_fondo = nro_fondo`` contra ``rcg01_uejp``
+            (ver :meth:`_agregar_aperturas_fap`).
 
         Args:
             params: Filtro con el ``ejercicio`` a depurar.
@@ -575,6 +706,11 @@ class ControlOtrosGastosSiifService(
         # 11-12. Escribanos y cajas chicas NO se depuran (ver
         #     docstring): las cajas chicas SÍ se cargan en SGF, por lo
         #     que se conservan para el pareo 1:1 de la Capa 1.
+
+        # 13. Aperturas de caja chica (FAP): filas que se AGREGAN a la
+        #     tabla (movimientos de fondos de SGF ausentes de la
+        #     ejecución del gasto en SIIF).
+        df = await self._agregar_aperturas_fap(df, ejercicio, etiqueta)
 
         if df.empty:
             logger.info(f"{etiqueta}: sin registros después de depurar (0 de {total}).")
